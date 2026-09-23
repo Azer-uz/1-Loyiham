@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To'lovlar - Azer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* ================= FINTECH SUMMARY BAR (VARIANT 1) ================= */
+        .fintech-summary-bar {
+            background: var(--card, #ffffff);
+            border: 1.5px solid var(--border, #cbd5e1);
+            border-radius: 12px;
+            padding: 12px 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.25fr auto;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .summary-metric {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .metric-icon-box {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .metric-inflow .metric-icon-box {
+            background: #ecfdf5;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+        .metric-outflow .metric-icon-box {
+            background: #fef2f2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+        .metric-balance .metric-icon-box {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+
+        .metric-data {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .metric-label {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: var(--text-light, #64748b);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .metric-values {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .metric-values .val-main {
+            font-size: 16.5px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .metric-values .val-sub {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-light);
+            white-space: nowrap;
+        }
+
+        .kpi-sub-split {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-light);
+            white-space: nowrap;
+        }
+
+        .summary-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .btn-fintech-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+
+        .btn-accounts-overview {
+            background: #f1f5f9;
+            color: var(--primary, #0284c7);
+            border: 1.5px solid #cbd5e1;
+        }
+        .btn-accounts-overview:hover {
+            background: #e2e8f0;
+            border-color: #94a3b8;
+            transform: translateY(-1px);
+        }
+
+        .btn-new-income {
+            background: var(--success, #16a34a);
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25);
+        }
+        .btn-new-income:hover {
+            background: #15803d;
+            transform: translateY(-1px);
+        }
+
+        .btn-new-expense {
+            background: var(--danger, #dc2626);
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
+        }
+        .btn-new-expense:hover {
+            background: #b91c1c;
+            transform: translateY(-1px);
+        }
+
+        .btn-currency-cfg {
+            background: #f8fafc;
+            color: var(--text);
+            border: 1px solid #cbd5e1;
+            padding: 8px 11px;
+        }
+        .btn-currency-cfg:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+
+        @media (max-width: 1100px) {
+            .fintech-summary-bar {
+                grid-template-columns: 1fr 1fr;
+            }
+            .summary-actions {
+                grid-column: 1 / -1;
+                justify-content: flex-start;
+            }
+        }
+        @media (max-width: 650px) {
+            .fintech-summary-bar {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ===== HISOBLAR BALANSI MODALI ICHIDAGI GRID ===== */
+        .accounts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .account-card {
+            background: var(--card, #ffffff);
+            border: 1.5px solid var(--border, #cbd5e1);
+            border-radius: 10px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .account-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+
+        .account-card.active-filter {
+            border-color: var(--accent);
+            background: var(--card);
+            box-shadow: 0 0 0 2px rgba(232, 155, 45, 0.35);
+        }
+
+        .account-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .account-card-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 160px;
+        }
+
+        .account-card-type-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .account-type-cash { background: #ecfdf5; color: #047857; }
+        .account-type-bank { background: #eff6ff; color: #1d4ed8; }
+        .account-type-dollar { background: #fef3c7; color: #b45309; }
+
+        .account-card-balance {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .account-card-usd {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--success);
+        }
+
+        .actions-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            background: var(--card);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(232, 155, 45, 0.15);
+        }
+
+        .type-selector-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            background: var(--bg);
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .type-tab-btn {
+            border: none;
+            background: transparent;
+            padding: 10px;
+            font-weight: 700;
+            font-size: 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-light);
+            transition: all 0.2s;
+        }
+
+        .type-tab-btn.active {
+            background: var(--card);
+            color: var(--primary);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+
+        .badge-account {
+            font-weight: 700;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .badge-acc-cash { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .badge-acc-bank { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .badge-acc-dollar { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+
+        .usd-tag {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #16a34a;
+            background: #f0fdf4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+        }
+
+        .btn-quick-adjust {
+            background: rgba(20, 42, 76, 0.06);
+            border: 1px solid #cbd5e1;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-quick-adjust:hover {
+            background: var(--primary);
+            color: #ffffff;
+            border-color: var(--primary);
+        }
+        .adjusted-tag {
+            display: inline-block;
+            font-size: 10px;
+            background: #fef3c7;
+            color: #b45309;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            margin-top: 4px;
+            border: 1px solid #fde68a;
+        }
+
+        /* ================= DARK MODE OVERRIDES (PAYMENTS) ================= */
+        body.dark-mode .fintech-summary-bar {
+            background: #162032 !important;
+            border-color: #25334d !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+        }
+        body.dark-mode .metric-inflow .metric-icon-box {
+            background: rgba(16, 185, 129, 0.18) !important;
+            border-color: rgba(52, 211, 153, 0.35) !important;
+            color: #34d399 !important;
+        }
+        body.dark-mode .metric-outflow .metric-icon-box {
+            background: rgba(239, 68, 68, 0.18) !important;
+            border-color: rgba(248, 113, 113, 0.35) !important;
+            color: #f87171 !important;
+        }
+        body.dark-mode .metric-balance .metric-icon-box {
+            background: rgba(2, 132, 199, 0.2) !important;
+            border-color: rgba(56, 189, 248, 0.35) !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .metric-label {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .metric-values .val-main {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .metric-values .val-sub,
+        body.dark-mode .kpi-sub-split {
+            color: #cbd5e1 !important;
+        }
+
+        body.dark-mode .btn-accounts-overview {
+            background: #1e293b !important;
+            border-color: #38bdf8 !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .btn-accounts-overview:hover {
+            background: rgba(56, 189, 248, 0.15) !important;
+            color: #7dd3fc !important;
+        }
+        body.dark-mode .btn-new-income {
+            background: #15803d !important;
+            border: 1px solid #22c55e !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.35) !important;
+        }
+        body.dark-mode .btn-new-expense {
+            background: #b91c1c !important;
+            border: 1px solid #ef4444 !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35) !important;
+        }
+        body.dark-mode .btn-currency-cfg {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }
+
+        /* Filter Panel in Dark Mode */
+        body.dark-mode .filter-panel {
+            background: #162032 !important;
+            border-color: #25334d !important;
+        }
+        body.dark-mode .filter-input {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .btn-print {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode .btn-print:hover {
+            background: #334155 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .print-dropdown-menu {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .print-dropdown-menu button {
+            color: #e2e8f0 !important;
+        }
+        body.dark-mode .print-dropdown-menu button:hover {
+            background: #334155 !important;
+            color: #38bdf8 !important;
+        }
+
+        /* Buttons in modals */
+        body.dark-mode .btn-primary-action {
+            background: #0284c7 !important;
+            border: 1px solid #38bdf8 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .btn-accent-action {
+            background: #15803d !important;
+            border: 1px solid #22c55e !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .btn-danger-action {
+            background: #b91c1c !important;
+            border: 1px solid #ef4444 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .btn-quick-adjust {
+            background: rgba(245, 158, 11, 0.2) !important;
+            border-color: rgba(251, 191, 36, 0.4) !important;
+            color: #fbbf24 !important;
+        }
+        body.dark-mode .btn-quick-adjust:hover {
+            background: rgba(245, 158, 11, 0.35) !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .type-tab-btn {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .type-tab-btn.active {
+            background: #0284c7 !important;
+            border-color: #38bdf8 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .account-card {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .account-card:hover,
+        body.dark-mode .account-card.active-filter {
+            border-color: #38bdf8 !important;
+            background: #1e293b !important;
+        }
+        body.dark-mode .account-card-name {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .account-card-balance {
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .modal-content {
+            background: #111827 !important;
+            color: #f8fafc !important;
+            border: 1px solid #334155 !important;
+        }
+        body.dark-mode .modal-header {
+            background: #162032 !important;
+            border-bottom: 1px solid #334155 !important;
+        }
+        body.dark-mode .form-control {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .type-selector-tabs {
+            background: #0f172a !important;
+        }
+    </style>
+</head>
+<body>
+        <!-- Top Modern Navbar (Variant 7) -->
+    <header class="app-navbar">
+        <div class="app-navbar-inner">
+            <div class="navbar-brand-group">
+                <a href="/" class="brand-link">
+                    <div class="brand-icon-box">📦</div>
+                    <span class="brand-title">Azer</span>
+                </a>
+                <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item active">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="navbar-right-group">
+                <div class="nav-search-bar">
+                    <span style="color:var(--text-muted);font-size:13px;">🔍</span>
+                    <input type="text" placeholder="Qidiruv..." id="globalSearch">
+                </div>
+                <button class="nav-icon-circle-btn" title="Bildirishnomalar">🔔</button>
+                <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Day/Night Mode">🌙</button>
+                <button class="nav-sync-pill" onclick="triggerSyncNow()" title="MoySklad bilan sinxronlash">
+                    🔄 Sinxronlash
+                </button>
+                <div class="nav-user-dropdown-wrapper" id="navUserDropdownWrapper">
+                    <button class="nav-user-pill-btn" onclick="toggleUserDropdown(event)" id="navUserPillBtn" title="Admin Profili">
+                        <div class="user-avatar-circle">👤</div>
+                        <div class="user-info-text-box">
+                            <span class="user-name-text" id="currentUserLabel">Admin</span>
+                            <span class="user-role-badge">Administrator</span>
+                        </div>
+                        <span class="dropdown-chevron">▼</span>
+                    </button>
+                    <div class="nav-user-dropdown-menu" id="navUserDropdownMenu">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-avatar-large" id="dropdownAvatarLarge">👤</div>
+                            <div class="dropdown-user-meta">
+                                <div class="dropdown-name" id="dropdownUserName">Admin</div>
+                                <div class="dropdown-email" id="dropdownUserLogin">admin@azer</div>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openUserProfileModal()">
+                            <span>👤</span>
+                            <span>Profil & Avatar sozlash</span>
+                        </button>
+                        <a href="/settings" class="dropdown-item">
+                            <span>⚙️</span>
+                            <span>Tizim sozlamalari</span>
+                        </a>
+                        <a href="/docs" class="dropdown-item">
+                            <span>📖</span>
+                            <span>Foydalanish qo'llanmasi</span>
+                        </a>
+                        <button class="dropdown-item" onclick="triggerSyncNow()">
+                            <span>🔄</span>
+                            <span>MoySklad bilan sinxronlash</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <span>🚪</span>
+                            <span>Tizimdan chiqish</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="app-layout">
+        <main class="main-content">
+            <!-- 1. Sarlavha Paneli -->
+            <div class="v7-greeting-bar" style="margin-bottom: 12px;">
+                <div class="v7-greeting-text-group"><span id="currentDate" style="display:none;"></span><span id="orgName" style="display:none;"></span>
+                    <h1 class="v7-greeting-title" style="display:flex; align-items:center; gap:8px;">
+                        <span>💰 To'lovlar va Kassa Boshqaruvi</span>
+                    </h1>
+                    <span class="v7-greeting-subtitle">Pul oqimi, kassa va hisob-kitoblar aylanmasi</span>
+                </div>
+                <div class="actions-bar" style="display:flex; align-items:center; gap:8px;">
+                    <button class="btn-fintech-action btn-new-income" onclick="openCustomerPaymentModal()" title="Mijozdan to'lov qabul qilish">
+                        💰 Yangi Kirim
+                    </button>
+                    <button class="btn-fintech-action btn-new-expense" onclick="openExpenseModal()" title="Kassa yoki hisobdan chiqim/xarajat">
+                        💸 Yangi Xarajat
+                    </button>
+                    <button class="btn-fintech-action btn-accounts-overview" onclick="openAccountsModal()" title="Hisoblar va kassalar qoldiqlari">
+                        🏦 Hisoblar & Kassalar
+                    </button>
+                    <button class="btn-fintech-action btn-currency-cfg" onclick="openCurrencyModal()" title="Dollar kursini sozlash">
+                        📊 Kurs
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Fintech Summary Bar (Variant 1: Ixcham Moliyaviy Lenta) -->
+            <div class="fintech-summary-bar">
+                <div class="summary-metric metric-inflow">
+                    <div class="metric-icon-box">📥</div>
+                    <div class="metric-data">
+                        <span class="metric-label">Jami Kirim</span>
+                        <div class="metric-values">
+                            <strong class="val-main" style="color:var(--success);" id="statInflow">0 so'm</strong>
+                            <span class="val-sub" style="color:#16a34a;" id="statInflowUSD">$0.00</span>
+                        </div>
+                        <span class="kpi-sub-split" style="display:none;" id="statInflowUzs">0</span>
+                    </div>
+                </div>
+
+                <div class="summary-metric metric-outflow">
+                    <div class="metric-icon-box">📤</div>
+                    <div class="metric-data">
+                        <span class="metric-label">Jami Chiqim</span>
+                        <div class="metric-values">
+                            <strong class="val-main" style="color:var(--danger);" id="statOutflow">0 so'm</strong>
+                            <span class="val-sub" style="color:#dc2626;" id="statOutflowUSD">$0.00</span>
+                        </div>
+                        <span class="kpi-sub-split" style="display:none;" id="statOutflowUzs">0</span>
+                    </div>
+                </div>
+
+                <div class="summary-metric metric-balance">
+                    <div class="metric-icon-box">⚖️</div>
+                    <div class="metric-data">
+                        <span class="metric-label">Sof Oqim (Davr)</span>
+                        <div class="metric-values">
+                            <strong class="val-main" style="color:var(--primary);" id="statNetBalance">0 so'm</strong>
+                            <span class="val-sub" id="statNetBalanceUSD">$0.00</span>
+                        </div>
+                        <span class="kpi-sub-split" style="display:none;" id="statNetUzs">0</span>
+                    </div>
+                </div>
+
+                <div class="summary-metric metric-balance" style="border-left: 1px dashed var(--border); padding-left: 14px;">
+                    <div class="metric-icon-box" style="background:#fef3c7; color:#d97706; border-color:#fde68a;">🏦</div>
+                    <div class="metric-data">
+                        <span class="metric-label">Kassa & Bank Qoldig'i</span>
+                        <div class="metric-values">
+                            <strong class="val-main" style="color:#d97706;" id="topConsolidatedDisplay">~ 0 so'm</strong>
+                            <span class="val-sub" style="color:#16a34a;" id="topTotalUsdDisplay">$0.00</span>
+                        </div>
+                        <div class="kpi-sub-split">
+                            <span>Naqd: <strong id="statCashBalance" style="color:var(--text);">0</strong></span> · 
+                            <span>Bank: <strong id="statCardBalance" style="color:var(--text);">0</strong></span>
+                            <span id="topTotalUzsDisplay" style="display:none;">0</span>
+                            <span id="topRefRateSub" style="display:none;"></span>
+                            <span id="statCashIn" style="display:none;">0</span>
+                            <span id="statCardIn" style="display:none;">0</span>
+                            <span id="statCashOut" style="display:none;">0</span>
+                            <span id="statCardOut" style="display:none;">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Filtr Paneli (MoySklad Davr Navigatsiyasi) -->
+            <div class="filter-panel" style="padding: 12px 16px; margin-bottom: 14px;">
+                <div class="date-navigator-strip">
+                    <div class="period-nav-group">
+                        <div class="quick-dates">
+                            <button class="quick-btn active" data-period="today" onclick="selectPeriod('today')">Bugun</button>
+                            <button class="quick-btn" data-period="yesterday" onclick="selectPeriod('yesterday')">Kecha</button>
+                            <button class="quick-btn" data-period="week" onclick="selectPeriod('week')">Hafta</button>
+                            <button class="quick-btn" data-period="month" onclick="selectPeriod('month')">Oy</button>
+                            <button class="quick-btn" data-period="all" onclick="selectPeriod('all')">Hammasi</button>
+                        </div>
+
+                        <!-- ◀ Sentabr 2026 ▶ -->
+                        <div class="period-navigator" id="periodNavigator">
+                            <button class="nav-arrow-btn" onclick="navigatePeriod(-1)" title="Oldingi davr">◀</button>
+                            <span class="nav-period-label" id="periodDisplayLabel">Sentabr 2026</span>
+                            <button class="nav-arrow-btn" onclick="navigatePeriod(1)" title="Keyingi davr">▶</button>
+                        </div>
+
+                        <!-- Aniq sanalar (ko'rinib turadi) -->
+                        <div class="date-inputs-compact">
+                            <input type="date" id="dateFrom" title="Boshlanish sanasi">
+                            <span style="color:var(--text-light);font-size:12px;">—</span>
+                            <input type="date" id="dateTo" title="Tugash sanasi">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 6px; align-items:center;">
+                        <button class="quick-btn active" data-type="all" onclick="selectTypeFilter('all')">Barchasi</button>
+                        <button class="quick-btn" data-type="inflow" onclick="selectTypeFilter('inflow')">💵 Kirim</button>
+                        <button class="quick-btn" data-type="outflow" onclick="selectTypeFilter('outflow')">💸 Chiqim</button>
+                        <div class="print-dropdown-wrapper" style="margin-left:8px;">
+                            <button class="btn-print" onclick="togglePaymentsPrintDropdown(this)" style="padding:6px 12px;font-size:12px;">
+                                📑 Chop etish ▼
+                            </button>
+                            <div class="print-dropdown-menu">
+                                <button onclick="printCashflowReport('a4')">📄 A4 format</button>
+                                <button onclick="printCashflowReport('a5')">📃 A5 format (kichik)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-grid" style="grid-template-columns: 1.2fr 1.2fr 1.6fr; gap: 8px;">
+                    <div>
+                        <select id="accountFilter" class="filter-input" style="width:100%; padding: 7px 10px; font-size: 13px;" onchange="handleAccountFilterChange()">
+                            <option value="all">🏦 Barcha hisoblar & kassalar</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select id="expenseItemFilter" class="filter-input" style="width:100%; padding: 7px 10px; font-size: 13px;" onchange="loadCashflow()">
+                            <option value="">Barcha xarajat moddalari</option>
+                        </select>
+                    </div>
+                    <div>
+                        <input type="text" id="searchInput" class="filter-input" style="width:100%; padding: 7px 10px; font-size: 13px;" placeholder="🔍 Kontragent, hisob yoki izoh...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="results-info">
+                <span id="resultsCount">Yuklanmoqda...</span>
+            </div>
+
+            <!-- 5. Tranzaksiyalar Jadvali -->
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">№</th>
+                            <th class="payments-sortable" id="pth-moment" onclick="sortPaymentsBy('moment')" style="cursor:pointer;">Sana & Vaqt <span class="sort-arrow" style="font-size:10px;opacity:0.7;">↕</span></th>
+                            <th class="payments-sortable" id="pth-type_name" onclick="sortPaymentsBy('type_name')" style="cursor:pointer;">Hujjat turi <span class="sort-arrow" style="font-size:10px;opacity:0.7;">↕</span></th>
+                            <th>Hisob / Kassa</th>
+                            <th class="payments-sortable" id="pth-target_name" onclick="sortPaymentsBy('target_name')" style="cursor:pointer;">Kontragent / Xarajat toifasi <span class="sort-arrow" style="font-size:10px;opacity:0.7;">↕</span></th>
+                            <th>Tavsif / Izoh</th>
+                            <th class="payments-sortable" id="pth-amount" onclick="sortPaymentsBy('amount')" style="text-align: right; cursor:pointer;">Summa <span class="sort-arrow" style="font-size:10px;opacity:0.7;">↕</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cashflowTable">
+                        <tr><td colspan="7" class="loading">Yuklanmoqda...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="mobile-bottom-nav">
+        <a href="/" class="mobile-nav-item">
+            <span class="icon">📊</span>
+            <span>Dashboard</span>
+        </a>
+        <a href="/static/demands.html" class="mobile-nav-item">
+            <span class="icon">📦</span>
+            <span>Sotuvlar</span>
+        </a>
+        <a href="/static/customers.html" class="mobile-nav-item">
+            <span class="icon">👥</span>
+            <span>Mijozlar</span>
+        </a>
+        <a href="/static/payments.html" class="mobile-nav-item active">
+            <span class="icon">💰</span>
+            <span>Kassa</span>
+        </a>
+        <a href="/settings" class="mobile-nav-item">
+            <span class="icon">⚙️</span>
+            <span>Sozlamalar</span>
+        </a>
+    </nav>
+
+    <!-- ===== MODALLAR ===== -->
+
+    <!-- 1. Dollar Kursini Boshqarish Modali -->
+    <div id="currencyModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2>⚙️ Dollar Kursini Boshqarish</h2>
+                <button class="close-btn" onclick="closeCurrencyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin-bottom:18px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:13px;">
+                        <span>MoySklad joriy kursi:</span>
+                        <strong id="modalCurrentRate" style="color:var(--primary); font-size:15px;">—</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:13px;">
+                        <span>Markaziy Bank rasmiy kursi:</span>
+                        <strong id="modalCbuRate" style="color:var(--success); font-size:15px;">—</strong>
+                    </div>
+                </div>
+
+                <form id="currencyForm" onsubmit="handleRateSubmit(event)">
+                    <div class="form-group">
+                        <label for="newUsdRateInput">Yangi Dollar Kursi (so'mda) *</label>
+                        <input type="text" inputmode="decimal" id="newUsdRateInput" class="form-control format-number" placeholder="Masalan: 12 850" required style="font-size:18px; font-weight:700;">
+                        <small style="color:var(--text-light); margin-top:4px;">Ushbu kurs MoySklad tizimida yangilanadi va barcha yangi hisob-kitoblarda qo'llaniladi.</small>
+                    </div>
+
+                    <div style="margin-bottom:20px;">
+                        <button type="button" onclick="syncCbuRate()" class="btn-print" style="width:100%; text-align:center; padding:10px; font-weight:600; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0;">
+                            ⚡ Markaziy Bank kursi bilan sinxronlash
+                        </button>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" class="btn-print" onclick="closeCurrencyModal()">Bekor qilish</button>
+                        <button type="submit" id="saveRateBtn" class="btn-primary-action">
+                            💾 Kursni Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Yangi Xarajat Kiritish Modali -->
+    <div id="expenseModal" class="modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2>💸 Yangi Xarajat Kiritish</h2>
+                <button class="close-btn" onclick="closeExpenseModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="expenseForm" onsubmit="handleExpenseSubmit(event)">
+                    <div class="form-group">
+                        <label>To'lov usuli / Kassa turi</label>
+                        <div class="type-selector-tabs">
+                            <button type="button" class="type-tab-btn active" id="expTypeCash" onclick="setExpenseType('cash')">💵 Naqd pul (Kassa)</button>
+                            <button type="button" class="type-tab-btn" id="expTypeCard" onclick="setExpenseType('card')">💳 Bank / Hisobdan</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expenseAccountSelect">Chiqim hisobi / Kassasi *</label>
+                        <select id="expenseAccountSelect" class="form-control" required>
+                            <option value="cash_default">💵 Asosiy Naqd Kassa (UZS)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expenseAmount">Xarajat summasi (so'm) *</label>
+                        <input type="text" inputmode="numeric" id="expenseAmount" class="form-control format-number" placeholder="0" required style="font-size:18px;font-weight:700;" oninput="updateExpenseUSDPreview()">
+                        <small id="expenseUsdPreview" style="color:var(--success); font-weight:600; margin-top:2px;">~ $0.00 USD</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <label for="expenseItemSelect">Xarajat moddasi (Toifasi) *</label>
+                            <button type="button" onclick="openNewExpenseItemModal()" style="background:none;border:none;color:var(--info);font-size:12px;font-weight:700;cursor:pointer;">➕ Yangi toifa</button>
+                        </div>
+                        <select id="expenseItemSelect" class="form-control" required>
+                            <option value="">Tanlang...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expenseDescription">Izoh / Tafsilot</label>
+                        <textarea id="expenseDescription" class="form-control" rows="2" placeholder="Masalan: Ofis ijarasi yoki yo'l xarajati..."></textarea>
+                    </div>
+
+                    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                        <button type="button" class="btn-print" onclick="closeExpenseModal()">Bekor qilish</button>
+                        <button type="submit" id="saveExpenseBtn" class="btn-primary-action" style="background:var(--danger);">
+                            💾 Xarajatni Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Yangi Xarajat Moddasi Yaratish Modali -->
+    <div id="newExpenseItemModal" class="modal">
+        <div class="modal-content" style="max-width: 440px;">
+            <div class="modal-header">
+                <h2>➕ Yangi Xarajat Toifasi</h2>
+                <button class="close-btn" onclick="closeNewExpenseItemModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="newExpenseItemForm" onsubmit="handleNewExpenseItemSubmit(event)">
+                    <div class="form-group">
+                        <label for="newItemName">Toifa nomi *</label>
+                        <input type="text" id="newItemName" class="form-control" placeholder="Masalan: Ijara, Yoqilg'i, Oylik, Reklama..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newItemDescription">Tavsif (ixtiyoriy)</label>
+                        <input type="text" id="newItemDescription" class="form-control" placeholder="Qisqacha izoh...">
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                        <button type="button" class="btn-print" onclick="closeNewExpenseItemModal()">Bekor qilish</button>
+                        <button type="submit" id="saveNewItemBtn" class="btn-primary-action">
+                            ➕ Yaratish
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Mijozdan Kirim Kiritish Modali -->
+    <div id="customerPaymentModal" class="modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2>📥 Kirim To'lov Kiritish</h2>
+                <button class="close-btn" onclick="closeCustomerPaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="customerPaymentForm" onsubmit="handleCustomerPaymentSubmit(event)">
+                    <div class="form-group">
+                        <label for="payCustomerSelect">Mijoz (Kontragent) *</label>
+                        <select id="payCustomerSelect" class="form-control" required>
+                            <option value="">Mijozni tanlang...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="payCashAmount">💵 Naqd summa (so'm)</label>
+                        <input type="text" inputmode="numeric" id="payCashAmount" class="form-control format-number" placeholder="0" oninput="updatePaymentUSDPreview()">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="payCardAmount">💳 Bank / Valyuta summa (so'm)</label>
+                        <input type="text" inputmode="numeric" id="payCardAmount" class="form-control format-number" placeholder="0" oninput="updatePaymentUSDPreview()">
+                    </div>
+
+                    <div class="form-group" id="payAccountGroup">
+                        <label for="payAccountSelect">Kirim hisob raqami</label>
+                        <select id="payAccountSelect" class="form-control">
+                            <option value="">Asosiy hisob</option>
+                        </select>
+                    </div>
+
+                    <div style="background:#f8fafc; border-radius:8px; padding:10px 14px; margin-bottom:16px;">
+                        <div style="font-size:12px; color:var(--text-light);">Jami to'lov:</div>
+                        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                            <strong id="payTotalPreview" style="font-size:16px; color:var(--primary);">0 so'm</strong>
+                            <strong id="payTotalUSDPreview" style="font-size:14px; color:var(--success);">$0.00 USD</strong>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="payDescription">Izoh</label>
+                        <input type="text" id="payDescription" class="form-control" placeholder="Mijozdan to'lov...">
+                    </div>
+
+                    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                        <button type="button" class="btn-print" onclick="closeCustomerPaymentModal()">Bekor qilish</button>
+                        <button type="submit" id="saveCustomerPaymentBtn" class="btn-accent-action">
+                            💾 Kirimni Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Hisob Balansini Korrektirovka Qilish Modali -->
+    <div id="adjustmentModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2>✏️ Hisob Qoldig'ini Korrektirovka Qilish</h2>
+                <button class="close-btn" onclick="closeAdjustmentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="adjustmentForm" onsubmit="handleAdjustmentSubmit(event)">
+                    <input type="hidden" id="adjAccountId">
+                    <div style="background:#f8fafc; border-radius:8px; padding:12px 14px; margin-bottom:16px; border:1px solid #e2e8f0;">
+                        <div style="font-size:13px; color:var(--text-light);">Hisob / Kassa:</div>
+                        <strong id="adjAccountName" style="font-size:15px; color:var(--primary);">—</strong>
+                        <div style="margin-top:6px; font-size:12px; color:var(--text-light);">
+                            MoySklad tizimidagi joriy qoldiq: <strong id="adjCurrentBalance" style="color:var(--primary);">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adjNewBalance">Haqiqiy (Yangi) Qoldiq *</label>
+                        <input type="text" inputmode="numeric" id="adjNewBalance" class="form-control format-number" placeholder="0" required style="font-size:18px; font-weight:700;">
+                        <small id="adjCurrencyHint" style="color:var(--text-light); margin-top:4px;">Hisobning o'z valyutasida kiriting</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adjReason">Korrektirovka sababi / Izoh *</label>
+                        <input type="text" id="adjReason" class="form-control" placeholder="Masalan: Inventarizatsiya yoki kassa sanog'i natijasi" required>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                        <button type="button" class="btn-print" onclick="closeAdjustmentModal()">Bekor qilish</button>
+                        <button type="submit" id="saveAdjBtn" class="btn-primary-action">
+                            💾 Korrektirovkani Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. To'lovni Tahrirlash, Sotuvga Bog'lash va O'chirish Modali -->
+    <div id="editPaymentModal" class="modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <div>
+                    <h2 id="editPayTitle">✏️ To'lovni Tahrirlash</h2>
+                    <span id="editPayDocSubtitle" style="font-size:12px; color:var(--text-light);">Hujjat №</span>
+                </div>
+                <button class="close-btn" onclick="closeEditPaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editPaymentForm" onsubmit="handleEditPaymentSubmit(event)">
+                    <input type="hidden" id="editPayId">
+                    <input type="hidden" id="editPayDocType">
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+                        <div class="form-group">
+                            <label for="editPayAmount">Summa *</label>
+                            <input type="text" inputmode="numeric" id="editPayAmount" class="form-control format-number" placeholder="0" required style="font-size:16px; font-weight:700;">
+                        </div>
+                        <div class="form-group">
+                            <label for="editPayCurrency">Valyuta</label>
+                            <select id="editPayCurrency" class="form-control" onchange="toggleEditCurrencyInputs()">
+                                <option value="UZS">UZS (So'm)</option>
+                                <option value="USD">USD (Dollar)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="editPayUsdGroup" style="display:none; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:10px 14px; margin-bottom:14px;">
+                        <div style="font-size:12px; font-weight:700; color:#065f46; margin-bottom:6px;">Dollar Kursi & Summasi</div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                            <div>
+                                <label style="font-size:11px; color:#047857;">Dollar miqdori ($)</label>
+                                <input type="text" inputmode="decimal" id="editPayUsdAmount" class="form-control format-number" placeholder="0.00" oninput="recalcEditUzsFromUsd()">
+                            </div>
+                            <div>
+                                <label style="font-size:11px; color:#047857;">Kurs (so'm)</label>
+                                <input type="text" inputmode="decimal" id="editPayUsdRate" class="form-control format-number" value="12 800" oninput="recalcEditUzsFromUsd()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editPayMoment">Sana va Vaqt *</label>
+                        <input type="datetime-local" id="editPayMoment" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editPayPurpose">To'lov Maqsadi / Izoh</label>
+                        <input type="text" id="editPayPurpose" class="form-control" placeholder="To'lov izohi...">
+                    </div>
+
+                    <div class="form-group" id="editPayLinkGroup">
+                        <label for="editPayLinkDemand">Sotuvga Bog'lash (Yuk xati)</label>
+                        <select id="editPayLinkDemand" class="form-control">
+                            <option value="">(Bog'lanmagan / Alohida to'lov)</option>
+                        </select>
+                        <small style="color:var(--text-light); font-size:11px; margin-top:2px;">Ushbu mijozning qarzdor yoki so'nggi sotuvlari</small>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
+                        <button type="button" class="btn-danger-action" onclick="deleteCurrentPayment()" style="background:#ef4444; color:white; border:none; padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer; font-size:13px;">
+                            🗑️ O'chirish
+                        </button>
+                        <div style="display:flex; gap:10px;">
+                            <button type="button" class="btn-print" onclick="closeEditPaymentModal()">Bekor qilish</button>
+                            <button type="submit" id="saveEditPaymentBtn" class="btn-primary-action">
+                                💾 Saqlash
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. 🏦 Kassa va Bank Hisob Raqamlari Qoldiqlari Modali -->
+    <div id="accountsModal" class="modal">
+        <div class="modal-content modal-large" style="max-width: 860px;">
+            <div class="modal-header">
+                <h2>🏦 Kassa va Bank Hisob Raqamlari Qoldiqlari</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="resetAccountFilterBtn" onclick="filterByAccount('all'); closeAccountsModal();" class="quick-btn" style="display:none; font-size:12px;">
+                        🔄 Barcha hisoblarni ko'rsatish
+                    </button>
+                    <button class="close-btn" onclick="closeAccountsModal()">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 14px; font-size: 13px; color: var(--text-light); display:flex; justify-content:space-between; align-items:center;">
+                    <span>Har bir hisob balansi bo'yicha ma'lumot va alohida tahlil filtri</span>
+                    <button class="btn-fintech-action btn-currency-cfg" onclick="closeAccountsModal(); openCurrencyModal();" style="font-size:11.5px; padding:4px 10px;">
+                        📊 Kursni Sozlash
+                    </button>
+                </div>
+                <div class="accounts-grid" id="accountsGrid">
+                    <div class="account-card" style="text-align:center; color:var(--text-light); padding:20px;">
+                        ⏳ Hisoblar yuklanmoqda...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chop etish uchun konteyner -->
+    <div id="genericPrintArea"></div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/payments.js"></script>
+</body>
+</html>

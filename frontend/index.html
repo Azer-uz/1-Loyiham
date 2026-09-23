@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Azer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Top Modern Navbar (Variant 7) -->
+    <header class="app-navbar">
+        <div class="app-navbar-inner">
+            <div class="navbar-brand-group">
+                <a href="/" class="brand-link">
+                    <div class="brand-icon-box">📦</div>
+                    <span class="brand-title">Azer</span>
+                </a>
+                <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item active">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="navbar-right-group">
+                <div class="nav-search-bar">
+                    <span style="color:var(--text-muted);font-size:13px;">🔍</span>
+                    <input type="text" placeholder="Qidiruv..." id="globalSearch">
+                </div>
+                <button class="nav-icon-circle-btn" title="Bildirishnomalar">🔔</button>
+                <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Day/Night Mode">🌙</button>
+                <button class="nav-sync-pill" onclick="triggerSyncNow()" title="MoySklad bilan sinxronlash">
+                    🔄 Sinxronlash
+                </button>
+                <div class="nav-user-dropdown-wrapper" id="navUserDropdownWrapper">
+                    <button class="nav-user-pill-btn" onclick="toggleUserDropdown(event)" id="navUserPillBtn" title="Admin Profili">
+                        <div class="user-avatar-circle">👤</div>
+                        <div class="user-info-text-box">
+                            <span class="user-name-text" id="currentUserLabel">Admin</span>
+                            <span class="user-role-badge">Administrator</span>
+                        </div>
+                        <span class="dropdown-chevron">▼</span>
+                    </button>
+                    <div class="nav-user-dropdown-menu" id="navUserDropdownMenu">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-avatar-large" id="dropdownAvatarLarge">👤</div>
+                            <div class="dropdown-user-meta">
+                                <div class="dropdown-name" id="dropdownUserName">Admin</div>
+                                <div class="dropdown-email" id="dropdownUserLogin">admin@azer</div>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openUserProfileModal()">
+                            <span>👤</span>
+                            <span>Profil & Avatar sozlash</span>
+                        </button>
+                        <a href="/settings" class="dropdown-item">
+                            <span>⚙️</span>
+                            <span>Tizim sozlamalari</span>
+                        </a>
+                        <a href="/docs" class="dropdown-item">
+                            <span>📖</span>
+                            <span>Foydalanish qo'llanmasi</span>
+                        </a>
+                        <button class="dropdown-item" onclick="triggerSyncNow()">
+                            <span>🔄</span>
+                            <span>MoySklad bilan sinxronlash</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <span>🚪</span>
+                            <span>Tizimdan chiqish</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+        <!-- Variant 7 Greeting Header -->
+        <div class="v7-greeting-bar">
+            <div class="v7-greeting-text-group"><span id="orgName" style="display:none;"></span>
+                <h1 class="v7-greeting-title">Good morning, <span id="adminGreetingName">Admin</span>.</h1>
+                <span class="v7-greeting-subtitle">Today's Overview</span>
+                <div class="v7-org-badge" id="orgBadge">Tashkilot</div>
+            </div>
+            <div>
+                <a href="/static/demands.html" class="v7-btn-new-order">➕ New Order</a>
+            </div>
+        </div>
+
+        <!-- Sana filtri (MoySklad Davr Navigatsiyasi Toolbar) -->
+        <div class="v7-date-toolbar">
+            <div class="period-nav-group">
+                <div class="quick-dates">
+                    <button class="quick-btn active" data-period="today" onclick="selectPeriod('today')">Bugun</button>
+                    <button class="quick-btn" data-period="yesterday" onclick="selectPeriod('yesterday')">Kecha</button>
+                    <button class="quick-btn" data-period="week" onclick="selectPeriod('week')">Hafta</button>
+                    <button class="quick-btn" data-period="month" onclick="selectPeriod('month')">Oy</button>
+                    <button class="quick-btn" data-period="all" onclick="selectPeriod('all')">Hammasi</button>
+                </div>
+
+                <!-- ◀ Sentabr 2026 ▶ -->
+                <div class="period-navigator" id="periodNavigator">
+                    <button class="nav-arrow-btn" onclick="navigatePeriod(-1)" title="Oldingi davr">◀</button>
+                    <span class="nav-period-label" id="periodDisplayLabel">Sentabr 2026</span>
+                    <button class="nav-arrow-btn" onclick="navigatePeriod(1)" title="Keyingi davr">▶</button>
+                </div>
+
+                <!-- Aniq sanalar -->
+                <div class="date-inputs-compact">
+                    <input type="date" id="dateFrom" title="Boshlanish sanasi">
+                    <span style="color:var(--text-light);font-size:12px;">—</span>
+                    <input type="date" id="dateTo" title="Tugash sanasi">
+                </div>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-light);" id="currentDate"></div>
+        </div>
+
+        <!-- VARIANT A: HERO ROW (Hashamatli Kassa Karti + 6 ta Metrika) -->
+        <div class="va-hero-container">
+            <!-- 1-Rasmga 100% Mos Hashamatli Ixcham Kassa Karti (Ichki Moslashuvchan Taqsimot Bilan) -->
+            <div class="va-cash-card" id="vaCashCard">
+                <div class="va-cash-top">
+                    <div class="va-cash-title-wrap">
+                        <div class="va-cash-icon-badge">💎</div>
+                        <div class="va-cash-heading-group">
+                            <span class="va-cash-main-label">UMUMIY BALANS</span>
+                            <span class="va-cash-sub-label">Kassa va bank hisoblari</span>
+                        </div>
+                    </div>
+                    <div class="va-active-badge">
+                        <span class="va-pulse-dot"></span>
+                        <span>Active Balance</span>
+                    </div>
+                </div>
+
+                <div class="va-cash-middle">
+                    <div class="va-cash-subtitle">TOTAL BALANCE (UZBEK SO'M)</div>
+                    <div class="va-cash-action-row">
+                        <div class="va-cash-big-num" id="heroConsolidatedBalance">Yuklanmoqda...</div>
+                        <button class="va-btn-breakdown" id="btnToggleAccounts" onclick="toggleCardAccountsBreakdown(event)">
+                            <span>HISOB TAQSIMOTI</span>
+                            <span id="btnBreakdownChevron" style="font-size:14px; transition: transform 0.25s ease;">▾</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Kartochka ichida ochiladigan barcha 6 ta hisob qoldiqlari -->
+                <div class="va-card-accounts-dropdown" id="cardAccountsDropdown">
+                    <div class="va-card-accounts-list" id="cardAccountsList">
+                        <div style="text-align:center; padding:12px; color:#94a3b8; font-size:12px;">Yuklanmoqda...</div>
+                    </div>
+                </div>
+
+                <div class="va-cash-bottom">
+                    <div class="va-cash-subpill">
+                        <span>🇺🇿 Naqd & Bank:</span>
+                        <strong id="heroUzsBalance">0 so'm</strong>
+                    </div>
+                    <div class="va-cash-subpill usd">
+                        <span>💵 Dollar Seyfi:</span>
+                        <strong id="heroUsdBalance">$0.00</strong>
+                    </div>
+                    <span style="font-size:11px; color:#94a3b8;" id="heroRefRateText">(@ 12 800)</span>
+                </div>
+            </div>
+
+            <!-- O'ng tomondagi 6 ta Glass Metrika Kartalari -->
+            <div class="va-metrics-grid">
+                <!-- 1. Jami Sotuv -->
+                <div class="va-glass-card">
+                    <div class="va-card-top">
+                        <span class="va-card-title">Jami Sotuv</span>
+                        <div class="va-card-icon">💰</div>
+                    </div>
+                    <div class="va-card-value" id="totalSales">0 so'm</div>
+                    <div class="va-card-meta">
+                        <span class="va-badge-green" id="totalSalesUsd">~$0 USD</span>
+                        <span style="color:#94a3b8;" id="totalDemands">0 ta sotuv</span>
+                    </div>
+                </div>
+
+                <!-- 2. To'langan Summa -->
+                <div class="va-glass-card">
+                    <div class="va-card-top">
+                        <span class="va-card-title">To'langan</span>
+                        <div class="va-card-icon">✅</div>
+                    </div>
+                    <div class="va-card-value" id="cashPayments">0 so'm</div>
+                    <div class="va-card-meta">
+                        <span class="va-badge-green" id="cashPaymentsUsd">~$0 USD</span>
+                        <span style="color:#94a3b8;">Undirilgan</span>
+                    </div>
+                </div>
+
+                <!-- 3. Qarz Sotuv -->
+                <div class="va-glass-card">
+                    <div class="va-card-top">
+                        <span class="va-card-title">Qarz Sotuv</span>
+                        <div class="va-card-icon">⏳</div>
+                    </div>
+                    <div class="va-card-value" id="debtPayments">0 so'm</div>
+                    <div class="va-card-meta">
+                        <span class="va-badge-amber" id="debtPaymentsUsd">~$0 USD</span>
+                        <span class="va-badge-amber">To'lanmagan</span>
+                    </div>
+                </div>
+
+                <!-- 4. Pul Kirimi (Yangi) -->
+                <div class="va-glass-card">
+                    <div class="va-card-top">
+                        <span class="va-card-title">Pul Kirimi</span>
+                        <div class="va-card-icon">📥</div>
+                    </div>
+                    <div class="va-card-value" id="totalInflow">0 so'm</div>
+                    <div class="va-card-meta">
+                        <span class="va-badge-green" id="totalInflowUsd">~$0 USD</span>
+                        <span style="color:#94a3b8;">Kassa & Bank tushumi</span>
+                    </div>
+                </div>
+
+                <!-- 5. Jami Xarajatlar -->
+                <div class="va-glass-card">
+                    <div class="va-card-top">
+                        <span class="va-card-title">Xarajatlar</span>
+                        <div class="va-card-icon">📉</div>
+                    </div>
+                    <div class="va-card-value" id="totalExpenses">0 so'm</div>
+                    <div class="va-card-meta">
+                        <span class="va-badge-red" id="totalExpensesUsd">~$0 USD</span>
+                        <span style="color:#94a3b8;">Operatsion</span>
+                    </div>
+                </div>
+
+                <!-- 6. Omborga Kirim (Eski Ombor zaxirasi o'rniga) -->
+                <div class="va-glass-card">
+                    <div class="va-card-top">
+                        <span class="va-card-title">Omborga Kirim</span>
+                        <div class="va-card-icon">🏬</div>
+                    </div>
+                    <div class="va-card-value" id="supplyInflowSum">0 so'm</div>
+                    <div class="va-card-meta">
+                        <span class="va-badge-blue" id="supplyInflowDocs">0 ta hujjat</span>
+                        <a href="/supply" style="color:#00f2fe; text-decoration:none; font-weight:700;">Hujjatlar ➔</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VARIANT A: MIDDLE SECTION - SALES TREND ANALYTICS CHART (Yagona Sana Filtri Bilan Bog'langan) -->
+        <div class="va-chart-card">
+            <div class="va-chart-header">
+                <div class="va-chart-title-group">
+                    <h2 class="va-chart-title">📈 Sales Trend Analytics</h2>
+                    <span class="va-trend-growth-badge" id="trendGrowthBadge">↗ +18.4%</span>
+                    <div class="va-chart-legend">
+                        <span class="va-legend-item"><span class="va-legend-dot cyan"></span> Tushum (Revenue)</span>
+                        <span class="va-legend-item"><span class="va-legend-dot purple"></span> Undirish (Collection)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="va-svg-chart-container" id="salesTrendSvgContainer">
+                <!-- Dinamik SVG Grafik JS orqali chiziladi -->
+                <div style="text-align:center; padding:50px; color:#94a3b8;">Grafik yuklanmoqda...</div>
+            </div>
+        </div>
+
+        <!-- VARIANT A: LOWER SECTION - TOP 20 DEBTORS (60%) & WAREHOUSE CATEGORIES (40%) -->
+        <div class="va-split-grid">
+            <!-- Chap blok (60%): Top 20 Qarzdorlar Reytingi -->
+            <div class="va-section-card">
+                <div class="va-section-header">
+                    <h3 class="va-section-title">
+                        <span>👥</span>
+                        <span>Top 20 Qarzdorlar (Eng Katta Qarzlar)</span>
+                    </h3>
+                    <a href="/customers" style="font-size:12px; color:#00f2fe; text-decoration:none; font-weight:700;">Barchasi ➔</a>
+                </div>
+
+                <div class="va-debtors-list" id="topDebtorsList">
+                    <div style="text-align:center; padding:30px; color:#94a3b8;">Qarzdorlar yuklanmoqda...</div>
+                </div>
+            </div>
+
+            <!-- O'ng blok (40%): Ombor Tahlili va Doiraviy Grafik -->
+            <div class="va-section-card">
+                <div class="va-section-header">
+                    <h3 class="va-section-title">
+                        <span>🏬</span>
+                        <span>Ombor Tovar Kategoriyalari</span>
+                    </h3>
+                    <a href="/supply" style="font-size:12px; color:#00f2fe; text-decoration:none; font-weight:700;">Kirim ➔</a>
+                </div>
+
+                <div class="va-warehouse-body">
+                    <!-- SVG Donut Chart -->
+                    <div class="va-donut-container" id="whDonutContainer">
+                        <svg width="180" height="180" viewBox="0 0 180 180" style="transform: rotate(-90deg);">
+                            <circle cx="90" cy="90" r="70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="20"/>
+                            <!-- Kostyum-shim: 38% -->
+                            <circle cx="90" cy="90" r="70" fill="none" stroke="#00f2fe" stroke-width="20" stroke-dasharray="167 273" stroke-dashoffset="0" stroke-linecap="round"/>
+                            <!-- Ko'ylaklar: 27% -->
+                            <circle cx="90" cy="90" r="70" fill="none" stroke="#a855f7" stroke-width="20" stroke-dasharray="118 322" stroke-dashoffset="-170" stroke-linecap="round"/>
+                            <!-- Shimlar: 18% -->
+                            <circle cx="90" cy="90" r="70" fill="none" stroke="#3b82f6" stroke-width="20" stroke-dasharray="79 361" stroke-dashoffset="-290" stroke-linecap="round"/>
+                            <!-- Poyabzal: 11% -->
+                            <circle cx="90" cy="90" r="70" fill="none" stroke="#10b981" stroke-width="20" stroke-dasharray="48 392" stroke-dashoffset="-370" stroke-linecap="round"/>
+                            <!-- Aksessuar: 6% -->
+                            <circle cx="90" cy="90" r="70" fill="none" stroke="#f59e0b" stroke-width="20" stroke-dasharray="26 414" stroke-dashoffset="-420" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+
+                    <!-- Progress Barlar -->
+                    <div class="va-category-bars" id="whCategoryBars">
+                        <div class="va-cat-bar-item">
+                            <div class="va-cat-bar-label">
+                                <span style="color:#00f2fe;">● Kostyum-shim (OUT)</span>
+                                <span>38% (16,400 ta)</span>
+                            </div>
+                            <div class="va-cat-progress-track">
+                                <div class="va-cat-progress-fill" style="width: 38%; background: linear-gradient(90deg, #00f2fe, #4facfe);"></div>
+                            </div>
+                        </div>
+
+                        <div class="va-cat-bar-item">
+                            <div class="va-cat-bar-label">
+                                <span style="color:#a855f7;">● Ko'ylaklar (TOP)</span>
+                                <span>27% (11,200 ta)</span>
+                            </div>
+                            <div class="va-cat-progress-track">
+                                <div class="va-cat-progress-fill" style="width: 27%; background: linear-gradient(90deg, #a855f7, #c084fc);"></div>
+                            </div>
+                        </div>
+
+                        <div class="va-cat-bar-item">
+                            <div class="va-cat-bar-label">
+                                <span style="color:#3b82f6;">● Shim & Boshqalar (BOT)</span>
+                                <span>18% (8,900 ta)</span>
+                            </div>
+                            <div class="va-cat-progress-track">
+                                <div class="va-cat-progress-fill" style="width: 18%; background: linear-gradient(90deg, #3b82f6, #60a5fa);"></div>
+                            </div>
+                        </div>
+
+                        <div class="va-cat-bar-item">
+                            <div class="va-cat-bar-label">
+                                <span style="color:#10b981;">● Poyabzal (SHO)</span>
+                                <span>11% (4,200 ta)</span>
+                            </div>
+                            <div class="va-cat-progress-track">
+                                <div class="va-cat-progress-fill" style="width: 11%; background: linear-gradient(90deg, #10b981, #34d399);"></div>
+                            </div>
+                        </div>
+
+                        <div class="va-cat-bar-item">
+                            <div class="va-cat-bar-label">
+                                <span style="color:#f59e0b;">● Aksessuarlar (ACC)</span>
+                                <span>6% (1,300 ta)</span>
+                            </div>
+                            <div class="va-cat-progress-track">
+                                <div class="va-cat-progress-fill" style="width: 6%; background: linear-gradient(90deg, #f59e0b, #fbbf24);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VARIANT A: BOTTOM FLOWS GRID (Katta Kirimlar va Chiqimlar) -->
+        <div class="va-flows-grid">
+            <!-- Katta Kirimlar -->
+            <div class="va-section-card">
+                <div class="va-section-header">
+                    <h3 class="va-section-title">
+                        <span>💰</span>
+                        <span>Asosiy Katta Kirimlar (Top Inflow)</span>
+                    </h3>
+                </div>
+                <div id="topInflowsList">
+                    <div class="va-flow-item">
+                        <div class="va-flow-meta">
+                            <strong>Mijoz to'lovi (Sale Order #114)</strong>
+                            <span>Said_Baraka • Asosiy Naqd Kassa</span>
+                        </div>
+                        <div class="va-flow-amount inflow">+ 84,500,000 UZS</div>
+                    </div>
+                    <div class="va-flow-item">
+                        <div class="va-flow-meta">
+                            <strong>Terminal tushum (Mijoz to'lovi)</strong>
+                            <span>Kapitalbank Hisobi</span>
+                        </div>
+                        <div class="va-flow-amount inflow">+ 35,000,000 UZS</div>
+                    </div>
+                    <div class="va-flow-item">
+                        <div class="va-flow-meta">
+                            <strong>Valyuta to'lovi (Dollar kassa)</strong>
+                            <span>Dollar Seyfi ($2,500)</span>
+                        </div>
+                        <div class="va-flow-amount inflow">+ 32,000,000 UZS</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Katta Chiqimlar -->
+            <div class="va-section-card">
+                <div class="va-section-header">
+                    <h3 class="va-section-title">
+                        <span>📉</span>
+                        <span>Asosiy Katta Xarajatlar (Top Outflow)</span>
+                    </h3>
+                </div>
+                <div id="topOutflowsList">
+                    <div class="va-flow-item">
+                        <div class="va-flow-meta">
+                            <strong>Mato va tovar xaridi</strong>
+                            <span>Ta'minotchi partiyasi to'lovi</span>
+                        </div>
+                        <div class="va-flow-amount outflow">- 12,400,000 UZS</div>
+                    </div>
+                    <div class="va-flow-item">
+                        <div class="va-flow-meta">
+                            <strong>Xodimlar oylik maoshi</strong>
+                            <span>Oylik ish haqi taqsimoti</span>
+                        </div>
+                        <div class="va-flow-amount outflow">- 5,600,000 UZS</div>
+                    </div>
+                    <div class="va-flow-item">
+                        <div class="va-flow-meta">
+                            <strong>Ombor va do'kon ijarasi</strong>
+                            <span>Sentabr oyi ijara to'lovi</span>
+                        </div>
+                        <div class="va-flow-amount outflow">- 2,700,000 UZS</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Slide-over Accounts Drawer (1-Rasmga 100% Mos Hashamatli Shisha) -->
+    <div class="accounts-drawer-overlay" id="accountsDrawerOverlay" onclick="closeAccountsDrawer()"></div>
+    <aside class="accounts-drawer" id="accountsDrawer">
+        <div class="accounts-drawer-header">
+            <div class="accounts-drawer-title">
+                <span>💳 Balans Taqsimoti</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <button class="accounts-drawer-close" onclick="loadDashboardAccountsSummary()" title="Qayta yuklash">🔄</button>
+                <button class="accounts-drawer-close" onclick="closeAccountsDrawer()" title="Yopish (ESC)">✖</button>
+            </div>
+        </div>
+        <div class="accounts-drawer-body" id="accountsDrawerBody">
+            <div class="drawer-total-box" style="background: linear-gradient(135deg, rgba(0, 242, 254, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%); border: 1px solid rgba(0, 242, 254, 0.3);">
+                <div style="font-size:11px; opacity:0.8; text-transform:uppercase; letter-spacing:1px; font-weight:800; color:#00f2fe;">TOTAL BALANCE (Uzbek So'm)</div>
+                <div style="font-size:28px; font-weight:900; margin-top:4px; color:#fff; text-shadow:0 0 15px rgba(0,242,254,0.4);" id="drawerTotalUzsEq">0 so'm</div>
+                <div style="font-size:12px; margin-top:8px; display:flex; gap:16px; flex-wrap:wrap;">
+                    <span>🇺🇿 So'm: <strong id="drawerSubUzs" style="color:#ffffff;">0 so'm</strong></span>
+                    <span>💵 Dollar: <strong id="drawerSubUsd" style="color:#86efac;">$0.00</strong></span>
+                </div>
+            </div>
+            
+            <div id="drawerAccountsList" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+                <div style="text-align:center; padding:24px; color:var(--text-muted);">Yuklanmoqda...</div>
+            </div>
+        </div>
+    </aside>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

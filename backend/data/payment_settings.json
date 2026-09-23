@@ -1,0 +1,53 @@
+{
+  "payment_methods": [
+    {
+      "id": "cash",
+      "name": "Naqd pul",
+      "icon": "💵",
+      "currency": "UZS",
+      "linked_account_ids": [
+        "cash_default"
+      ],
+      "is_active": true,
+      "is_system": true,
+      "description": "Asosiy naqd kassa orqali so'mda to'lov"
+    },
+    {
+      "id": "card",
+      "name": "Karta / Bank",
+      "icon": "💳",
+      "currency": "UZS",
+      "linked_account_ids": [
+        "642dfa59-8e62-11f1-0a80-0fc400216a7f",
+        "792524e8-9929-11f1-0a80-1d7a002d6416",
+        "792526c7-9929-11f1-0a80-1d7a002d6417",
+        "7925286c-9929-11f1-0a80-1d7a002d6418"
+      ],
+      "is_active": true,
+      "is_system": true,
+      "description": "Bank hisob raqamlari yoki terminal orqali to'lov"
+    },
+    {
+      "id": "usd",
+      "name": "Dollar (USD)",
+      "icon": "💵",
+      "currency": "USD",
+      "linked_account_ids": [
+        "1749a7d1-ab4b-11f1-0a80-08ba00832cc6"
+      ],
+      "is_active": true,
+      "is_system": true,
+      "default_rate": 11800.0,
+      "description": "Kelishilgan kurs bo'yicha naqd yoki hisobdan dollar to'lovi"
+    }
+  ],
+  "corrections": {
+    "cash_default": {
+      "adjusted_balance": 585000000.0,
+      "reason": "Kassa sanash testi",
+      "updated_at": "2026-09-16 18:27:19"
+    }
+  },
+  "reference_usd_rate": 12800.0,
+  "organization_name": "Said_Baraka"
+}

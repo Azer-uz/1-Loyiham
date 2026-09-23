@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mijozlar - Azer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Saralanadigan ustunlar */
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        .sortable:hover {
+            background: #1a3a6e !important;
+        }
+        .sortable.sorted-asc,
+        .sortable.sorted-desc {
+            background: var(--accent) !important;
+        }
+        .sort-arrow {
+            margin-left: 6px;
+            font-size: 11px;
+            opacity: 0.7;
+        }
+        .sortable.sorted-asc .sort-arrow,
+        .sortable.sorted-desc .sort-arrow {
+            opacity: 1;
+        }
+        
+        .customers-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .customers-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .customers-table th {
+            background: var(--primary);
+            color: white;
+            padding: 12px 14px;
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .customers-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .customers-table tr:hover {
+            background: var(--bg);
+        }
+        
+        .balance-cell {
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .balance-cell.debt { color: var(--danger); }
+        .balance-cell.paid { color: var(--success); }
+        
+        .customer-name {
+            font-weight: 600;
+            color: var(--primary);
+        }
+        
+        .phone-link {
+            color: var(--info);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .phone-link:hover {
+            text-decoration: underline;
+        }
+        
+        /* Demand Cards & Fifo Section Styles */
+        .demand-card {
+            border-radius: 6px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            transition: all 0.15s ease;
+            background: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            color: #0f172a;
+        }
+        .demand-card.fully-paid {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+        .demand-card.partial-paid {
+            background: #fffbeb;
+            border-color: #fde68a;
+        }
+        .demand-card.unpaid {
+            background: #ffffff;
+            border-color: #cbd5e1;
+        }
+
+        .demand-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-block;
+            transition: all 0.15s ease;
+        }
+        .demand-badge.fully-paid {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .demand-badge.partial-paid {
+            background: #fef3c7;
+            color: #b45309;
+        }
+        .demand-badge.unpaid {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .btn-solo-demand {
+            background: #eff6ff;
+            color: #2563eb;
+            border: 1px solid #bfdbfe;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.15s ease;
+        }
+        .btn-solo-demand:hover {
+            background: #dbeafe;
+        }
+
+        .fifo-mode-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+            transition: all 0.15s ease;
+        }
+        .fifo-mode-badge.auto {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .fifo-mode-badge.manual {
+            background: #fef3c7;
+            color: #b45309;
+        }
+        .fifo-mode-badge.solo {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .payment-debt-summary-card {
+            background: #f0f7ff;
+            padding: 10px 14px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #bae6fd;
+        }
+        .btn-fill-all-debt {
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #7dd3fc;
+            font-weight: 700;
+            font-size: 12px;
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+        .btn-fill-all-debt:hover {
+            background: #bae6fd;
+        }
+
+        .payment-usd-box {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .payment-usd-box .usd-header {
+            font-size: 12px;
+            font-weight: 700;
+            color: #15803d;
+            margin-bottom: 6px;
+        }
+        .payment-usd-box label {
+            color: #15803d;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .payment-usd-box input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #86efac;
+            border-radius: 6px;
+            color: #15803d;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .payment-usd-box #pay_usd_equiv {
+            padding: 8px 10px;
+            background: var(--card);
+            border: 1px solid #86efac;
+            border-radius: 6px;
+            font-weight: 700;
+            color: #15803d;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .payment-total-box {
+            background: #f8fafc;
+            padding: 10px 14px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1.5px solid #cbd5e1;
+            margin-top: 4px;
+        }
+
+        .no-demands-alert {
+            color: #15803d;
+            background: #f0fdf4;
+            padding: 12px 14px;
+            border-radius: 6px;
+            border: 1px solid #bbf7d0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        @media (max-width: 820px) {
+            .payment-modal-grid {
+                grid-template-columns: 1fr !important;
+                gap: 14px !important;
+            }
+            #fifoSection {
+                min-height: auto !important;
+            }
+            #unpaidDemandsContainer {
+                max-height: 320px !important;
+            }
+        }
+
+        /* ================= DARK MODE OVERRIDES ================= */
+        body.dark-mode .payment-modal-wide {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .payment-modal-wide .modal-header {
+            border-bottom-color: #1e293b !important;
+        }
+        body.dark-mode .payment-modal-wide .modal-header h2 {
+            color: #f8fafc !important;
+        }
+        body.dark-mode #paymentCustomerNameBadge {
+            background: rgba(56, 189, 248, 0.15) !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .payment-debt-summary-card {
+            background: rgba(14, 165, 233, 0.12) !important;
+            border-color: rgba(56, 189, 248, 0.3) !important;
+        }
+        body.dark-mode .payment-debt-summary-card .debt-title {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .btn-fill-all-debt {
+            background: #0284c7 !important;
+            color: #ffffff !important;
+            border-color: #38bdf8 !important;
+        }
+        body.dark-mode .btn-fill-all-debt:hover {
+            background: #0369a1 !important;
+        }
+        body.dark-mode .payment-col-left input,
+        body.dark-mode .payment-col-left select {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .payment-col-left label {
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode .payment-usd-box {
+            background: rgba(16, 185, 129, 0.08) !important;
+            border-color: rgba(16, 185, 129, 0.25) !important;
+        }
+        body.dark-mode .payment-usd-box .usd-header,
+        body.dark-mode .payment-usd-box label {
+            color: #4ade80 !important;
+        }
+        body.dark-mode .payment-usd-box input {
+            background: #1e293b !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #4ade80 !important;
+        }
+        body.dark-mode .payment-usd-box #pay_usd_equiv {
+            background: #0f172a !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #4ade80 !important;
+        }
+        body.dark-mode .payment-total-box {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .payment-total-box span {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .payment-total-box #pay_total_display {
+            color: #34d399 !important;
+        }
+        body.dark-mode #fifoSection {
+            background: #111827 !important;
+            border-color: #374151 !important;
+        }
+        body.dark-mode #fifoSection > div:first-child {
+            border-bottom-color: #374151 !important;
+        }
+        body.dark-mode #fifoSection strong {
+            color: #f8fafc !important;
+        }
+        body.dark-mode #fifoSection label {
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode #btnResetFifo {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode #btnResetFifo:hover {
+            background: #334155 !important;
+        }
+        body.dark-mode .fifo-mode-badge.auto {
+            background: rgba(16, 185, 129, 0.25) !important;
+            color: #34d399 !important;
+            border: 1px solid rgba(16, 185, 129, 0.4) !important;
+        }
+        body.dark-mode .fifo-mode-badge.manual {
+            background: rgba(245, 158, 11, 0.25) !important;
+            color: #fbbf24 !important;
+            border: 1px solid rgba(245, 158, 11, 0.4) !important;
+        }
+        body.dark-mode .fifo-mode-badge.solo {
+            background: rgba(14, 165, 233, 0.25) !important;
+            color: #38bdf8 !important;
+            border: 1px solid rgba(14, 165, 233, 0.4) !important;
+        }
+        body.dark-mode #unpaidDemandsContainer {
+            background: #0f172a !important;
+            border-color: #374151 !important;
+        }
+        body.dark-mode .demand-card {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .demand-card.fully-paid {
+            background: rgba(16, 185, 129, 0.16) !important;
+            border-color: #10b981 !important;
+        }
+        body.dark-mode .demand-card.partial-paid {
+            background: rgba(245, 158, 11, 0.16) !important;
+            border-color: #f59e0b !important;
+        }
+        body.dark-mode .demand-card.unpaid {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .demand-card strong {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .demand-card .demand-num {
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .demand-card .demand-date {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .demand-card .demand-meta-row {
+            border-top-color: #334155 !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .demand-alloc-input {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .demand-badge.fully-paid {
+            background: rgba(16, 185, 129, 0.25) !important;
+            color: #34d399 !important;
+            border: 1px solid rgba(16, 185, 129, 0.4) !important;
+        }
+        body.dark-mode .demand-badge.partial-paid {
+            background: rgba(245, 158, 11, 0.25) !important;
+            color: #fbbf24 !important;
+            border: 1px solid rgba(245, 158, 11, 0.4) !important;
+        }
+        body.dark-mode .demand-badge.unpaid {
+            background: rgba(148, 163, 184, 0.15) !important;
+            color: #94a3b8 !important;
+            border: 1px solid rgba(148, 163, 184, 0.25) !important;
+        }
+        body.dark-mode .btn-solo-demand {
+            background: rgba(59, 130, 246, 0.2) !important;
+            color: #60a5fa !important;
+            border-color: rgba(59, 130, 246, 0.4) !important;
+        }
+        body.dark-mode .btn-solo-demand:hover {
+            background: rgba(59, 130, 246, 0.3) !important;
+        }
+        body.dark-mode #fifoSummaryBar {
+            background: #1e1b4b !important;
+            border-color: #3730a3 !important;
+            color: #c7d2fe !important;
+        }
+        body.dark-mode #fifoTotalAllocatedText {
+            color: #93c5fd !important;
+        }
+        body.dark-mode #fifoExcessText {
+            color: #34d399 !important;
+        }
+        body.dark-mode #fifoRemainingDebtText {
+            color: #f87171 !important;
+        }
+        body.dark-mode .no-demands-alert {
+            background: rgba(16, 185, 129, 0.15) !important;
+            border-color: rgba(16, 185, 129, 0.3) !important;
+            color: #34d399 !important;
+        }
+
+        /* ================= MIJOZLAR KARTOCHKASI (VARIANT 1: SPLIT CRM) ================= */
+        .customer-modal-wide {
+            max-width: 1140px;
+            width: 96vw;
+            max-height: 94vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .customer-modal-wide .modal-body {
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+            padding: 16px;
+        }
+
+        /* Yuqori boshqaruv tasmasi (Top Action Bar) */
+        .customer-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .customer-topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .customer-name-tag {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .customer-balance-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .customer-balance-pill.debt {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        .customer-balance-pill.credit {
+            background: #f0fdf4;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+        .customer-balance-pill.zero {
+            background: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+        }
+        .customer-balance-pill .pill-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            opacity: 0.85;
+        }
+        .customer-topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-top-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .btn-save-cust {
+            background: var(--success, #16a34a);
+            color: #ffffff;
+            box-shadow: 0 2px 5px rgba(22, 163, 74, 0.25);
+        }
+        .btn-save-cust:hover {
+            background: #15803d;
+            transform: translateY(-1px);
+        }
+        .btn-pay-cust {
+            background: var(--primary, #0284c7);
+            color: #ffffff;
+            box-shadow: 0 2px 5px rgba(2, 132, 199, 0.25);
+        }
+        .btn-pay-cust:hover {
+            background: #0369a1;
+            transform: translateY(-1px);
+        }
+        .btn-akt-cust {
+            background: #0ea5e9;
+            color: #ffffff;
+        }
+        .btn-akt-cust:hover {
+            background: #0284c7;
+            transform: translateY(-1px);
+        }
+        .btn-corr-cust {
+            background: #f59e0b;
+            color: #ffffff;
+        }
+        .btn-corr-cust:hover {
+            background: #d97706;
+            transform: translateY(-1px);
+        }
+        .btn-del-cust {
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+            padding: 7px 10px;
+        }
+        .btn-del-cust:hover {
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        /* Asosiy 2 Ustunli Grid */
+        .customer-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.6fr;
+            gap: 16px;
+            align-items: start;
+        }
+        .customer-detail-left,
+        .customer-detail-right {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        @media (max-width: 950px) {
+            .customer-detail-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Qutilar (Cards) */
+        .cust-card {
+            background: var(--card, #ffffff);
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .cust-card-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary);
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Anketa formasi */
+        .cust-form-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .cust-form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .cust-form-group label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-light);
+            text-transform: uppercase;
+        }
+        .cust-form-group input,
+        .cust-form-group select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 7px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            background: var(--card, #ffffff);
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+        .cust-form-group input:focus,
+        .cust-form-group select:focus {
+            border-color: var(--primary);
+        }
+        .cust-tel-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            background: #e0f2fe;
+            color: #0284c7;
+            border: 1px solid #7dd3fc;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.15s ease;
+        }
+        .cust-tel-link:hover {
+            background: #bae6fd;
+        }
+
+        /* KPI Ko'rsatkichlari (2 ta kengaytirilgan kartochka) */
+        .cust-kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .cust-kpi-box {
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            min-width: 0;
+        }
+        .cust-kpi-box.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+        .kpi-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .kpi-val {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .cust-kpi-box.success .kpi-val {
+            color: #15803d;
+        }
+        .kpi-sub {
+            font-size: 11.5px;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        /* Sotuv holati nishonlari (To'langan, Qisman, To'lanmagan) */
+        .payment-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 700;
+            white-space: nowrap;
+            border: 1px solid transparent;
+            line-height: 1.3;
+        }
+        .payment-paid,
+        .payment-badge.payment-paid {
+            background: #ecfdf5;
+            color: #15803d;
+            border-color: #a7f3d0;
+        }
+        .payment-partial,
+        .payment-badge.payment-partial {
+            background: #fffbeb;
+            color: #b45309;
+            border-color: #fde68a;
+        }
+        .payment-unpaid,
+        .payment-badge.payment-unpaid {
+            background: #fef2f2;
+            color: #b91c1c;
+            border-color: #fecaca;
+        }
+
+        /* O'ng ustun: Tablar va Tarix */
+        .cust-tabs-header {
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 8px;
+        }
+        .cust-tabs-nav {
+            display: flex;
+            gap: 8px;
+        }
+        .cust-tab-btn {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #64748b;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .cust-tab-btn:hover {
+            color: var(--primary);
+        }
+        .cust-tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        .tab-badge {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .cust-tab-btn.active .tab-badge {
+            background: rgba(3, 105, 161, 0.12);
+            color: var(--primary);
+        }
+
+        .cust-tab-content {
+            display: none;
+        }
+        .cust-tab-content.active {
+            display: block;
+        }
+
+        /* Tarix jadvali va ro'yxat */
+        .cust-table-wrapper {
+            max-height: 480px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .cust-modern-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12.5px;
+        }
+        .cust-modern-table th {
+            background: #f8fafc;
+            color: var(--text-light);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .cust-modern-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+        .cust-modern-table tr:hover {
+            background: rgba(3, 105, 161, 0.04);
+        }
+        .cust-demand-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .cust-demand-link:hover {
+            text-decoration: underline;
+        }
+
+        .cust-payments-list-wrapper {
+            max-height: 480px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .cust-payment-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 12px;
+            transition: all 0.15s ease;
+        }
+        .cust-payment-row:hover {
+            background: #f0f9ff;
+            border-color: #bae6fd;
+        }
+
+        /* ================= DARK MODE OVERRIDES (MIJOZ KARTOCHKASI) ================= */
+        body.dark-mode .customer-modal-wide {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .customer-topbar {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .customer-name-tag {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .customer-balance-pill.debt {
+            background: rgba(239, 68, 68, 0.2) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+            color: #f87171 !important;
+        }
+        body.dark-mode .customer-balance-pill.credit {
+            background: rgba(16, 185, 129, 0.2) !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #34d399 !important;
+        }
+        body.dark-mode .customer-balance-pill.zero {
+            background: #334155 !important;
+            border-color: #475569 !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .btn-save-cust {
+            background: #15803d !important;
+            border: 1px solid #22c55e !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .btn-pay-cust {
+            background: #0284c7 !important;
+            border: 1px solid #38bdf8 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .btn-akt-cust {
+            background: rgba(14, 165, 233, 0.25) !important;
+            border: 1px solid #0284c7 !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .btn-corr-cust {
+            background: rgba(245, 158, 11, 0.25) !important;
+            border: 1px solid #f59e0b !important;
+            color: #fbbf24 !important;
+        }
+        body.dark-mode .btn-del-cust {
+            background: rgba(239, 68, 68, 0.15) !important;
+            border-color: rgba(239, 68, 68, 0.35) !important;
+            color: #f87171 !important;
+        }
+        body.dark-mode .cust-card {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .cust-card-title {
+            color: #38bdf8 !important;
+            border-bottom-color: #334155 !important;
+        }
+        body.dark-mode .cust-form-group label {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .cust-form-group input,
+        body.dark-mode .cust-form-group select {
+            background: #0f172a !important;
+            border-color: #475569 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .cust-form-group input:focus,
+        body.dark-mode .cust-form-group select:focus {
+            border-color: #38bdf8 !important;
+        }
+        body.dark-mode .cust-tel-link {
+            background: rgba(2, 132, 199, 0.25) !important;
+            border-color: rgba(56, 189, 248, 0.4) !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .cust-kpi-box {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .cust-kpi-box.success {
+            background: rgba(16, 185, 129, 0.08) !important;
+            border-color: rgba(52, 211, 153, 0.3) !important;
+        }
+        body.dark-mode .cust-kpi-box .kpi-label {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .cust-kpi-box .kpi-sub {
+            color: #64748b !important;
+        }
+        body.dark-mode .cust-kpi-box .kpi-val {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .cust-kpi-box.success .kpi-val {
+            color: #34d399 !important;
+        }
+
+        /* Dark mode payment badges */
+        body.dark-mode .payment-badge {
+            font-weight: 700;
+        }
+        body.dark-mode .payment-paid,
+        body.dark-mode .payment-badge.payment-paid {
+            background: rgba(16, 185, 129, 0.18) !important;
+            color: #34d399 !important;
+            border: 1px solid rgba(52, 211, 153, 0.35) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        body.dark-mode .payment-partial,
+        body.dark-mode .payment-badge.payment-partial {
+            background: rgba(245, 158, 11, 0.18) !important;
+            color: #fbbf24 !important;
+            border: 1px solid rgba(251, 191, 36, 0.35) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        body.dark-mode .payment-unpaid,
+        body.dark-mode .payment-badge.payment-unpaid {
+            background: rgba(239, 68, 68, 0.18) !important;
+            color: #f87171 !important;
+            border: 1px solid rgba(248, 113, 113, 0.35) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        body.dark-mode .cust-tabs-header {
+            border-bottom-color: #334155 !important;
+        }
+        body.dark-mode .cust-tab-btn {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .cust-tab-btn.active {
+            color: #38bdf8 !important;
+            border-bottom-color: #38bdf8 !important;
+        }
+        body.dark-mode .tab-badge {
+            background: #334155 !important;
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode .cust-tab-btn.active .tab-badge {
+            background: rgba(56, 189, 248, 0.2) !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .cust-table-wrapper {
+            border-color: #334155 !important;
+            background: #0f172a !important;
+        }
+        body.dark-mode .cust-modern-table th {
+            background: #1e293b !important;
+            border-bottom-color: #334155 !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .cust-modern-table td {
+            border-bottom-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .cust-modern-table tr:hover {
+            background: rgba(56, 189, 248, 0.08) !important;
+        }
+        body.dark-mode .cust-demand-link {
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .cust-payment-row {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .cust-payment-row:hover {
+            background: rgba(56, 189, 248, 0.08) !important;
+            border-color: rgba(56, 189, 248, 0.3) !important;
+        }
+    </style>
+</head>
+<body>
+        <!-- Top Modern Navbar (Variant 7) -->
+    <header class="app-navbar">
+        <div class="app-navbar-inner">
+            <div class="navbar-brand-group">
+                <a href="/" class="brand-link">
+                    <div class="brand-icon-box">📦</div>
+                    <span class="brand-title">Azer</span>
+                </a>
+                <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item active">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="navbar-right-group">
+                <div class="nav-search-bar">
+                    <span style="color:var(--text-muted);font-size:13px;">🔍</span>
+                    <input type="text" placeholder="Qidiruv..." id="globalSearch">
+                </div>
+                <button class="nav-icon-circle-btn" title="Bildirishnomalar">🔔</button>
+                <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Day/Night Mode">🌙</button>
+                <button class="nav-sync-pill" onclick="triggerSyncNow()" title="MoySklad bilan sinxronlash">
+                    🔄 Sinxronlash
+                </button>
+                <div class="nav-user-dropdown-wrapper" id="navUserDropdownWrapper">
+                    <button class="nav-user-pill-btn" onclick="toggleUserDropdown(event)" id="navUserPillBtn" title="Admin Profili">
+                        <div class="user-avatar-circle">👤</div>
+                        <div class="user-info-text-box">
+                            <span class="user-name-text" id="currentUserLabel">Admin</span>
+                            <span class="user-role-badge">Administrator</span>
+                        </div>
+                        <span class="dropdown-chevron">▼</span>
+                    </button>
+                    <div class="nav-user-dropdown-menu" id="navUserDropdownMenu">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-avatar-large" id="dropdownAvatarLarge">👤</div>
+                            <div class="dropdown-user-meta">
+                                <div class="dropdown-name" id="dropdownUserName">Admin</div>
+                                <div class="dropdown-email" id="dropdownUserLogin">admin@azer</div>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openUserProfileModal()">
+                            <span>👤</span>
+                            <span>Profil & Avatar sozlash</span>
+                        </button>
+                        <a href="/settings" class="dropdown-item">
+                            <span>⚙️</span>
+                            <span>Tizim sozlamalari</span>
+                        </a>
+                        <a href="/docs" class="dropdown-item">
+                            <span>📖</span>
+                            <span>Foydalanish qo'llanmasi</span>
+                        </a>
+                        <button class="dropdown-item" onclick="triggerSyncNow()">
+                            <span>🔄</span>
+                            <span>MoySklad bilan sinxronlash</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <span>🚪</span>
+                            <span>Tizimdan chiqish</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="app-layout">
+        <main class="main-content">
+            <div class="v7-greeting-bar">
+                <div class="v7-greeting-text-group"><span id="currentDate" style="display:none;"></span><span id="orgName" style="display:none;"></span>
+                    <h1 class="v7-greeting-title">Mijozlar</h1>
+                    <span class="v7-greeting-subtitle">Barcha mijozlar va qarzdorliklar</span>
+                </div>
+                <div>
+                    <a href="/static/demands.html" class="v7-btn-new-order">➕ Yangi Sotuv</a>
+                </div>
+            </div>
+
+            <!-- Qidiruv va Qarz filtri -->
+            <div class="filter-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                    <div class="quick-dates" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="quick-btn active" data-debt="all" onclick="selectDebtFilter('all')">👥 Barcha mijozlar</button>
+                        <button class="quick-btn" data-debt="debtors" onclick="selectDebtFilter('debtors')">🔴 Faqat qarzdorlar</button>
+                        <button class="quick-btn" data-debt="no_debt" onclick="selectDebtFilter('no_debt')">🟢 Qarzi yo'qlar</button>
+                    </div>
+                    <div class="print-dropdown-wrapper">
+                        <button class="btn-print" onclick="togglePrintDropdown(this)">
+                            🖨️ Ro'yxatni chop etish ▼
+                        </button>
+                        <div class="print-dropdown-menu">
+                            <button onclick="printCustomerList('a4')">📄 A4 format</button>
+                            <button onclick="printCustomerList('a5')">📃 A5 format (kichik)</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="filter-row">
+                    <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Ism, telefon yoki email bo'yicha qidirish...">
+                </div>
+            </div>
+
+            <!-- Statistika -->
+            <div class="customers-stats">
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-content">
+                        <div class="stat-label">JAMI MIJOZLAR</div>
+                        <div class="stat-value" id="totalCustomers">0</div>
+                    </div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-content">
+                        <div class="stat-label">UMUMIY QARZ</div>
+                        <div class="stat-value" id="totalDebt">—</div>
+                    </div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-content">
+                        <div class="stat-label">QARZDORLAR</div>
+                        <div class="stat-value" id="debtorsCount">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jadval -->
+            <div class="table-wrapper">
+                <table class="customers-table">
+                    <thead>
+    			<tr>
+        			<th>№</th>
+        			<th class="sortable" id="th-name" onclick="sortBy('name')">
+            				Mijoz <span class="sort-arrow">↕</span>
+      	  			</th>
+        			<th class="sortable" id="th-phone" onclick="sortBy('phone')">
+            				Telefon <span class="sort-arrow">↕</span>
+        			</th>
+        			<th class="sortable" id="th-group" onclick="sortBy('group')">
+            				Guruh <span class="sort-arrow">↕</span>
+        			</th>
+        			<th class="sortable" id="th-status" onclick="sortBy('status')">
+            				Status <span class="sort-arrow">↕</span>
+        			</th>
+        			<th class="sortable sorted-desc" id="th-balance" onclick="sortBy('balance')">
+            				Balans <span class="sort-arrow">▼</span>
+        			</th>
+        			<th>Amallar</th>
+    			</tr>
+		    </thead>
+                    <tbody id="customersTable">
+                        <tr><td colspan="7" class="loading">Yuklanmoqda...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- To'lov modali -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content payment-modal-wide" style="max-width: 980px; width: 95vw; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden;">
+            <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <h2 id="paymentModalTitle" style="margin:0; font-size:18px;">💰 To'lov qilish</h2>
+                    <span id="paymentCustomerNameBadge" style="font-size:14px; font-weight:700; color:var(--primary); background:rgba(3,105,161,0.1); padding:3px 10px; border-radius:8px;">—</span>
+                </div>
+                <button class="close-btn" onclick="closePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body payment-grid-container" style="padding: 18px 20px; overflow-y: auto; flex: 1;">
+                <div class="payment-modal-grid" style="display: grid; grid-template-columns: 1fr 1.15fr; gap: 20px; align-items: start;">
+                    
+                    <!-- Chap ustun: To'lov summalari va hisoblar -->
+                    <div class="payment-col-left" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Balans va Qarzni yopish kartasi -->
+                        <div class="payment-debt-summary-card">
+                            <div>
+                                <div class="debt-title" style="font-size:11px;color:var(--text-light);text-transform:uppercase;font-weight:600;">Mijozning joriy qarzi:</div>
+                                <strong id="paymentCurrentBalance" class="debt" style="font-size:17px;font-weight:800;">—</strong>
+                            </div>
+                            <button type="button" id="btnFillAllDebt" class="btn-fill-all-debt" onclick="fillTotalDebtAmount()" title="Barcha qarzni to'lov summasiga kiritish">
+                                ⚡ Barcha qarzni yopish
+                            </button>
+                        </div>
+                        
+                        <div class="edit-row-compact" style="margin: 0;">
+                            <div class="edit-field-compact">
+                                <label style="font-weight:600;font-size:12px;">💵 Naqd (so'm):</label>
+                                <input type="text" inputmode="numeric" id="pay_cash" class="ghost-zero format-number" placeholder="0" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;font-size:15px;font-weight:700;">
+                            </div>
+                            <div class="edit-field-compact">
+                                <label style="font-weight:600;font-size:12px;">💳 Karta (so'm):</label>
+                                <input type="text" inputmode="numeric" id="pay_card" class="ghost-zero format-number" placeholder="0" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;font-size:15px;font-weight:700;">
+                            </div>
+                        </div>
+
+                        <!-- Dollar (USD) to'lov -->
+                        <div class="payment-usd-box">
+                            <div class="usd-header">💲 Dollar (USD) to'lov</div>
+                            <div class="edit-row-compact" style="margin:0;gap:8px;">
+                                <div class="edit-field-compact" style="flex:1;">
+                                    <label>$ Miqdor:</label>
+                                    <input type="text" inputmode="decimal" id="pay_usd" class="ghost-zero format-number" placeholder="0">
+                                </div>
+                                <div class="edit-field-compact" style="flex:1;">
+                                    <label>📊 Kurs (so'm):</label>
+                                    <input type="text" inputmode="numeric" id="pay_usd_rate" class="ghost-zero format-number" value="11 800">
+                                </div>
+                                <div class="edit-field-compact" style="flex:1.2;">
+                                    <label>🧮 Qiymati:</label>
+                                    <div id="pay_usd_equiv">~ 0 so'm</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="edit-field-compact" id="pay_card_account_group" style="display:none;">
+                            <label style="font-weight:600;font-size:12px;">🏦 Karta hisob raqam:</label>
+                            <select id="pay_account" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+                                <option value="">— Tanlang —</option>
+                            </select>
+                        </div>
+                        <div class="edit-field-compact" id="pay_usd_account_group" style="display:none;">
+                            <label style="font-weight:600;font-size:12px;">🏦 Dollar hisob raqam:</label>
+                            <select id="pay_usd_account" style="width:100%;padding:8px 10px;border:1px solid #86efac;border-radius:6px;font-size:13px;">
+                                <option value="">— Tanlang (ixtiyoriy) —</option>
+                            </select>
+                        </div>
+                        <div class="edit-field-compact">
+                            <label style="font-weight:600;font-size:12px;">📝 Izoh:</label>
+                            <input type="text" id="pay_description" placeholder="To'lov izohi (ixtiyoriy)..." style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+                        </div>
+
+                        <!-- Jami to'lov ko'rsatkichi -->
+                        <div class="payment-total-box">
+                            <span style="font-size:13px;font-weight:700;color:var(--text-light);">💰 Jami to'lov:</span>
+                            <strong id="pay_total_display" style="font-size:18px;font-weight:800;color:var(--success);">0 so'm</strong>
+                        </div>
+
+                        <!-- Tasdiqlash tugmasi -->
+                        <div style="margin-top:6px;">
+                            <button class="action-btn" onclick="submitCustomerPayment()" style="width:100%;background:var(--success);color:#fff;font-weight:700;font-size:15px;padding:12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 2px 6px rgba(22,163,74,0.25);">
+                                💾 To'lovni amalga oshirish
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- O'ng ustun: Sotuvlarga bog'lash (FIFO) -->
+                    <div id="fifoSection" style="padding:12px 14px;border-radius:8px;border:1.5px solid #cbd5e1;display:flex;flex-direction:column;min-height:440px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:16px;">🔗</span>
+                                <strong style="font-size:13px;color:var(--primary);">Sotuvlarga bog'lash (FIFO)</strong>
+                                <span id="fifoModeBadge" class="fifo-mode-badge auto">⚡ Avto-taqsimlash</span>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <button type="button" id="btnResetFifo" onclick="resetToAutoFifo()" style="border:1px solid #cbd5e1;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700;transition:all 0.15s ease;" title="Barcha qo'lda o'zgartirishlarni bekor qilib, avtomatik FIFO taqsimlashga qaytarish">
+                                    🔄 Qayta taqsimlash
+                                </button>
+                                <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text-light);cursor:pointer;font-weight:600;">
+                                    <input type="checkbox" id="pay_link_demands_toggle" checked onchange="handleLinkDemandsToggle()">
+                                    Bog'lash faol
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Yuklanish indikatori -->
+                        <div id="unpaidDemandsLoading" style="display:none;text-align:center;padding:16px;color:var(--text-light);font-size:13px;">
+                            ⏳ Ochiq sotuvlar qidirilmoqda...
+                        </div>
+
+                        <!-- Sotuvlar ro'yxati (kengaytirilgan o'lchamda to'liq ko'rinadi) -->
+                        <div id="unpaidDemandsContainer" style="flex:1;max-height:460px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px;">
+                            <div id="unpaidDemandsList" style="font-size:12px;display:flex;flex-direction:column;gap:8px;">
+                                <!-- Dinamik FIFO to'ldiriladi -->
+                            </div>
+                        </div>
+
+                        <!-- FIFO Xulosa paneli -->
+                        <div id="fifoSummaryBar" style="margin-top:10px;padding:10px 12px;background:#eef2ff;border-radius:6px;font-size:12px;color:#3730a3;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;border:1px solid #c7d2fe;">
+                            <div>Bog'lanadi: <strong id="fifoTotalAllocatedText" style="color:#1e40af;font-size:13px;">0 so'm</strong></div>
+                            <div id="fifoExcessText" style="color:#059669;display:none;font-weight:700;">Ortiqcha (avans): <strong>0 so'm</strong></div>
+                            <div>Qoladigan qarz: <strong id="fifoRemainingDebtText" style="color:#dc2626;font-size:13px;">0 so'm</strong></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balans korrektirovkasi modali (MoySklad talabi bo'yicha) -->
+    <div id="correctionModal" class="modal" style="z-index: 1300;">
+        <div class="modal-content" style="max-width:540px;">
+            <div class="modal-header">
+                <h2 id="correctionDocTitle">📊 Корректировка взаиморасчетов</h2>
+                <button class="close-btn" onclick="closeCorrectionModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <div class="edit-row-compact" style="margin-bottom: 14px;">
+                    <div class="edit-field-compact">
+                        <label style="font-weight: 700; color: var(--text-light);">* Организация:</label>
+                        <input type="text" id="corr_org_name" value="Said_Baraka" readonly style="width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-weight:700;">
+                    </div>
+                    <div class="edit-field-compact">
+                        <label style="font-weight: 700; color: var(--text-light);">* Контрагент:</label>
+                        <input type="text" id="corr_customer_name" value="—" readonly style="width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-weight:700;">
+                    </div>
+                </div>
+
+                <!-- 1. Текущий остаток -->
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;">
+                    <span style="font-size:14px;font-weight:700;">Текущий остаток (Hozirgi qoldiq):</span>
+                    <strong id="corr_current_balance_text" style="font-size:18px;font-weight:800;color:var(--primary);">0,00</strong>
+                </div>
+
+                <!-- 2. Сумма корректировки -->
+                <div class="edit-field-compact" style="margin-bottom: 12px;">
+                    <label style="font-weight: 700;">❓ Сумма корректировки (Korrektirovka summasi):</label>
+                    <input type="text" inputmode="numeric" id="corr_adjustment_sum" class="ghost-zero format-number" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--accent);border-radius:6px;font-size:16px;font-weight:800;text-align:right;">
+                    <small style="color:var(--text-light);margin-top:2px;">Musbat (+) summa qarzni oshiradi, manfiy (-) summa qarzni kamaytiradi.</small>
+                </div>
+
+                <!-- 3. Итоговый остаток -->
+                <div class="edit-field-compact" style="margin-bottom: 14px;">
+                    <label style="font-weight: 700;">❓ Итоговый остаток (Umumiy / Yakuniy qoldiq):</label>
+                    <input type="text" inputmode="numeric" id="corr_final_balance" class="ghost-zero format-number" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--success);border-radius:6px;font-size:16px;font-weight:800;text-align:right;">
+                </div>
+
+                <!-- Izoh va Sana -->
+                <div class="edit-row-compact" style="margin-bottom: 14px;">
+                    <div class="edit-field-compact" style="flex:2;">
+                        <label style="font-weight: 700;">📝 Комментарий (Izoh):</label>
+                        <input type="text" id="corr_reason" value="KORREKTIROVKA: Balansni tuzatish" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;">
+                    </div>
+                    <div class="edit-field-compact" style="flex:1;">
+                        <label style="font-weight: 700;">📅 Дата и время (Sana va vaqt):</label>
+                        <input type="datetime-local" id="corr_moment" step="1" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;">
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button class="action-btn" onclick="closeCorrectionModal()" style="padding:10px 20px;background:#64748b;color:#fff;border-radius:8px;font-weight:700;">
+                        Закрыть (Yopish)
+                    </button>
+                    <button class="action-btn" id="saveCorrectionBtn" onclick="submitCorrection()" style="padding:10px 24px;background:#16a34a;color:#fff;font-weight:800;border-radius:8px;">
+                        💾 Сохранить (Saqlash)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mijoz kartochkasi modali -->
+    <div id="customerModal" class="modal">
+        <div class="modal-content modal-large customer-modal-wide">
+            <div class="modal-header">
+                <h2 id="customerModalTitle">👤 Mijoz kartochkasi</h2>
+                <button class="close-btn" onclick="closeCustomerModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="customerModalBody">
+                Yuklanmoqda...
+            </div>
+        </div>
+    </div>
+
+    <!-- Akt Sverka Modali -->
+    <div id="aktSverkaModal" class="modal">
+        <div class="modal-content modal-large" style="max-width: 950px;">
+            <div class="modal-header no-print">
+                <h2 id="aktSverkaModalTitle">📑 Solishtirma dalolatnoma (Акт сверки)</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="action-btn btn-akt-print" onclick="printAktSverka()">🖨️ Chop etish</button>
+                    <button class="action-btn btn-akt-copy" onclick="copyAktSverkaText()">📋 Nusxalash</button>
+                    <button class="close-btn" onclick="closeAktSverkaModal()">&times;</button>
+                </div>
+            </div>
+
+            <!-- Sana filtri (Chop etishda ko'rinmaydi) -->
+            <div class="akt-filter-strip no-print">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <button class="quick-btn active" data-akt-period="this_month" onclick="selectAktPeriod('this_month')">Shu oy</button>
+                    <button class="quick-btn" data-akt-period="last_month" onclick="selectAktPeriod('last_month')">O'tgan oy</button>
+                    <button class="quick-btn" data-akt-period="this_year" onclick="selectAktPeriod('this_year')">Shu yil</button>
+                    <button class="quick-btn" data-akt-period="all" onclick="selectAktPeriod('all')">Hammasi</button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <span style="font-size: 13px; font-weight: 600; color: var(--text-light);">Davr:</span>
+                    <input type="date" id="aktDateFrom" class="filter-input" style="width: 150px;">
+                    <span>—</span>
+                    <input type="date" id="aktDateTo" class="filter-input" style="width: 150px;">
+                    <button class="action-btn btn-akt-refresh" onclick="loadAktSverka()">Yangilash</button>
+                </div>
+            </div>
+
+            <!-- Rasmiy Akt Sverka Hujjati (Printable Document) -->
+            <div class="modal-body" id="aktSverkaBody" style="padding: 24px;">
+                <div style="text-align:center;padding:40px;"><div class="loading">⏳ Yuklanmoqda...</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="mobile-bottom-nav">
+        <a href="/" class="mobile-nav-item">
+            <span class="icon">📊</span>
+            <span>Dashboard</span>
+        </a>
+        <a href="/static/demands.html" class="mobile-nav-item">
+            <span class="icon">📦</span>
+            <span>Sotuvlar</span>
+        </a>
+        <a href="/static/customers.html" class="mobile-nav-item active">
+            <span class="icon">👥</span>
+            <span>Mijozlar</span>
+        </a>
+        <a href="/static/payments.html" class="mobile-nav-item">
+            <span class="icon">💰</span>
+            <span>Kassa</span>
+        </a>
+        <a href="/settings" class="mobile-nav-item">
+            <span class="icon">⚙️</span>
+            <span>Sozlamalar</span>
+        </a>
+    </nav>
+
+    <!-- Chop etish uchun konteyner -->
+    <div id="genericPrintArea"></div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/customers.js"></script>
+</body>
+</html>

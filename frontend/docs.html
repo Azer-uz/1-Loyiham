@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiyim-Kechak Savdosi va Moliya Qo'llanmasi - Azer MoySklad</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        :root {
+            --doc-bg: #f8fafc;
+            --doc-card: #ffffff;
+            --doc-text: #0f172a;
+            --doc-sub: #475569;
+            --doc-muted: #64748b;
+            --doc-blue: #1e60ff;
+            --doc-green: #10b981;
+            --doc-red: #ef4444;
+            --doc-amber: #f59e0b;
+            --doc-purple: #8b5cf6;
+            --doc-border: #e2e8f0;
+            --doc-border-light: #f1f5f9;
+        }
+
+        body.dark-mode {
+            --doc-bg: #0b0f19;
+            --doc-card: #131a2a;
+            --doc-text: #f8fafc;
+            --doc-sub: #cbd5e1;
+            --doc-muted: #94a3b8;
+            --doc-blue: #3b82f6;
+            --doc-green: #22c55e;
+            --doc-red: #f87171;
+            --doc-amber: #fbbf24;
+            --doc-purple: #a78bfa;
+            --doc-border: #1e293b;
+            --doc-border-light: #162032;
+        }
+
+        .guide-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 20px 80px;
+        }
+
+        /* Hero banner */
+        .guide-hero-banner {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+            border-radius: 20px;
+            padding: 36px 32px;
+            color: #ffffff;
+            margin-bottom: 28px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hero-left h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hero-left p {
+            font-size: 14.5px;
+            color: #cbd5e1;
+            max-width: 700px;
+            line-height: 1.6;
+        }
+
+        .hero-tags {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .hero-tag {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #f1f5f9;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .btn-print-hero {
+            background: #10b981;
+            color: #ffffff;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 13.5px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .btn-print-hero:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+
+        .btn-app-hero {
+            background: #ffffff;
+            color: #0f172a;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 13.5px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+
+        .btn-app-hero:hover {
+            background: #f8fafc;
+            transform: translateY(-2px);
+        }
+
+        /* Nav Cards */
+        .module-nav-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 14px;
+            margin-bottom: 32px;
+        }
+
+        .module-card-link {
+            background: var(--doc-card);
+            border: 1px solid var(--doc-border);
+            border-radius: 14px;
+            padding: 16px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            text-decoration: none;
+            color: var(--doc-text);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+
+        .module-card-link:hover {
+            border-color: var(--doc-blue);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        }
+
+        .module-card-icon {
+            font-size: 26px;
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: var(--doc-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border: 1px solid var(--doc-border);
+        }
+
+        .module-card-title {
+            font-weight: 800;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .module-card-desc {
+            font-size: 12px;
+            color: var(--doc-muted);
+        }
+
+        /* Asosiy bo'lim qutilari */
+        .section-box {
+            background: var(--doc-card);
+            border: 1px solid var(--doc-border);
+            border-radius: 18px;
+            padding: 32px;
+            margin-bottom: 32px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+            scroll-margin-top: 80px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid var(--doc-border-light);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .section-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-title-wrap h2 {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--doc-text);
+            letter-spacing: -0.3px;
+        }
+
+        .badge-pill {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-blue { background: rgba(30, 96, 255, 0.1); color: var(--doc-blue); }
+        .badge-green { background: rgba(16, 185, 129, 0.1); color: var(--doc-green); }
+        .badge-amber { background: rgba(245, 158, 11, 0.1); color: var(--doc-amber); }
+        .badge-purple { background: rgba(139, 92, 246, 0.1); color: var(--doc-purple); }
+
+        /* Real keys / Hayotiy misol bloki */
+        .real-case-box {
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-left: 5px solid var(--doc-blue);
+            border-radius: 12px;
+            padding: 18px 20px;
+            margin: 20px 0;
+        }
+
+        body.dark-mode .real-case-box {
+            background: #111827;
+            border-color: #334155;
+            border-left-color: var(--doc-blue);
+        }
+
+        .real-case-title {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: var(--doc-blue);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .real-case-body {
+            font-size: 14px;
+            color: var(--doc-text);
+            line-height: 1.6;
+        }
+
+        /* Qadamlar kartalari */
+        .detail-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            margin: 22px 0;
+        }
+
+        .detail-step-card {
+            background: var(--doc-bg);
+            border: 1px solid var(--doc-border);
+            border-radius: 14px;
+            padding: 20px 22px;
+            display: flex;
+            gap: 18px;
+            transition: all 0.15s ease;
+        }
+
+        .detail-step-card:hover {
+            border-color: var(--doc-blue);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        }
+
+        .step-num-badge {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--doc-blue);
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow: 0 4px 10px rgba(30, 96, 255, 0.25);
+        }
+
+        .step-main-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .step-main-content h3 {
+            font-size: 15.5px;
+            font-weight: 800;
+            color: var(--doc-text);
+            margin-bottom: 8px;
+        }
+
+        .step-main-content p {
+            font-size: 14px;
+            color: var(--doc-sub);
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        /* Interfeys elementlari nusxasi (UI simulator) */
+        .ui-sample-panel {
+            background: var(--doc-card);
+            border: 1px solid var(--doc-border);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+
+        .ui-key-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid var(--doc-border);
+            background: var(--doc-card);
+            color: var(--doc-text);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .ui-key-badge.btn-primary {
+            background: #1e60ff;
+            color: #ffffff;
+            border-color: #1e60ff;
+        }
+
+        .ui-key-badge.btn-success {
+            background: #10b981;
+            color: #ffffff;
+            border-color: #10b981;
+        }
+
+        .ui-key-badge.btn-warning {
+            background: #f59e0b;
+            color: #ffffff;
+            border-color: #f59e0b;
+        }
+
+        /* Kiyim razmerlari va tovarlar jadvali */
+        .clothes-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            font-size: 13px;
+        }
+
+        .clothes-table th {
+            background: var(--doc-bg);
+            border: 1px solid var(--doc-border);
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 700;
+            color: var(--doc-text);
+        }
+
+        .clothes-table td {
+            border: 1px solid var(--doc-border);
+            padding: 9px 12px;
+            color: var(--doc-sub);
+        }
+
+        .clothes-table tr:hover td {
+            background: rgba(30, 96, 255, 0.03);
+        }
+
+        /* Moliya va valyuta qutisi */
+        .split-pay-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin: 14px 0;
+        }
+
+        .split-pay-card {
+            background: var(--doc-bg);
+            border: 1px solid var(--doc-border);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .split-pay-card-title {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--doc-muted);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .split-pay-card-val {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--doc-text);
+        }
+
+        /* Telegram xabar simulyatori */
+        .telegram-msg-bubble {
+            background: #e7f8ff;
+            border: 1px solid #b3e5fc;
+            border-radius: 14px 14px 14px 0px;
+            padding: 16px 20px;
+            margin: 14px 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 13.5px;
+            line-height: 1.6;
+            color: #0c4a6e;
+            max-width: 620px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        }
+
+        body.dark-mode .telegram-msg-bubble {
+            background: #082f49;
+            border-color: #0284c7;
+            color: #e0f2fe;
+        }
+
+        /* Skrinshot va Belgilangan Rasmlar Bloklari */
+        .guide-screenshot-wrapper {
+            background: var(--doc-bg);
+            border: 1.5px solid var(--doc-border);
+            border-radius: 14px;
+            overflow: hidden;
+            margin: 20px 0;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .screenshot-header {
+            background: #0f172a;
+            padding: 9px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #f1f5f9;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .screenshot-header .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .dot.red { background: #ef4444; }
+        .dot.yellow { background: #f59e0b; }
+        .dot.green { background: #10b981; }
+
+        .guide-screenshot-img {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-bottom: 1px solid var(--doc-border);
+        }
+
+        .screenshot-caption {
+            padding: 14px 18px;
+            background: var(--doc-card);
+            font-size: 13.5px;
+            line-height: 1.6;
+            color: var(--doc-text);
+        }
+
+        /* Print uchun toza PDF */
+        @media print {
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+            .app-navbar, .hero-actions, .module-nav-grid, .no-print {
+                display: none !important;
+            }
+            .guide-wrapper {
+                max-width: 100% !important;
+                padding: 0 !important;
+            }
+            .section-box {
+                border: 1pt solid #ccc !important;
+                box-shadow: none !important;
+                page-break-inside: avoid;
+                margin-bottom: 25pt;
+                padding: 16pt;
+            }
+            .guide-hero-banner {
+                background: #f1f5f9 !important;
+                color: #000000 !important;
+                border: 1pt solid #ccc;
+            }
+            .hero-left p { color: #333333 !important; }
+            .real-case-box {
+                border: 1pt solid #444 !important;
+                background: #fcfcfc !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navbar -->
+    <header class="app-navbar no-print">
+        <div class="app-navbar-inner">
+            <div class="navbar-brand-group">
+                <a href="/" class="brand-link">
+                    <div class="brand-icon-box">📦</div>
+                    <span class="brand-title">Azer</span>
+                </a>
+                <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="navbar-right-group">
+                <a href="/" class="nav-icon-circle-btn" title="Dashboard">🏠</a>
+                <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Kunduzgi/Tungi rejim">🌙</button>
+                <button class="nav-sync-pill" onclick="window.print()" style="background:#10b981; border-color:#10b981;" title="A4 PDF qilib saqlash">
+                    🖨️ PDF / Chop etish
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="guide-wrapper">
+        <!-- Hero Header -->
+        <div class="guide-hero-banner">
+            <div class="hero-left">
+                <h1><span>👕</span> Kiyim-Kechak Savdosi va Moliya Qo'llanmasi</h1>
+                <p>
+                    Ushbu qo'llanma kiyim-kechak ulgurji (optom) va chakana savdo korxonalari uchun maxsus tayyorlangan. Razmerlar (modifikatsiyalar), ranglar, shtrixkodlar, qisman to'lov (avans), dollar kursi va mijozlar bilan hisob-kitob (Akt Sverka) to'liq real misollar bilan yoritilgan.
+                </p>
+                <div class="hero-tags">
+                    <span class="hero-tag">🎯 Razmer & Ranglar (Variants)</span>
+                    <span class="hero-tag">💵 Dollar / So'm kursi</span>
+                    <span class="hero-tag">📑 Telegram Akt Sverka</span>
+                    <span class="hero-tag">🔄 MoySklad 2-tomonlama integratsiya</span>
+                </div>
+            </div>
+            <div class="hero-actions no-print">
+                <button class="btn-print-hero" onclick="window.print()">
+                    <span>🖨️</span> PDF yuklab olish
+                </button>
+                <a href="/demands" class="btn-app-hero">
+                    <span>📦</span> Sotuvlarni ochish
+                </a>
+            </div>
+        </div>
+
+        <!-- 4 ta Asosiy Bo'limga Tezkor Havolalar -->
+        <div class="module-nav-grid no-print">
+            <a href="#sales-detail" class="module-card-link">
+                <div class="module-card-icon">🧥</div>
+                <div>
+                    <div class="module-card-title">1. Kiyim sotish (Chiqim)</div>
+                    <div class="module-card-desc">Razmer, rang, shtrixkod va skidka</div>
+                </div>
+            </a>
+            <a href="#split-payment" class="module-card-link">
+                <div class="module-card-icon">💳</div>
+                <div>
+                    <div class="module-card-title">2. Aralash to'lov & Avans</div>
+                    <div class="module-card-desc">Naqd + Karta + Dollar kursi + Qarz</div>
+                </div>
+            </a>
+            <a href="#akt-sverka-detail" class="module-card-link">
+                <div class="module-card-icon">📑</div>
+                <div>
+                    <div class="module-card-title">3. Akt Sverka & Telegram</div>
+                    <div class="module-card-desc">Optomchi qarzini sanama-sana tekshirish</div>
+                </div>
+            </a>
+            <a href="#cash-registers" class="module-card-link">
+                <div class="module-card-icon">🏦</div>
+                <div>
+                    <div class="module-card-title">4. Kassa & Valyuta hisobi</div>
+                    <div class="module-card-desc">So'm va USD qoldiqlari, inkassatsiya</div>
+                </div>
+            </a>
+        </div>
+
+        <!-- 1-BO'LIM: KIYIM-KECHAK SOTUVI (RAZMER, RANG, SHTRIXKOD) -->
+        <section id="sales-detail" class="section-box">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <span style="font-size:24px;">🧥</span>
+                    <h2>1. Kiyim-kechak tovarlarini sotish (Отгрузка / Demands)</h2>
+                </div>
+                <span class="badge-pill badge-blue">Modifikatsiyalar & Razmer</span>
+            </div>
+
+            <!-- Real Kiyim-kechak keysi -->
+            <div class="real-case-box">
+                <div class="real-case-title">
+                    <span>📌</span> Real Savdo Misoli (Optom / Do'kon buyurtmasi):
+                </div>
+                <div class="real-case-body">
+                    Doimiy mijozingiz <strong>«Samarqand Erkaklar Do'koni» (Javohir aka)</strong> kelib quyidagi tovarlarni oldi:
+                    <br>• <strong>Klassik Erkaklar Kostyumi (Artikul: K-104)</strong> — Qora rang, Razmer <strong>48</strong> (3 dona), Razmer <strong>50</strong> (5 dona), Razmer <strong>52</strong> (2 dona) = Jami 10 dona. Har biri 450,000 so'mdan.
+                    <br>• <strong>Slim-Fit Ko'ylak (Artikul: SH-201)</strong> — Oq rang, Razmer <strong>L</strong> (12 dona). Har biri 120,000 so'mdan.
+                    <br>• <strong>Jami buyurtma summasi:</strong> 10 × 450,000 + 12 × 120,000 = <strong>5,940,000 so'm</strong>.
+                </div>
+            </div>
+
+            <h3 style="font-size:15px; font-weight:800; margin: 20px 0 10px; color:var(--doc-text);">Dasturda kiritish bo'yicha qadam-baqadam yo'riqnoma:</h3>
+
+            <div class="detail-steps">
+                <!-- 1-qadam -->
+                <div class="detail-step-card">
+                    <div class="step-num-badge">1</div>
+                    <div class="step-main-content">
+                        <h3>Sotuvlar oynasini ochish</h3>
+                        <p>
+                            Menyudagi <strong>«Sotuvlar»</strong> bo'limiga kiring va yuqoridagi ko'k rangli <span class="ui-key-badge btn-primary">+ Yangi sotuv</span> tugmasini bosing. Ekranda to'liq 2 ustunli sotuv oynasi ochiladi.
+                        </p>
+
+                        <!-- Skrinshot 1: Sotuvlar va +Yangi sotuv -->
+                        <div class="guide-screenshot-wrapper">
+                            <div class="screenshot-header">
+                                <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                                <span class="screenshot-title">📸 1-Skrinshot: Sotuvlar oynasi va Yangi sotuv ochish</span>
+                            </div>
+                            <img src="/static/img/guide_sales.jpg" alt="Sotuvlar oynasi va Yangi sotuv tugmasi" class="guide-screenshot-img">
+                            <div class="screenshot-caption">
+                                <strong style="color:#dc2626;">🔴 (1) Qizil belgi va strelka:</strong> Ekranning yuqori o'ng burchagidagi ko'k rangli <code>+ Yangi sotuv</code> tugmasini bosing. Jadvalda kiyimlarning barcha modellari, razmerlari va soni aniq ko'rsatiladi.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2-qadam -->
+                <div class="detail-step-card">
+                    <div class="step-num-badge">2</div>
+                    <div class="step-main-content">
+                        <h3>Mijoz va Omborni tanlash</h3>
+                        <p>
+                            • <strong>Mijoz (Kontragent):</strong> Qidiruvga <em>"Samarqand"</em> yoki <em>"Javohir"</em> deb yozing. Tanlaganingizda uning joriy qarzi va avvalgi to'lovlari o'ng tomonda bir zumda chiqadi.<br>
+                            • <strong>Ombor:</strong> Tovar qaysi ombordan berilayotganini belgilang (masalan: <em>"Asosiy kiyim ombori"</em>).
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 3-qadam -->
+                <div class="detail-step-card">
+                    <div class="step-num-badge">3</div>
+                    <div class="step-main-content">
+                        <h3>Kiyim razmerlari va ranglarini qo'shish (2 xil usul):</h3>
+                        <p>
+                            Kiyim-kechakda bitta modelning bir nechta razmer va ranglari (modifikatsiyalari) bo'ladi. Bularni kiritishning 2 ta tezkor yo'li bor:
+                        </p>
+
+                        <div class="ui-sample-panel">
+                            <strong>A) Shtrixkod skaneri (Skaner pistolet orqali):</strong><br>
+                            Tovarning yorlig'idagi (birkadagi) shtrixkodni skaner bilan uring. Tizim avtomatik ravishda tovarning aynan o'sha razmer va rangini topib, jadvalga 1 dona qilib qo'shadi. Yana ursangiz soni 2, 3... bo'lib ko'payib boradi.
+                        </div>
+
+                        <div class="ui-sample-panel">
+                            <strong>B) Qidiruv orqali qator tanlash:</strong><br>
+                            Qidiruv maydoniga model nomi yoki artikulini yozing (masalan: <em>"K-104"</em>). Pastda barcha mavjud razmerlar va ombordagi qoldiqlari chiqadi:
+                            <table class="clothes-table">
+                                <thead>
+                                    <tr>
+                                        <th>Model / Artikul</th>
+                                        <th>Rangi</th>
+                                        <th>Razmer (O'lcham)</th>
+                                        <th>Ombordagi qoldiq</th>
+                                        <th>Sotuv narxi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Kostyum K-104</strong></td>
+                                        <td>Qora</td>
+                                        <td><span class="ui-key-badge">48</span></td>
+                                        <td>15 dona</td>
+                                        <td>450,000 so'm</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Kostyum K-104</strong></td>
+                                        <td>Qora</td>
+                                        <td><span class="ui-key-badge">50</span></td>
+                                        <td>22 dona</td>
+                                        <td>450,000 so'm</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Kostyum K-104</strong></td>
+                                        <td>Qora</td>
+                                        <td><span class="ui-key-badge">52</span></td>
+                                        <td>8 dona</td>
+                                        <td>450,000 so'm</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            Kerakli razmerni bosing va sotilayotgan sonini (masalan: 5 dona) yozing.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4-qadam -->
+                <div class="detail-step-card">
+                    <div class="step-num-badge">4</div>
+                    <div class="step-main-content">
+                        <h3>Chegirma (Skidka) qo'llash:</h3>
+                        <p>
+                            Agar Javohir akaga optom olgani uchun chegirma bermoqchi bo'lsangiz, o'ng tomondagi <strong>«Chegirma»</strong> blokidan foydalaning:
+                            <br>• <strong>Foizda (%):</strong> Masalan, <code>5%</code> deb yozsangiz, butun chek summasidan 5% yechiladi.
+                            <br>• <strong>Summada (So'm):</strong> Masalan, umumiy 5,940,000 so'm bo'lsa, to'g'ri <code>140,000</code> so'm skidka yozsangiz, jami to'lov 5,800,000 so'mga aylanadi.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 5-qadam -->
+                <div class="detail-step-card">
+                    <div class="step-num-badge">5</div>
+                    <div class="step-main-content">
+                        <h3>Sotuv hujjati va Yuk xatini (Накладная) chop etish:</h3>
+                        <p>
+                            Saqlangandan so'ng, qatordagi <span class="ui-key-badge">🖨️ Chop etish</span> tugmasini bosing. Printerdan <strong>Rasmiy Tovar Yuk Xati (Расходная накладная)</strong> chiqadi: unda har bir kiyimning artikuli, razmeri, dona soni, narxi va qabul qiluvchi imzo chekadigan joyi toza A4 varaqda tayyor bo'ladi.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2-BO'LIM: ARALASH TO'LOV, DOLLAR VA QARZ (NASIYA) -->
+        <section id="split-payment" class="section-box">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <span style="font-size:24px;">💳</span>
+                    <h2>2. Kombinatsiyalangan to'lov, Dollar kursi va Qarz (Nasiya)</h2>
+                </div>
+                <span class="badge-pill badge-green">Moliya & Kassa</span>
+            </div>
+
+            <div class="real-case-box">
+                <div class="real-case-title">
+                    <span>📌</span> Real To'lov Vaziyati:
+                </div>
+                <div class="real-case-body">
+                    Yuqoridagi buyurtma bo'yicha Javohir akaning jami to'lashi kerak bo'lgan summasi <strong>5,800,000 so'm</strong> bo'ldi.
+                    <br>Xaridor pulni quyidagicha to'lamoqda:
+                    <br>1. <strong>200 AQSH Dollari ($200 naqd)</strong> berdi (Bugungi do'kon kursi: <strong>1$ = 12,800 so'm</strong>, ya'ni <strong>2,560,000 so'm</strong>).
+                    <br>2. <strong>1,240,000 so'm</strong> plastik kartadan (terminal/Payme) to'ladi.
+                    <br>3. Qolgan <strong>2,000,000 so'mni</strong> esa <em>"Kelasi hafta payshanba kuni beraman"</em> deb <strong>QARZGA (Nasiyaga)</strong> qoldirdi.
+                </div>
+            </div>
+
+            <h3 style="font-size:15px; font-weight:800; margin: 20px 0 10px; color:var(--doc-text);">Bu aralash to'lovni 1 ta sotuv oynasida kiritish:</h3>
+
+            <div class="ui-sample-panel">
+                <p style="margin-bottom:12px; font-size:14px; color:var(--doc-sub);">
+                    Sotuv oynasining o'ng tomonidagi <strong>«To'lov qabul qilish»</strong> vidjetida quyidagi katakchalarni to'ldirasiz:
+                </p>
+
+                <div class="split-pay-grid">
+                    <div class="split-pay-card" style="border-left: 4px solid #16a34a;">
+                        <div class="split-pay-card-title">💵 Dollar qismi ($)</div>
+                        <div class="split-pay-card-val">$200</div>
+                        <div style="font-size:12px; color:var(--doc-muted); margin-top:4px;">Kurs: 12,800 = 2,560,000 so'm</div>
+                    </div>
+
+                    <div class="split-pay-card" style="border-left: 4px solid #2563eb;">
+                        <div class="split-pay-card-title">💳 Karta / Bank qismi</div>
+                        <div class="split-pay-card-val">1,240,000 so'm</div>
+                        <div style="font-size:12px; color:var(--doc-muted); margin-top:4px;">Bank hisobiga tushadi</div>
+                    </div>
+
+                    <div class="split-pay-card" style="border-left: 4px solid #ef4444;">
+                        <div class="split-pay-card-title">⏳ Qolgan qarz (Nasiya)</div>
+                        <div class="split-pay-card-val" style="color:var(--doc-red);">2,000,000 so'm</div>
+                        <div style="font-size:12px; color:var(--doc-muted); margin-top:4px;">Mijoz hisobiga qarz yoziladi</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skrinshot 2: Aralash to'lov va Dollar kursi -->
+            <div class="guide-screenshot-wrapper">
+                <div class="screenshot-header">
+                    <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                    <span class="screenshot-title">📸 2-Skrinshot: Aralash to'lov (Dollar kursi + Karta + Qarz)</span>
+                </div>
+                <img src="/static/img/guide_payments.jpg" alt="Aralash to'lov qabul qilish" class="guide-screenshot-img">
+                <div class="screenshot-caption">
+                    <strong style="color:#dc2626;">🔴 (1) Qizil katak:</strong> Dollar berilgan bo'lsa, <strong>AQSH Dollari (USD)</strong> katagiga summani yozing (do'kon kursi 12,800 bo'yicha o'zi 2,560,000 so'mga aylantiradi).<br>
+                    <strong style="color:#dc2626;">🔴 (2) Qizil katak:</strong> Kartadan to'langan qismini <strong>Bank / Karta (UZS)</strong> katagiga yozing.<br>
+                    <strong style="color:#dc2626;">🔴 (3) Qizil tugma:</strong> <strong>Saqlash va Tasdiqlash</strong> tugmasini bosing — qolgan summa avtomatik qarz bo'lib yoziladi!
+                </div>
+            </div>
+
+            <div class="detail-steps">
+                <div class="detail-step-card">
+                    <div class="step-num-badge">✓</div>
+                    <div class="step-main-content">
+                        <h3>Natija va Avtomatik Hisob-kitob:</h3>
+                        <p>
+                            Pastdagi <span class="ui-key-badge btn-success">Saqlash va Tasdiqlash</span> tugmasini bosganingizda:
+                            <br>1. <strong>Dollar kassangizga:</strong> +$200 qo'shiladi.
+                            <br>2. <strong>Bank/Karta hisobingizga:</strong> +1,240,000 so'm qo'shiladi.
+                            <br>3. <strong>Sotuv statusi:</strong> Avtomatik tarzda <span class="ui-key-badge btn-warning">Qisman to'langan</span> holatiga o'tadi.
+                            <br>4. <strong>Javohir akaning balansi:</strong> Avtomatik tarzda <strong>-2,000,000 so'm (Qarz)</strong> bo'lib qoladi. Siz alohida daftarga yozishingiz shart emas!
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3-BO'LIM: AKT SVERKA VA TELEGRAMGA TAYYOR XABAR -->
+        <section id="akt-sverka-detail" class="section-box">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <span style="font-size:24px;">📑</span>
+                    <h2>3. Mijoz Qarzdorligi va Akt Sverka (O'zaro hisob-kitob solishtiruvi)</h2>
+                </div>
+                <span class="badge-pill badge-amber">Akt Sverka & Telegram</span>
+            </div>
+
+            <div class="real-case-box">
+                <div class="real-case-title">
+                    <span>📌</span> Real Holat (Mijoz bilan hisob-kitob):
+                </div>
+                <div class="real-case-body">
+                    Oradan 10 kun o'tdi. Javohir aka sizga qo'ng'iroq qildi:
+                    <br><em>«Assalomu alaykum! Shu oy boshidan buyon qancha kiyim oldim, qancha to'ladim va hozir aniq qarzim qancha qoldi? Akt sverkasini chiqarib bersangiz, qolgan pulni o'tkazib berardim».</em>
+                </div>
+            </div>
+
+            <h3 style="font-size:15px; font-weight:800; margin: 20px 0 10px; color:var(--doc-text);">Akt Sverkani 3 soniyada tayyorlash:</h3>
+
+            <div class="detail-steps">
+                <div class="detail-step-card">
+                    <div class="step-num-badge">1</div>
+                    <div class="step-main-content">
+                        <h3>Mijozlar bo'limidan xaridorni topish</h3>
+                        <p>
+                            Yuqori menyudagi <strong>«Mijozlar»</strong> sahifasiga kiring. Qidiruvga <em>"Javohir"</em> deb yozing. Uning balansi qizil rangda (masalan: <code>-2,000,000 so'm</code>) ko'rinib turadi.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="detail-step-card">
+                    <div class="step-num-badge">2</div>
+                    <div class="step-main-content">
+                        <h3>«Akt Sverka» tugmasini bosish</h3>
+                        <p>
+                            Javohir akaning qatori o'ng tomonidagi <span class="ui-key-badge btn-primary">📑 Akt Sverka</span> tugmasini bosing. Oyna ochiladi.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="detail-step-card">
+                    <div class="step-num-badge">3</div>
+                    <div class="step-main-content">
+                        <h3>Davrni tanlash va Ma'lumotlarni ko'rish:</h3>
+                        <p>
+                            Tepadan <span class="ui-key-badge">Shu oy</span> yoki <span class="ui-key-badge">O'tgan oy</span> tugmasini bosing (yoki kalendardan xohlagan sanangizni tanlang). 
+                            Tizim barcha amallarni sanama-sana chiqaradi:
+                        </p>
+
+                        <table class="clothes-table">
+                            <thead>
+                                <tr>
+                                    <th>Sana</th>
+                                    <th>Hujjat turi va Raqami</th>
+                                    <th>Chiqim (Biz bergan kiyimlar)</th>
+                                    <th>Kirim (Mijoz to'lagan pul)</th>
+                                    <th>Qarz Qoldig'i</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>01.09.2026</td>
+                                    <td><em>Oy boshiga boshlang'ich qoldiq</em></td>
+                                    <td>-</td>
+                                    <td>-</td>
+                                    <td><strong>0 so'm</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>12.09.2026</td>
+                                    <td>Sotuv №1042 (Kostyum, Ko'ylak)</td>
+                                    <td>5,800,000 so'm</td>
+                                    <td>-</td>
+                                    <td>5,800,000 so'm</td>
+                                </tr>
+                                <tr>
+                                    <td>12.09.2026</td>
+                                    <td>To'lov №811 ($200 naqd valyuta)</td>
+                                    <td>-</td>
+                                    <td>2,560,000 so'm</td>
+                                    <td>3,240,000 so'm</td>
+                                </tr>
+                                <tr>
+                                    <td>12.09.2026</td>
+                                    <td>To'lov №812 (Plastik karta)</td>
+                                    <td>-</td>
+                                    <td>1,240,000 so'm</td>
+                                    <td>2,000,000 so'm</td>
+                                </tr>
+                                <tr style="background:rgba(30,96,255,0.06); font-weight:800;">
+                                    <td colspan="2">YAKUNIY QOLDIQ:</td>
+                                    <td>5,800,000 so'm</td>
+                                    <td>3,800,000 so'm</td>
+                                    <td style="color:var(--doc-red);">2,000,000 so'm (Qarz)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Skrinshot 3: Akt Sverka va Telegramga jo'natish -->
+                        <div class="guide-screenshot-wrapper">
+                            <div class="screenshot-header">
+                                <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                                <span class="screenshot-title">📸 3-Skrinshot: Akt Sverka (Hisob-kitob solishtiruvi) va Telegramga yuborish</span>
+                            </div>
+                            <img src="/static/img/guide_akt_sverka.jpg" alt="Akt Sverka va Nusxalash oynasi" class="guide-screenshot-img">
+                            <div class="screenshot-caption">
+                                <strong style="color:#dc2626;">🔴 (1) Qizil belgi:</strong> Davrni tanlash — <code>Shu oy</code> yoki <code>O'tgan oy</code> tugmasini bosing.<br>
+                                <strong style="color:#dc2626;">🔴 (2) Qizil belgi:</strong> <code>📋 Nusxalash</code> (Telegram) tugmasini bosing — hisobot bir zumda xaridorning Telegramiga yuborish uchun tayyor bo'ladi.<br>
+                                <strong style="color:#dc2626;">🔴 (3) Qizil belgi:</strong> Jadvalning oxiridagi qizil satr — mijozning aynan bugungi kundagi yakuniy qarz qoldig'i!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-step-card">
+                    <div class="step-num-badge">4</div>
+                    <div class="step-main-content">
+                        <h3>Mijozga jo'natish (Telegram yoki Chop etish):</h3>
+                        <p>
+                            Endi bu hisobotni mijozga berish uchun qo'lda yozib o'tirmaysiz!
+                        </p>
+
+                        <div style="margin-top:10px;">
+                            <strong>A) Telegram orqali yuborish (Eng tez yo'li):</strong><br>
+                            Modal yuqorisidagi <span class="ui-key-badge btn-warning">📋 Nusxalash</span> tugmasini bosing. Tizim xabarni avtomatik tayyorlab clipboardga oladi. Telegramni ochib Javohir akaga "Vstavit" (Paste) qilasiz. Mana bunday chiroyli xabar boradi:
+
+                            <div class="telegram-msg-bubble">
+                                📊 <strong>Solishtirma Dalolatnoma (Akt Sverka)</strong><br>
+                                👤 <strong>Mijoz:</strong> Samarqand Erkaklar Do'koni (Javohir aka)<br>
+                                📅 <strong>Davr:</strong> 01.09.2026 — 22.09.2026<br>
+                                ──────────────────<br>
+                                📦 Olingan kiyimlar (Jami): <strong>5,800,000 so'm</strong><br>
+                                💰 To'langan summa (Jami): <strong>3,800,000 so'm</strong><br>
+                                ──────────────────<br>
+                                🔴 <strong>Hozirgi qarz qoldig'i: 2,000,000 so'm</strong><br>
+                                <br>
+                                <em>Iltimos, hisob-kitobni solishtirib tasdiqlang. Rahmat!</em>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:14px;">
+                            <strong>B) Qog'ozga chiqarish (Rasmiy buxgalteriya hujjati):</strong><br>
+                            Modal tepasidagi <span class="ui-key-badge">🖨️ Chop etish</span> tugmasini bossangiz, 2 tomonlama buxgalteriya jadvali (Debet/Kredit), <em>"Topshirdi"</em> va <em>"Qabul qildi"</em> muhr o'rinlari bilan rasmiy A4 qog'oz chiqadi.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4-BO'LIM: KASSA, HISOB RAQAMLAR VA AUDIT -->
+        <section id="cash-registers" class="section-box">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <span style="font-size:24px;">🏦</span>
+                    <h2>4. Kassa, Bank hisoblari va Valyuta balansi (Fintech Dashboard)</h2>
+                </div>
+                <span class="badge-pill badge-purple">G'azna & Qoldiqlar</span>
+            </div>
+
+            <p style="font-size:14.5px; color:var(--doc-sub); line-height:1.6;">
+                Kiyim do'konida yoki omborida bir vaqtning o'zida naqd pul, plastik karta tushumlari va xorijiy valyuta (dollar) aylanadi. <strong>«To'lovlar»</strong> sahifasida bularning har biri alohida g'azna sifatida nazorat qilinadi.
+            </p>
+
+            <div class="split-pay-grid" style="margin: 20px 0;">
+                <div class="split-pay-card">
+                    <div class="split-pay-card-title">💵 Asosiy Do'kon Kassasi (Naqd)</div>
+                    <div class="split-pay-card-val" style="color:var(--doc-green);">42,500,000 so'm</div>
+                    <div style="font-size:12px; color:var(--doc-muted); margin-top:4px;">Do'kon sefidagi naqd pullar</div>
+                </div>
+
+                <div class="split-pay-card">
+                    <div class="split-pay-card-title">💳 Bank Hisob Raqami / Karta</div>
+                    <div class="split-pay-card-val" style="color:var(--doc-blue);">18,200,000 so'm</div>
+                    <div style="font-size:12px; color:var(--doc-muted); margin-top:4px;">Hisob raqam yoki korporativ karta</div>
+                </div>
+
+                <div class="split-pay-card">
+                    <div class="split-pay-card-title">💲 Valyuta Kassasi (USD)</div>
+                    <div class="split-pay-card-val" style="color:var(--doc-amber);">$4,850</div>
+                    <div style="font-size:12px; color:var(--doc-muted); margin-top:4px;">Kurs bo'yicha ~ 62,080,000 so'm</div>
+                </div>
+            </div>
+
+            <div class="detail-steps">
+                <div class="detail-step-card">
+                    <div class="step-num-badge">💡</div>
+                    <div class="step-main-content">
+                        <h3>Kassani alohida tekshirish (Audit qilish):</h3>
+                        <p>
+                            Agar bugun naqd kassaga qancha tushdi va kartaga qancha tushdi deb alohida bilmoqchi bo'lsangiz:
+                            <br>1. Yuqoridagi <strong>«Asosiy Kassa»</strong> kartasini bosing. Pastdagi to'lovlar jadvalida faqat naqd pul harakatlari qoladi.
+                            <br>2. <strong>«Bank Hisobi»</strong>ni bossangiz, faqat kartadan tushgan va chiqib ketgan pullar ko'rinadi.
+                            <br>3. Filtrlardan <strong>«Bugun»</strong> yoki <strong>«Kecha»</strong> tugmasini bosib, smena bo'yicha kassir pulini darhol hisoblab olishingiz mumkin.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- XULOSA VA MASLAHAT -->
+        <div style="background:var(--doc-card); border:1px solid var(--doc-border); border-radius:16px; padding:24px; text-align:center;">
+            <div style="font-size:24px; margin-bottom:8px;">🚀</div>
+            <h3 style="font-size:16px; font-weight:800; color:var(--doc-text); margin-bottom:6px;">Tizim MoySklad bilan to'liq avtomatlashtirilgan</h3>
+            <p style="font-size:13.5px; color:var(--doc-muted); max-width:650px; margin:0 auto 16px; line-height:1.5;">
+                Siz kiritgan har bir kiyim sotuvi, qabul qilingan to'lov va qoldiqlar MoySklad bulutli bazasiga to'g'ridan-to'g'ri yoziladi. Internet uzilib qolsa ham tizim ma'lumotlarni saqlaydi va qayta ulanganda to'liq yangilaydi.
+            </p>
+            <button class="btn-print-hero" onclick="window.print()">
+                <span>🖨️</span> Ushbu qo'llanmani xodimlar uchun A4 PDF qilib chop etish
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('theme') === 'dark') {
+                document.body.classList.add('dark-mode');
+            }
+        });
+    </script>
+</body>
+</html>

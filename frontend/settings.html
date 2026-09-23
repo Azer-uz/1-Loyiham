@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sozlamalar - Azer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .settings-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        .settings-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .settings-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-card-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .settings-card-subtitle {
+            font-size: 13px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        /* Toggle switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1;
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--card);
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--success);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .method-item-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 12px;
+            background: #fdfdfd;
+            transition: all 0.2s;
+        }
+
+        .method-item-row:hover {
+            background: var(--card);
+            border-color: var(--accent);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        }
+
+        .method-item-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .method-icon {
+            font-size: 24px;
+            width: 44px;
+            height: 44px;
+            background: var(--bg);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .method-details h4 {
+            margin: 0 0 4px 0;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .method-details p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .method-tag {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .tag-uzs { background: #eff6ff; color: #1d4ed8; }
+        .tag-usd { background: #fef3c7; color: #b45309; }
+
+        .method-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Summary Dual Cards */
+        .dual-summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .dual-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .dual-card-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .dual-card-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .btn-correct {
+            background: var(--bg);
+            border: 1px solid #cbd5e1;
+            color: var(--primary);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-correct:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+        <!-- Top Modern Navbar (Variant 7) -->
+    <header class="app-navbar">
+        <div class="app-navbar-inner">
+            <div class="navbar-brand-group">
+                <a href="/" class="brand-link">
+                    <div class="brand-icon-box">📦</div>
+                    <span class="brand-title">Azer</span>
+                </a>
+                <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="navbar-right-group">
+                <div class="nav-search-bar">
+                    <span style="color:var(--text-muted);font-size:13px;">🔍</span>
+                    <input type="text" placeholder="Qidiruv..." id="globalSearch">
+                </div>
+                <button class="nav-icon-circle-btn" title="Bildirishnomalar">🔔</button>
+                <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Day/Night Mode">🌙</button>
+                <button class="nav-sync-pill" onclick="triggerSyncNow()" title="MoySklad bilan sinxronlash">
+                    🔄 Sinxronlash
+                </button>
+                <div class="nav-user-dropdown-wrapper" id="navUserDropdownWrapper">
+                    <button class="nav-user-pill-btn" onclick="toggleUserDropdown(event)" id="navUserPillBtn" title="Admin Profili">
+                        <div class="user-avatar-circle">👤</div>
+                        <div class="user-info-text-box">
+                            <span class="user-name-text" id="currentUserLabel">Admin</span>
+                            <span class="user-role-badge">Administrator</span>
+                        </div>
+                        <span class="dropdown-chevron">▼</span>
+                    </button>
+                    <div class="nav-user-dropdown-menu" id="navUserDropdownMenu">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-avatar-large" id="dropdownAvatarLarge">👤</div>
+                            <div class="dropdown-user-meta">
+                                <div class="dropdown-name" id="dropdownUserName">Admin</div>
+                                <div class="dropdown-email" id="dropdownUserLogin">admin@azer</div>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openUserProfileModal()">
+                            <span>👤</span>
+                            <span>Profil & Avatar sozlash</span>
+                        </button>
+                        <a href="/settings" class="dropdown-item">
+                            <span>⚙️</span>
+                            <span>Tizim sozlamalari</span>
+                        </a>
+                        <a href="/docs" class="dropdown-item">
+                            <span>📖</span>
+                            <span>Foydalanish qo'llanmasi</span>
+                        </a>
+                        <button class="dropdown-item" onclick="triggerSyncNow()">
+                            <span>🔄</span>
+                            <span>MoySklad bilan sinxronlash</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <span>🚪</span>
+                            <span>Tizimdan chiqish</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="app-layout">
+        <main class="main-content">
+            <div class="v7-greeting-bar">
+                <div class="v7-greeting-text-group"><span id="currentDate" style="display:none;"></span><span id="orgName" style="display:none;"></span>
+                    <h1 class="v7-greeting-title">Sozlamalar</h1>
+                    <span class="v7-greeting-subtitle">Tizim va to'lov turlari parametrlari</span>
+                </div>
+            </div>
+
+            <div class="settings-container">
+                <div class="settings-grid">
+                    <!-- 0. TASHKILOT NOMI SOZLAMASI -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <div>
+                                <div class="settings-card-title">
+                                    <span>🏢 Bizning Tashkilot Nomi</span>
+                                </div>
+                                <div class="settings-card-subtitle">
+                                    Chop etiladigan barcha hujjatlar, nakladnoylar, cheklar va akt-sverkalarda ko'rinadigan rasmiy tashkilot nomi
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:center;max-width:550px;flex-wrap:wrap;">
+                            <input type="text" id="settingOrgName" placeholder="Tashkilot nomi..." style="flex:1;min-width:260px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-weight:700;background:var(--card-bg);color:var(--text);">
+                            <button class="btn-primary-action" onclick="saveOrganizationName()" style="white-space:nowrap;padding:10px 20px;">
+                                💾 Saqlash
+                            </button>
+                        </div>
+                        <div id="orgSaveFeedback" style="font-size:13px;margin-top:8px;font-weight:600;display:none;"></div>
+                    </div>
+
+                    <!-- 1. KASSA VA HISOBLAR BALANSI (2 TA VALYUTADA) -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <div>
+                                <div class="settings-card-title">
+                                    <span>🏦 Hisob Raqamlar Qoldiqlari & Korrektirovka</span>
+                                </div>
+                                <div class="settings-card-subtitle">
+                                    Kassa va bank hisoblari o'z valyutasida yuritiladi. Haqiqiy qoldiqni istalgan payt to'g'rilashingiz mumkin.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2 ta valyutadagi jami qoldiq vidjeti -->
+                        <div class="dual-summary-cards">
+                            <div class="dual-card" style="border-left: 4px solid var(--info);">
+                                <div class="dual-card-title">💵 Jami Naqd & Bank Qoldig'i (UZS)</div>
+                                <div class="dual-card-value" id="totalUzsDisplay" style="color:#1d4ed8;">0 so'm</div>
+                            </div>
+                            <div class="dual-card" style="border-left: 4px solid var(--accent);">
+                                <div class="dual-card-title">💵 Jami Valyuta Qoldig'i (USD)</div>
+                                <div class="dual-card-value" id="totalUsdDisplay" style="color:#b45309;">$0.00 USD</div>
+                            </div>
+                            <div class="dual-card" style="border-left: 4px solid var(--success);">
+                                <div class="dual-card-title">📊 Konsolidatsiyalangan Ekvivalent</div>
+                                <div class="dual-card-value" id="totalConsolidatedDisplay" style="color:#16a34a;">0 so'm</div>
+                                <small style="font-size:11px; color:var(--text-light);" id="rateRefText">Kurs bo'yicha</small>
+                            </div>
+                        </div>
+
+                        <!-- Barcha hisoblar ro'yxati -->
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Hisob / Kassa Nomi</th>
+                                        <th>Turi</th>
+                                        <th>Valyutasi</th>
+                                        <th style="text-align: right;">Joriy Qoldiq</th>
+                                        <th>Holat</th>
+                                        <th style="text-align: center;">Amal</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="accountsTableBody">
+                                    <tr><td colspan="6" class="loading">Yuklanmoqda...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 2. TO'LOV TURLARI BOSHQARUVI -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <div>
+                                <div class="settings-card-title">
+                                    <span>💳 To'lov Turlari Boshqaruvi</span>
+                                </div>
+                                <div class="settings-card-subtitle">
+                                    Sotuv va kassa oynalarida chiqadigan to'lov usullarini yoqish, o'chirish yoki yangi to'lov turini qo'shish
+                                </div>
+                            </div>
+                            <button class="btn-primary-action" onclick="openNewMethodModal()">
+                                ➕ Yangi To'lov Turi
+                            </button>
+                        </div>
+
+                        <div id="paymentMethodsList">
+                            <div style="padding:20px; text-align:center; color:var(--text-light);">Yuklanmoqda...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== MODALLAR ===== -->
+
+    <!-- 1. Qoldiqni Korrektirovka Qilish Modali -->
+    <div id="adjustmentModal" class="modal">
+        <div class="modal-content" style="max-width: 460px;">
+            <div class="modal-header">
+                <h2>✏️ Qoldiqni Korrektirovka Qilish</h2>
+                <button class="close-btn" onclick="closeAdjustmentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="adjustmentForm" onsubmit="handleAdjustmentSubmit(event)">
+                    <input type="hidden" id="adjAccountId">
+                    <div style="background:#f8fafc; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+                        <div style="font-size:12px; color:var(--text-light);">Tanlangan hisob:</div>
+                        <strong id="adjAccountName" style="font-size:15px; color:var(--primary);">—</strong>
+                        <div style="font-size:12px; color:var(--text-light); margin-top:4px;">
+                            Valyutasi: <strong id="adjAccountCurrency">UZS</strong>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adjNewBalance" id="adjBalanceLabel">Yangi haqiqiy qoldiq *</label>
+                        <input type="text" inputmode="numeric" id="adjNewBalance" class="form-control format-number" placeholder="0" required style="font-size:18px; font-weight:700;">
+                        <small style="color:var(--text-light);">Ushbu summa hisobning yangi rasmiy qoldig'i sifatida o'rnatiladi.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adjReason">Korrektirovka sababi / Izoh</label>
+                        <input type="text" id="adjReason" class="form-control" placeholder="Masalan: Kassa sanash, Inventarizatsiya yoki Boshlang'ich qoldiq">
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                        <button type="button" class="btn-print" onclick="closeAdjustmentModal()">Bekor qilish</button>
+                        <button type="submit" id="saveAdjBtn" class="btn-primary-action">
+                            💾 Balansni Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Yangi To'lov Turi Qo'shish / Tahrirlash Modali -->
+    <div id="methodModal" class="modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2 id="methodModalTitle">➕ Yangi To'lov Turi</h2>
+                <button class="close-btn" onclick="closeMethodModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="methodForm" onsubmit="handleMethodSubmit(event)">
+                    <input type="hidden" id="editMethodId">
+
+                    <div class="form-group">
+                        <label for="methodNameInput">To'lov turi nomi *</label>
+                        <input type="text" id="methodNameInput" class="form-control" placeholder="Masalan: Terminal Uzcard, Dollar Naqd, Payme..." required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="methodCurrencySelect">Valyuta *</label>
+                        <select id="methodCurrencySelect" class="form-control" onchange="toggleMethodCurrencyFields()">
+                            <option value="UZS">So'm (UZS)</option>
+                            <option value="USD">Dollar (USD)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="methodRateGroup" style="display:none;">
+                        <label for="methodRateInput">Standart hisob kursi (so'mda)</label>
+                        <input type="text" inputmode="decimal" id="methodRateInput" class="form-control format-number" placeholder="12 800">
+                        <small style="color:var(--text-light);">Sotuv paytida har bir to'lovda kelishilgan kursni o'zgartirishingiz mumkin.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Biriktiriladigan Hisob Raqamlar</label>
+                        <div id="methodAccountsCheckboxes" style="display:flex; flex-direction:column; gap:8px; max-height:160px; overflow-y:auto; border:1px solid var(--border); padding:10px; border-radius:8px;">
+                            <!-- Dinamik to'ldiriladi -->
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="methodDescInput">Tavsif / Izoh</label>
+                        <input type="text" id="methodDescInput" class="form-control" placeholder="Qisqacha tavsif...">
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                        <button type="button" class="btn-print" onclick="closeMethodModal()">Bekor qilish</button>
+                        <button type="submit" id="saveMethodBtn" class="btn-primary-action">
+                            💾 Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

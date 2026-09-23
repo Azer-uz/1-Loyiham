@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Dizayn Variantlari: A, B, C</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: rgba(18, 26, 43, 0.85);
+      --border: rgba(255, 255, 255, 0.1);
+      --primary: #00f2fe;
+      --secondary: #4facfe;
+      --accent: #a855f7;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: radial-gradient(circle at 50% 0%, #152238 0%, #090d16 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      min-height: 100vh;
+      padding: 30px 20px 80px;
+    }
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 242, 254, 0.12);
+      border: 1px solid rgba(0, 242, 254, 0.35);
+      color: #00f2fe;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 650px;
+      margin: 0 auto;
+    }
+    .nav-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+      border-color: rgba(0, 242, 254, 0.6);
+      color: #fff;
+      box-shadow: 0 0 25px rgba(0, 242, 254, 0.25);
+    }
+    .variant-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(20px);
+      margin-bottom: 40px;
+      transition: opacity 0.3s ease;
+    }
+    .card-header {
+      padding: 24px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .card-title-group h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .card-title-group span {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .tag-badge {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .tag-recommended {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+    .tag-fintech {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #60a5fa;
+    }
+    .tag-bento {
+      background: rgba(168, 85, 247, 0.15);
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      color: #c084fc;
+    }
+    .image-preview-wrapper {
+      position: relative;
+      background: #05070c;
+      padding: 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+    .image-preview-wrapper img {
+      width: 100%;
+      max-width: 1200px;
+      height: auto;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+      display: block;
+      margin: 0 auto;
+      cursor: zoom-in;
+      transition: transform 0.2s ease;
+    }
+    .image-preview-wrapper img:hover {
+      transform: scale(1.005);
+    }
+    .card-body {
+      padding: 28px 30px;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 30px;
+    }
+    @media (max-width: 860px) {
+      .card-body {
+        grid-template-columns: 1fr;
+      }
+    }
+    .feature-list h3, .pros-list h3 {
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--primary);
+      margin-bottom: 16px;
+    }
+    .feature-list ul, .pros-list ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .feature-list li, .pros-list li {
+      font-size: 14px;
+      color: #cbd5e1;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.5;
+    }
+    .feature-list li span.icon {
+      color: #00f2fe;
+    }
+    .pros-list li span.icon {
+      color: #34d399;
+    }
+    .fullscreen-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.92);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      cursor: zoom-out;
+    }
+    .fullscreen-modal img {
+      max-width: 96%;
+      max-height: 96vh;
+      border-radius: 10px;
+      box-shadow: 0 0 50px rgba(0, 242, 254, 0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header">
+      <div class="badge">🎨 DASHBOARD DESIGN CONCEPTS</div>
+      <h1>Dashboard Uchun 3 Ta Dizayn Varianti</h1>
+      <p class="subtitle">Siz so'ragan barcha ko'rsatkichlar (Kassa, Sotuv, To'lov, Qarz, Top 20 Qarzdorlar, Kirim/Chiqim, Ombor) bo'yicha tayyorlangan vizual namunalar.</p>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="showVariant('variant-a-updated', this)">
+        ✨ Variant A (Yangilangan: Trend Diagramma Bilan)
+      </button>
+      <button class="tab-btn" onclick="showVariant('variant-a', this)">
+        🌟 Variant A (Boshlang'ich)
+      </button>
+      <button class="tab-btn" onclick="showVariant('variant-b', this)">
+        🚀 Variant B
+      </button>
+      <button class="tab-btn" onclick="showVariant('variant-c', this)">
+        💎 Variant C
+      </button>
+      <button class="tab-btn" onclick="showAllVariants(this)">
+        📑 Barchasini yonma-yon ko'rish
+      </button>
+    </div>
+
+    <!-- VARIANT A UPDATED WITH CHART -->
+    <div id="variant-a-updated" class="variant-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>✨ Variant A: Executive Glassmorphism + Sotuvlar Trend Diagrammasi</h2>
+          <span>Haftalik, oylik, yillik va kalendar sana filtrlari bilan ta'minlangan kreativ dual-chiziqli sotuv diagrammasi</span>
+        </div>
+        <div class="tag-badge tag-recommended">🔥 SIZNING TANLOVINGIZ + DIAGRAMMA</div>
+      </div>
+      <div class="image-preview-wrapper">
+        <img src="img/variant_a_chart.jpg" alt="Variant A with Chart Preview" onclick="openModal(this.src)">
+      </div>
+      <div class="card-body">
+        <div class="feature-list">
+          <h3>Yangi Qo'shilgan & Kuchaytirilgan Qismlar:</h3>
+          <ul>
+            <li><span class="icon">📈</span> <b>Kreativ Sotuvlar Grafik Vidjeti:</b> Ikki qatlamli neon gradiyent chiziq (Tushum va Undirish nisbati), o'sish foizi (+18.4%) va yorqin ma'lumot nuqtalari.</li>
+            <li><span class="icon">🗓️</span> <b>Tezkor & Moslashuvchan Filtrlar:</b> `Bugun`, `7 Kun (Haftalik)`, `30 Kun (Oylik)`, `1 Yil (Yillik)` tugmalari va maxsus ixtiyoriy oraliq uchun `Custom Date Picker` (Kalendar).</li>
+            <li><span class="icon">💎</span> <b>Hashamatli Kassa Karti:</b> 1-rasmga 100% mos (max-width: 440px), neon `Active Balance`, `SEE BREAKDOWN ➔` tugmasi va tezkor ochiladigan yon panel (Drawer).</li>
+            <li><span class="icon">👥</span> <b>Top 20 Qarzdorlar:</b> Mijoz surati, ismi, qarzi va tezkor to'lov/eslatma tugmalari.</li>
+            <li><span class="icon">🏬</span> <b>Ombor Tahlili:</b> Kategoriyalar bo'yicha donut diagrammasi va tovarlar to'ldirilganlik ko'rsatkichlari.</li>
+          </ul>
+        </div>
+        <div class="pros-list">
+          <h3>Bajariladigan Vazifalar bilan 100% Muvozanat:</h3>
+          <ul>
+            <li><span class="icon">✓</span> Navbar to'liq tozalangan va ixchamlashgan</li>
+            <li><span class="icon">✓</span> Sozlamalar faqat profil dropdownida qoladi</li>
+            <li><span class="icon">✓</span> Kassa va Balans 0.05 soniyada chaqmoqdek tez yuklanadi</li>
+            <li><span class="icon">✓</span> Sotuvlar sahifasi muammosi to'liq bartaraf etiladi</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- VARIANT A -->
+    <div id="variant-a" class="variant-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>🌟 Variant A: Executive Glassmorphism & Smart Grid</h2>
+          <span>Revolut / Stripe uslubidagi qora hashamatli shisha, neon yoritishlar va muvozanatli tartib</span>
+        </div>
+        <div class="tag-badge tag-recommended">⭐ TAVSIYA ETILADI</div>
+      </div>
+      <div class="image-preview-wrapper">
+        <img src="img/variant_a.jpg" alt="Variant A Preview" onclick="openModal(this.src)">
+      </div>
+      <div class="card-body">
+        <div class="feature-list">
+          <h3>Struktura va Bo'limlar:</h3>
+          <ul>
+            <li><span class="icon">🔹</span> <b>Hero Row:</b> Chap tomonda 1-rasmdagi ixcham Kassa kartasi (Total Balance, Active Balance va SEE BREAKDOWN ➔), o'rtada 4 ta metrika (Sotuv, To'langan, Qarz, Xarajat), o'ngda Ombor xulosasi.</li>
+            <li><span class="icon">🔹</span> <b>Markaziy Blok:</b> Chapda (60%) Top 20 Qarzdorlar ro'yxati (Avatar, qarzdorlik summasi va Actions tugmasi), o'ngda (40%) Ombor tovarlarining toifalar bo'yicha doiraviy (donut) tahlili.</li>
+            <li><span class="icon">🔹</span> <b>Pastki Blok:</b> Katta Kirimlar va Katta Chiqimlarning alohida aniq ko'rsatkichlari.</li>
+          </ul>
+        </div>
+        <div class="pros-list">
+          <h3>Asosiy Afzalliklari:</h3>
+          <ul>
+            <li><span class="icon">✓</span> 1-rasmdagi kassa qoldig'i dizayniga 100% monand</li>
+            <li><span class="icon">✓</span> Ekranni ortiqcha yuklamaydi, ko'zga juda yoqimli va boy ko'rinadi</li>
+            <li><span class="icon">✓</span> Qarzdorlar va Ombor ma'lumotlari darhol ko'zga tashlanadi</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- VARIANT B -->
+    <div id="variant-b" class="variant-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>🚀 Variant B: FinTech Operations Center</h2>
+          <span>Bloomberg va Trading terminal uslubida zich, jonli oqimli operatsion boshqaruv</span>
+        </div>
+        <div class="tag-badge tag-fintech">REAL-TIME DATA DENSITY</div>
+      </div>
+      <div class="image-preview-wrapper">
+        <img src="img/variant_b.jpg" alt="Variant B Preview" onclick="openModal(this.src)">
+      </div>
+      <div class="card-body">
+        <div class="feature-list">
+          <h3>Struktura va Bo'limlar:</h3>
+          <ul>
+            <li><span class="icon">🔹</span> <b>Yuqori qator:</b> Kassa qoldig'i va Net Cash Flow (Sof pul oqimining so'nggi 24 soatlik jonli grafik chizig'i).</li>
+            <li><span class="icon">🔹</span> <b>3 ta Ustun:</b> 1-ustun: Sotuvlar va to'lovlar tahlili; 2-ustun: Katta kirim va chiqimlarning jonli oqim lentasi (Yashil/Qizil); 3-ustun: Ombor qoldiqlari.</li>
+            <li><span class="icon">🔹</span> <b>Pastki Qism:</b> Top 20 Qarzdorlar to'liq jadvali (35, 60, 90+ kunlik kechikish teglari va eslatma yuborish tugmalari bilan).</li>
+          </ul>
+        </div>
+        <div class="pros-list">
+          <h3>Asosiy Afzalliklari:</h3>
+          <ul>
+            <li><span class="icon">✓</span> Har bir operatsiya va pul oqimi doimiy ko'z o'ngingizda</li>
+            <li><span class="icon">✓</span> Qarzdorlik muddati bo'yicha tahlil qilish juda oson</li>
+            <li><span class="icon">✓</span> Zich ma'lumot qidirayotgan moliya rahbarlari uchun ideal</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- VARIANT C -->
+    <div id="variant-c" class="variant-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>💎 Variant C: Modular Analytics Bento-Grid</h2>
+          <span>Apple Bento-Box uslubi — har bir ko'rsatkich yumaloq burchakli mustaqil zamonaviy plitka ichida</span>
+        </div>
+        <div class="tag-badge tag-bento">APPLE BENTO STYLE</div>
+      </div>
+      <div class="image-preview-wrapper">
+        <img src="img/variant_c.jpg" alt="Variant C Preview" onclick="openModal(this.src)">
+      </div>
+      <div class="card-body">
+        <div class="feature-list">
+          <h3>Struktura va Bo'limlar:</h3>
+          <ul>
+            <li><span class="icon">🔹</span> <b>Bento 1:</b> Katta Hashamatli Kassa kartasi (SEE BREAKDOWN ➔ tugmasi bilan).</li>
+            <li><span class="icon">🔹</span> <b>Bento 2 & 3:</b> Sotuv va Valyuta taqsimoti (Apple faollik halqalari) hamda Ombor tovarlar darajasi.</li>
+            <li><span class="icon">🔹</span> <b>Bento 4, 5 & 6:</b> Top Qarzdorlar reytingi va yonida Katta Kirimlar (yashil shisha) va Katta Chiqimlar (qizil shisha) bloklari.</li>
+          </ul>
+        </div>
+        <div class="pros-list">
+          <h3>Asosiy Afzalliklari:</h3>
+          <ul>
+            <li><span class="icon">✓</span> Zamonaviy interfeys trendi (Apple / Raycast uslubi)</li>
+            <li><span class="icon">✓</span> Modulli arxitektura — istalgan blokni osongina kengaytirish mumkin</li>
+            <li><span class="icon">✓</span> Juda nafis va yengil idrok qilinadi</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Fullscreen Zoom Modal -->
+  <div id="imageModal" class="fullscreen-modal" onclick="this.style.display='none'">
+    <img id="modalImg" src="" alt="Zoomed preview">
+  </div>
+
+  <script>
+    function showVariant(variantId, btn) {
+      document.querySelectorAll('.variant-card').forEach(card => {
+        card.style.display = 'none';
+      });
+      document.getElementById(variantId).style.display = 'block';
+
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function showAllVariants(btn) {
+      document.querySelectorAll('.variant-card').forEach(card => {
+        card.style.display = 'block';
+      });
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function openModal(src) {
+      const modal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('modalImg');
+      modalImg.src = src;
+      modal.style.display = 'flex';
+    }
+
+    // Default: show variant-a-updated initially
+    showVariant('variant-a-updated', document.querySelector('.tab-btn.active'));
+  </script>
+</body>
+</html>

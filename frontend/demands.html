@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sotuvlar - Azer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Saralanadigan ustunlar */
+        .demands-sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        .demands-sortable:hover {
+            background: #1a3a6e !important;
+        }
+        .demands-sortable.sorted-asc,
+        .demands-sortable.sorted-desc {
+            background: var(--accent) !important;
+        }
+        .sort-arrow {
+            margin-left: 4px;
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        .demands-sortable.sorted-asc .sort-arrow,
+        .demands-sortable.sorted-desc .sort-arrow {
+            opacity: 1;
+        }
+
+        /* ================= DEMAND EDIT MODAL (VARIANT 1) ================= */
+        .demand-edit-modal-wide {
+            max-width: 1140px;
+            width: 96vw;
+            max-height: 94vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Yuqori boshqaruv paneli (Mijoz + Balans + Status + Saqlash) */
+        .demand-edit-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .agent-info-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .agent-name-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: rgba(3, 105, 161, 0.08);
+            border: 1px solid rgba(3, 105, 161, 0.25);
+            border-radius: 6px;
+            transition: all 0.15s ease;
+        }
+        .agent-name-link:hover {
+            background: rgba(3, 105, 161, 0.16);
+            text-decoration: underline;
+        }
+        .customer-balance-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .customer-balance-badge.debt {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        .customer-balance-badge.credit {
+            background: #f0fdf4;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+        .customer-balance-badge.zero {
+            background: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+        }
+        .customer-balance-badge .badge-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            opacity: 0.85;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .topbar-status-box {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .topbar-status-box label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-light);
+            white-space: nowrap;
+        }
+        .status-select-modern {
+            min-width: 175px;
+            padding: 7px 12px;
+            border-radius: 6px;
+            border: 1.5px solid #cbd5e1;
+            background: #ffffff;
+            color: #0f172a;
+            font-weight: 600;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .status-select-modern:focus {
+            border-color: var(--primary);
+        }
+        .btn-save-demand {
+            background: var(--success, #16a34a);
+            color: #ffffff;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 5px rgba(22, 163, 74, 0.25);
+            transition: all 0.15s ease;
+        }
+        .btn-save-demand:hover {
+            background: #15803d;
+            transform: translateY(-1px);
+        }
+
+        /* Asosiy 2 ustunli Grid */
+        .demand-edit-grid {
+            display: grid;
+            grid-template-columns: 1.45fr 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+        .demand-edit-left,
+        .demand-edit-right {
+            min-width: 0;
+        }
+        @media (max-width: 900px) {
+            .demand-edit-grid {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+        }
+
+        /* Chap ustun: Tovarlar kartasi */
+        .positions-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .positions-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+        .positions-count-badge {
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(3, 105, 161, 0.1);
+            color: var(--primary);
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .positions-table-wrapper {
+            max-height: 480px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--card);
+        }
+        .add-position-panel {
+            background: #f0f7ff;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #bae6fd;
+        }
+        .assortment-search-input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            background: #ffffff;
+        }
+        .assortment-search-results {
+            max-height: 180px;
+            overflow-y: auto;
+            margin-top: 6px;
+        }
+
+        /* O'ng ustun: Moliya va To'lovlar */
+        .demand-summary-box {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .summary-stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+        .stat-col {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .stat-col.align-right {
+            text-align: right;
+            align-items: flex-end;
+        }
+        .stat-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-light);
+            text-transform: uppercase;
+        }
+        .stat-val {
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--text);
+        }
+        .stat-sub-paid {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--success);
+        }
+        .discount-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #ffffff;
+            border: 1.5px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+        .discount-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .discount-controls-spacious {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .discount-toggle-group {
+            display: inline-flex;
+            background: #f1f5f9;
+            border-radius: 6px;
+            padding: 3px;
+            border: 1px solid #cbd5e1;
+        }
+        .discount-toggle-btn {
+            border: none;
+            background: transparent;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #64748b;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .discount-toggle-btn.active {
+            background: var(--primary);
+            color: #ffffff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        .discount-input-spacious {
+            flex: 1;
+            max-width: 220px;
+            padding: 7px 12px;
+            font-size: 15px;
+            font-weight: 700;
+            text-align: center;
+            border: 1.5px solid var(--accent);
+            border-radius: 6px;
+            background: #ffffff;
+            color: var(--text);
+            outline: none;
+        }
+        .discount-input-spacious:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.15);
+        }
+
+        /* To'lov qabul qilish qutisi */
+        .payment-widget-box {
+            background: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .payment-widget-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+        }
+        .payment-widget-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .settings-mini-link {
+            font-size: 11px;
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .settings-mini-link:hover {
+            text-decoration: underline;
+        }
+        .pay-inputs-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .pay-input-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .pay-input-field label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+        .pay-input-field input, .pay-input-field select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 9px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            background: var(--card);
+        }
+        .usd-pay-box {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 6px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .usd-pay-header {
+            font-size: 11px;
+            font-weight: 700;
+            color: #15803d;
+        }
+        .usd-pay-box label {
+            color: #15803d !important;
+        }
+        .usd-pay-box input {
+            border-color: #86efac !important;
+            color: #15803d !important;
+        }
+        .usd-inputs-grid {
+            display: grid;
+            grid-template-columns: 0.85fr 75px 1.8fr;
+            gap: 6px;
+            align-items: center;
+        }
+        .compact-usd-badge {
+            padding: 5px 6px;
+            background: var(--card);
+            border: 1px solid #86efac;
+            border-radius: 6px;
+            font-weight: 700;
+            color: #15803d;
+            font-size: 12px;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 32px;
+            box-sizing: border-box;
+        }
+        .btn-full-payment {
+            background: #e0f2fe;
+            color: #0284c7;
+            border: 1.5px solid #7dd3fc;
+            border-radius: 6px;
+            padding: 5px 9px;
+            font-size: 11.5px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 32px;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+        }
+        .btn-full-payment:hover {
+            background: #bae6fd;
+            color: #0369a1;
+            border-color: #38bdf8;
+            transform: translateY(-1px);
+        }
+        .pay-calculation-bar {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 8px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            font-size: 12px;
+        }
+        .calc-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Bog'langan to'lovlar */
+        .linked-payments-card {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .linked-payments-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .linked-payments-title {
+            font-weight: 700;
+            color: #15803d;
+            font-size: 12px;
+        }
+        .linked-payments-total {
+            color: #15803d;
+            font-size: 13px;
+        }
+        .linked-payments-list {
+            max-height: 160px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        /* ================= DARK MODE OVERRIDES ================= */
+        body.dark-mode .demand-edit-modal-wide {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .demand-edit-modal-wide .modal-header {
+            background: #0f172a !important;
+            border-bottom-color: #1e293b !important;
+        }
+        body.dark-mode .demand-edit-modal-wide .modal-header h2 {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .demand-edit-topbar {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .agent-name-link {
+            background: rgba(56, 189, 248, 0.15) !important;
+            border-color: rgba(56, 189, 248, 0.3) !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .customer-balance-badge.debt {
+            background: rgba(239, 68, 68, 0.2) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+            color: #f87171 !important;
+        }
+        body.dark-mode .customer-balance-badge.credit {
+            background: rgba(16, 185, 129, 0.2) !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #34d399 !important;
+        }
+        body.dark-mode .customer-balance-badge.zero {
+            background: #334155 !important;
+            color: #94a3b8 !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .status-select-modern {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .positions-card {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .positions-card-header {
+            border-bottom-color: #334155 !important;
+        }
+        body.dark-mode .positions-count-badge {
+            background: rgba(56, 189, 248, 0.15) !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .positions-table-wrapper {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .add-position-panel {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .assortment-search-input {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .demand-summary-box {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .summary-stat-row {
+            border-bottom-color: #334155 !important;
+        }
+        body.dark-mode .stat-val {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .payment-widget-box {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .payment-widget-header {
+            border-bottom-color: #334155 !important;
+        }
+        body.dark-mode .payment-widget-title {
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .pay-input-field label {
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode .pay-input-field input, body.dark-mode .pay-input-field select {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .usd-pay-box {
+            background: rgba(16, 185, 129, 0.1) !important;
+            border-color: rgba(16, 185, 129, 0.3) !important;
+        }
+        body.dark-mode .usd-pay-header, body.dark-mode .usd-pay-box label {
+            color: #4ade80 !important;
+        }
+        body.dark-mode .usd-pay-box input {
+            background: #0f172a !important;
+            color: #4ade80 !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+        }
+        body.dark-mode .compact-usd-badge {
+            background: #0f172a !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #4ade80 !important;
+        }
+        body.dark-mode .pay-calculation-bar {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .calc-item span {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .calc-item strong {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .linked-payments-card {
+            background: rgba(16, 185, 129, 0.12) !important;
+            border-color: rgba(16, 185, 129, 0.3) !important;
+        }
+        body.dark-mode .linked-payments-title, body.dark-mode .linked-payments-total {
+            color: #34d399 !important;
+        }
+        body.dark-mode .edit-positions-table th {
+            background: #1e293b !important;
+            color: #cbd5e1 !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .edit-positions-table td {
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .edit-positions-table input {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .paid-color {
+            color: #34d399 !important;
+        }
+        body.dark-mode .debt-color {
+            color: #f87171 !important;
+        }
+        body.dark-mode .btn-full-payment {
+            background: rgba(2, 132, 199, 0.25) !important;
+            color: #38bdf8 !important;
+            border-color: rgba(56, 189, 248, 0.45) !important;
+        }
+        body.dark-mode .btn-full-payment:hover {
+            background: rgba(2, 132, 199, 0.45) !important;
+            color: #7dd3fc !important;
+            border-color: #38bdf8 !important;
+        }
+        body.dark-mode .select-modern-account {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }
+        body.dark-mode .discount-widget {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .discount-toggle-group {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .discount-toggle-btn {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .discount-toggle-btn.active {
+            background: #0284c7 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .discount-input-spacious,
+        body.dark-mode #editDiscount {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #0284c7 !important;
+        }
+        body.dark-mode .discount-calc-badge {
+            background: rgba(56, 189, 248, 0.15) !important;
+            color: #38bdf8 !important;
+            border-color: rgba(56, 189, 248, 0.3) !important;
+        }
+
+        /* Tovar qo'shish va Saqlash tugmalari (Kechki rejim) */
+        body.dark-mode .btn-save-demand {
+            background: #15803d !important;
+            color: #ffffff !important;
+            border: 1px solid #22c55e !important;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.35) !important;
+        }
+        body.dark-mode .btn-save-demand:hover {
+            background: #16a34a !important;
+            border-color: #4ade80 !important;
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.5) !important;
+        }
+        body.dark-mode .btn-add-pos {
+            background: rgba(3, 105, 161, 0.25) !important;
+            color: #38bdf8 !important;
+            border: 1px solid rgba(56, 189, 248, 0.45) !important;
+        }
+        body.dark-mode .btn-add-pos:hover {
+            background: rgba(3, 105, 161, 0.45) !important;
+            color: #7dd3fc !important;
+            border-color: #38bdf8 !important;
+        }
+        body.dark-mode .delete-pos-btn {
+            background: rgba(239, 68, 68, 0.15) !important;
+            border: 1px solid rgba(239, 68, 68, 0.35) !important;
+            color: #f87171 !important;
+        }
+        body.dark-mode .delete-pos-btn:hover {
+            background: #ef4444 !important;
+            color: #ffffff !important;
+            border-color: #ef4444 !important;
+        }
+
+        /* Bekor qilish / Yopish tugmalari */
+        body.dark-mode .btn-cancel {
+            background: #334155 !important;
+            color: #e2e8f0 !important;
+            border: 1px solid #475569 !important;
+        }
+        body.dark-mode .btn-cancel:hover {
+            background: #475569 !important;
+            color: #ffffff !important;
+        }
+
+        /* Sahifalash (Pagination) tugmalari */
+        body.dark-mode .page-btn {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }
+        body.dark-mode .page-btn:hover {
+            background: #334155 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .page-btn.active {
+            background: #0284c7 !important;
+            border-color: #38bdf8 !important;
+            color: #ffffff !important;
+        }
+
+        /* Tovar qidiruv natijalari */
+        body.dark-mode .search-result-item {
+            border-bottom-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .search-result-item:hover {
+            background: #334155 !important;
+        }
+
+        /* Jadvaldagi amallar tugmalari */
+        .action-btn-quick-status {
+            background: #f3e8ff;
+            border: 1px solid #d8b4fe;
+            color: #7e22ce;
+        }
+        .action-btn-quick-status:hover {
+            background: #e9d5ff;
+        }
+        .action-btn-print {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #15803d;
+        }
+        .action-btn-print:hover {
+            background: #dcfce7;
+        }
+        body.dark-mode .action-btn.edit-btn {
+            background: #15803d !important;
+            border: 1px solid #22c55e !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .action-btn.edit-btn:hover {
+            background: #16a34a !important;
+        }
+        body.dark-mode .action-btn-quick-status {
+            background: rgba(126, 34, 206, 0.25) !important;
+            border-color: rgba(168, 85, 247, 0.4) !important;
+            color: #c084fc !important;
+        }
+        body.dark-mode .action-btn-quick-status:hover {
+            background: rgba(126, 34, 206, 0.45) !important;
+            color: #e9d5ff !important;
+        }
+        body.dark-mode .action-btn-print {
+            background: rgba(21, 128, 61, 0.25) !important;
+            border-color: rgba(34, 197, 94, 0.4) !important;
+            color: #4ade80 !important;
+        }
+        body.dark-mode .action-btn-print:hover {
+            background: rgba(21, 128, 61, 0.45) !important;
+            color: #86efac !important;
+        }
+
+        /* Sotuv to'lov holati nishonlari (To'langan, Qisman, To'lanmagan) */
+        .payment-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 700;
+            white-space: nowrap;
+            border: 1px solid transparent;
+            line-height: 1.3;
+        }
+        .payment-paid,
+        .payment-badge.payment-paid {
+            background: #ecfdf5;
+            color: #15803d;
+            border-color: #a7f3d0;
+        }
+        .payment-partial,
+        .payment-badge.payment-partial {
+            background: #fffbeb;
+            color: #b45309;
+            border-color: #fde68a;
+        }
+        .payment-unpaid,
+        .payment-badge.payment-unpaid {
+            background: #fef2f2;
+            color: #b91c1c;
+            border-color: #fecaca;
+        }
+
+        /* Kechki rejim (Dark Mode) */
+        body.dark-mode .payment-badge {
+            font-weight: 700;
+        }
+        body.dark-mode .payment-paid,
+        body.dark-mode .payment-badge.payment-paid {
+            background: rgba(16, 185, 129, 0.18) !important;
+            color: #34d399 !important;
+            border: 1px solid rgba(52, 211, 153, 0.35) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        body.dark-mode .payment-partial,
+        body.dark-mode .payment-badge.payment-partial {
+            background: rgba(245, 158, 11, 0.18) !important;
+            color: #fbbf24 !important;
+            border: 1px solid rgba(251, 191, 36, 0.35) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        body.dark-mode .payment-unpaid,
+        body.dark-mode .payment-badge.payment-unpaid {
+            background: rgba(239, 68, 68, 0.18) !important;
+            color: #f87171 !important;
+            border: 1px solid rgba(248, 113, 113, 0.35) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+        <!-- Top Modern Navbar (Variant 7) -->
+    <header class="app-navbar">
+        <div class="app-navbar-inner">
+            <div class="navbar-brand-group">
+                <a href="/" class="brand-link">
+                    <div class="brand-icon-box">📦</div>
+                    <span class="brand-title">Azer</span>
+                </a>
+                <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item active">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="navbar-right-group">
+                <div class="nav-search-bar">
+                    <span style="color:var(--text-muted);font-size:13px;">🔍</span>
+                    <input type="text" placeholder="Qidiruv..." id="globalSearch">
+                </div>
+                <button class="nav-icon-circle-btn" title="Bildirishnomalar">🔔</button>
+                <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Day/Night Mode">🌙</button>
+                <button class="nav-sync-pill" onclick="triggerSyncNow()" title="MoySklad bilan sinxronlash">
+                    🔄 Sinxronlash
+                </button>
+                <div class="nav-user-dropdown-wrapper" id="navUserDropdownWrapper">
+                    <button class="nav-user-pill-btn" onclick="toggleUserDropdown(event)" id="navUserPillBtn" title="Admin Profili">
+                        <div class="user-avatar-circle">👤</div>
+                        <div class="user-info-text-box">
+                            <span class="user-name-text" id="currentUserLabel">Admin</span>
+                            <span class="user-role-badge">Administrator</span>
+                        </div>
+                        <span class="dropdown-chevron">▼</span>
+                    </button>
+                    <div class="nav-user-dropdown-menu" id="navUserDropdownMenu">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-avatar-large" id="dropdownAvatarLarge">👤</div>
+                            <div class="dropdown-user-meta">
+                                <div class="dropdown-name" id="dropdownUserName">Admin</div>
+                                <div class="dropdown-email" id="dropdownUserLogin">admin@azer</div>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openUserProfileModal()">
+                            <span>👤</span>
+                            <span>Profil & Avatar sozlash</span>
+                        </button>
+                        <a href="/settings" class="dropdown-item">
+                            <span>⚙️</span>
+                            <span>Tizim sozlamalari</span>
+                        </a>
+                        <a href="/docs" class="dropdown-item">
+                            <span>📖</span>
+                            <span>Foydalanish qo'llanmasi</span>
+                        </a>
+                        <button class="dropdown-item" onclick="triggerSyncNow()">
+                            <span>🔄</span>
+                            <span>MoySklad bilan sinxronlash</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <span>🚪</span>
+                            <span>Tizimdan chiqish</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="app-layout">
+        <main class="main-content">
+            <div class="v7-greeting-bar">
+                <div class="v7-greeting-text-group"><span id="currentDate" style="display:none;"></span><span id="orgName" style="display:none;"></span>
+                    <h1 class="v7-greeting-title">Sotuvlar Ro'yxati</h1>
+                    <span class="v7-greeting-subtitle">Barcha sotuv hujjatlari va kassa cheklari</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <button class="v7-btn-new-order btn-receipt-settings-top" onclick="openReceiptSettingsModal()">
+                        ⚙️ Chek sozlamalari
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filtr paneli (MoySklad Davr Navigatsiyasi) -->
+            <div class="filter-panel" style="padding: 12px 16px; margin-bottom: 14px;">
+                <!-- 1-qator: Davr tugmalari + MoySklad ◀ Oy ▶ navigatsiyasi + Aniq sanalar + Chop etish -->
+                <div class="date-navigator-strip">
+                    <div class="period-nav-group">
+                        <div class="quick-dates">
+                            <button class="quick-btn active" data-period="today" onclick="selectPeriod('today')">Bugun</button>
+                            <button class="quick-btn" data-period="yesterday" onclick="selectPeriod('yesterday')">Kecha</button>
+                            <button class="quick-btn" data-period="week" onclick="selectPeriod('week')">Hafta</button>
+                            <button class="quick-btn" data-period="month" onclick="selectPeriod('month')">Oy</button>
+                            <button class="quick-btn" data-period="all" onclick="selectPeriod('all')">Hammasi</button>
+                        </div>
+
+                        <!-- ◀ Sentabr 2026 ▶ -->
+                        <div class="period-navigator" id="periodNavigator">
+                            <button class="nav-arrow-btn" onclick="navigatePeriod(-1)" title="Oldingi davr">◀</button>
+                            <span class="nav-period-label" id="periodDisplayLabel">Sentabr 2026</span>
+                            <button class="nav-arrow-btn" onclick="navigatePeriod(1)" title="Keyingi davr">▶</button>
+                        </div>
+
+                        <!-- Aniq sanalar (ko'rinib turadi) -->
+                        <div class="date-inputs-compact">
+                            <input type="date" id="dateFrom" title="Boshlanish sanasi">
+                            <span style="color:var(--text-light);font-size:12px;">—</span>
+                            <input type="date" id="dateTo" title="Tugash sanasi">
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:8px;">
+                        <div class="print-dropdown-wrapper">
+                            <button class="btn-print" onclick="togglePrintDropdown(this)">
+                                📝 Chop etish ▼
+                            </button>
+                            <div class="print-dropdown-menu" id="demandsPrintDropdown">
+                                <button onclick="printDemandsList('a4')">📄 A4 format</button>
+                                <button onclick="printDemandsList('a5')">📃 A5 format (kichik)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2-qator: Status bo'yicha tezkor filtrlar + Qidiruv -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div class="status-filter-wrapper" style="flex: 1; min-width: 280px; padding: 0;">
+                        <div class="status-filter-scroll">
+                            <button class="status-filter-pill active" data-status="all" onclick="selectStateFilter('all')">
+                                <span class="pill-dot" style="background:#6366f1;"></span> Barchasi
+                            </button>
+                            <button class="status-filter-pill" data-status="Договорились" onclick="selectStateFilter('Договорились')">
+                                <span class="pill-dot" style="background:#3b82f6;"></span> 🤝 Kelishildi
+                            </button>
+                            <button class="status-filter-pill" data-status="Собран" onclick="selectStateFilter('Собран')">
+                                <span class="pill-dot" style="background:#f59e0b;"></span> 📦 Yig'ildi
+                            </button>
+                            <button class="status-filter-pill" data-status="В пути" onclick="selectStateFilter('В пути')">
+                                <span class="pill-dot" style="background:#8b5cf6;"></span> 🚛 Yo'lda
+                            </button>
+                            <button class="status-filter-pill" data-status="В магазине" onclick="selectStateFilter('В магазине')">
+                                <span class="pill-dot" style="background:#06b6d4;"></span> 🏬 Magazinda
+                            </button>
+                            <button class="status-filter-pill" data-status="Закрыт" onclick="selectStateFilter('Закрыт')">
+                                <span class="pill-dot" style="background:#10b981;"></span> 🔒 Yopildi
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="width: 260px; min-width: 200px;">
+                        <input type="text" id="searchInput" class="filter-input" style="width: 100%; padding: 7px 12px; font-size: 13px;" placeholder="🔍 Mijoz yoki raqam bo'yicha qidirish...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="results-info">
+                <span id="resultsCount">Yuklanmoqda...</span>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th class="demands-sortable" id="dth-name" onclick="sortDemandsBy('name')">
+                                Sotuv № <span class="sort-arrow">↕</span>
+                            </th>
+                            <th class="hide-mobile demands-sortable" id="dth-moment" onclick="sortDemandsBy('moment')">
+                                Sana <span class="sort-arrow">↕</span>
+                            </th>
+                            <th class="demands-sortable" id="dth-agent_name" onclick="sortDemandsBy('agent_name')">
+                                Mijoz <span class="sort-arrow">↕</span>
+                            </th>
+                            <th class="demands-sortable" id="dth-sum" onclick="sortDemandsBy('sum')">
+                                Summa <span class="sort-arrow">↕</span>
+                            </th>
+                            <th class="hide-mobile demands-sortable" id="dth-remaining" onclick="sortDemandsBy('remaining')">
+                                Qarz <span class="sort-arrow">↕</span>
+                            </th>
+                            <th class="demands-sortable" id="dth-state_name" onclick="sortDemandsBy('state_name')">
+                                Status <span class="sort-arrow">↕</span>
+                            </th>
+                            <th class="demands-sortable" id="dth-payment_status" onclick="sortDemandsBy('payment_status')">
+                                To'lov <span class="sort-arrow">↕</span>
+                            </th>
+                            <th>Amallar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="demandsTable">
+                        <tr><td colspan="9" class="loading">Yuklanmoqda...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="mobile-bottom-nav">
+        <a href="/" class="mobile-nav-item">
+            <span class="icon">📊</span>
+            <span>Dashboard</span>
+        </a>
+        <a href="/static/demands.html" class="mobile-nav-item active">
+            <span class="icon">📦</span>
+            <span>Sotuvlar</span>
+        </a>
+        <a href="/static/customers.html" class="mobile-nav-item">
+            <span class="icon">👥</span>
+            <span>Mijozlar</span>
+        </a>
+        <a href="/static/payments.html" class="mobile-nav-item">
+            <span class="icon">💰</span>
+            <span>Kassa</span>
+        </a>
+        <a href="/settings" class="mobile-nav-item">
+            <span class="icon">⚙️</span>
+            <span>Sozlamalar</span>
+        </a>
+    </nav>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="modalTitle">Sotuv tafsilotlari</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">Yuklanmoqda...</div>
+        </div>
+    </div>
+
+    <!-- Edit Modal (Tahrirlash + To'lov birlashtirilgan) -->
+    <div id="editModal" class="modal">
+        <div class="modal-content demand-edit-modal-wide">
+            <div class="modal-header" style="padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                <h2 id="editModalTitle" style="margin:0; font-size:17px; font-weight:700;">✏️ Sotuvni tahrirlash</h2>
+                <button class="close-btn" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body demand-edit-modal-body" id="editModalBody" style="padding: 14px 18px; overflow-y: auto; flex: 1;">Yuklanmoqda...</div>
+        </div>
+    </div>
+
+    <!-- Tezkor Status Modali (Quick Status) -->
+    <div id="quickStatusModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2 id="quickStatusTitle">🔄 Statusni o'zgartirish</h2>
+                <button class="close-btn" onclick="closeQuickStatusModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="quickStatusBody" style="padding: 20px;">
+                <div style="font-size: 14px; margin-bottom: 16px; color: var(--text-light);" id="quickStatusDemandInfo"></div>
+                <div id="quickStatusButtonsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- To'lov modali -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="paymentModalTitle">💰 To'lov kiritish</h2>
+                <button class="close-btn" onclick="closePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="paymentModalBody">
+                Yuklanmoqda...
+            </div>
+        </div>
+    </div>
+
+    <!-- 80mm XPrinter Chek Ko'rish & Chop Etish Modali -->
+    <div id="receiptPreviewModal" class="modal">
+        <div class="modal-content" style="max-width: 460px;">
+            <div class="modal-header">
+                <h2>🖨️ 80mm Kassa Cheki</h2>
+                <button class="close-btn" onclick="closeReceiptPreviewModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="background: var(--bg);padding:15px;display:flex;flex-direction:column;align-items:center;">
+                <div id="receiptPreviewCard" style="background: #ffffff !important; color: #000000 !important; padding:15px; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.15); width:100%; max-width:400px; border:1px solid #cbd5e1; overflow-x:auto;">
+                    <!-- Dinamik chek yuklanadi -->
+                </div>
+                <div style="display:flex;gap:10px;margin-top:16px;width:100%;max-width:400px;">
+                    <button class="action-btn btn-xprinter-print" onclick="executeReceiptPrint()" style="flex:2;padding:12px;font-size:15px;font-weight:700;border-radius:8px;">
+                        🖨️ XPrinter'ga chiqarish
+                    </button>
+                    <button class="btn-cancel" onclick="closeReceiptPreviewModal()" style="flex:1;padding:12px;border-radius:8px;">
+                        Yopish
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chek Shablon Sozlamalari Modali -->
+    <div id="receiptSettingsModal" class="modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2>⚙️ 80mm Chek Shablon Sozlamalari</h2>
+                <button class="close-btn" onclick="closeReceiptSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <div class="edit-field-compact" style="margin-bottom:12px;">
+                    <label>🏪 Do'kon / Brend nomi:</label>
+                    <input type="text" id="rcpt_store_name" placeholder="Masalan: MODERN MEN'S WEAR" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-weight:700;">
+                </div>
+                <div class="edit-field-compact" style="margin-bottom:12px;">
+                    <label>✨ Shior / Qo'shimcha matn (Tagline):</label>
+                    <input type="text" id="rcpt_slogan" placeholder="Masalan: Erkaklar kiyimlarining ulgurji savdosi" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;">
+                </div>
+                <div class="edit-row-compact" style="margin-bottom:12px;">
+                    <div class="edit-field-compact">
+                        <label>📞 Telefonlar:</label>
+                        <input type="text" id="rcpt_phones" placeholder="+998 90 123-45-67" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;">
+                    </div>
+                    <div class="edit-field-compact">
+                        <label>📍 Manzil / Do'kon raqami:</label>
+                        <input type="text" id="rcpt_address" placeholder="Masalan: Abu Saxiy, 3-blok, 15-do'kon" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;">
+                    </div>
+                </div>
+                <div class="edit-field-compact" style="margin-bottom:12px;">
+                    <label>📜 Chek ostidagi eslatma (Footer note):</label>
+                    <textarea id="rcpt_footer_note" rows="2" placeholder="Xaridingiz uchun rahmat! Tovar 3 kunda chek bilan almashtiriladi." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></textarea>
+                </div>
+                <div class="edit-field-compact" style="margin-bottom:16px;">
+                    <label>🔤 Chek shrift o'lchami (Kattaligi):</label>
+                    <select id="rcpt_font_size" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-weight:600;">
+                        <option value="normal">Standart (13.5px)</option>
+                        <option value="large" selected>Kattaroq (15px — Tavsiya etiladi, Aniq va Yirik)</option>
+                        <option value="xlarge">Juda katta (16.5px — Maksimal Yirik)</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button class="action-btn btn-save-rcpt-settings" onclick="saveReceiptSettings()" style="flex:1;padding:12px;font-weight:700;border-radius:8px;">
+                        💾 Sozlamalarni saqlash
+                    </button>
+                    <button class="btn-cancel" onclick="closeReceiptSettingsModal()" style="padding:12px;border-radius:8px;">
+                        Bekor qilish
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chop etish uchun konteynerlar -->
+    <div id="genericPrintArea"></div>
+    <div id="receiptPrintArea"></div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/demands.js"></script>
+</body>
+</html>

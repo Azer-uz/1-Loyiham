@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tovar Kirimi — Azer</title>
+    <meta name="description" content="Tovarlarni to'g'ridan-to'g'ri rang matritsasi orqali kirim qiling">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/api.js"></script>
+    <style>
+        /* ── Wizard Steps ─────────────────────────────── */
+        .supply-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 28px 60px;
+        }
+        .supply-header {
+            margin-bottom: 28px;
+        }
+        .supply-title {
+            font-size: 22px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #1e60ff, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .supply-subtitle {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        /* Step progress */
+        .step-bar {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 32px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px 24px;
+            overflow: hidden;
+        }
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 10px;
+            transition: background 0.2s;
+        }
+        .step-item:hover:not(.active):not(.done) { background: var(--border-light); }
+        .step-number {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 700;
+            background: var(--border);
+            color: var(--text-muted);
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+        .step-item.active .step-number {
+            background: linear-gradient(135deg, #1e60ff, #7c3aed);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(30,96,255,0.35);
+        }
+        .step-item.done .step-number {
+            background: var(--success);
+            color: #fff;
+        }
+        .step-item.done .step-number::after { content: "✓"; font-size: 14px; }
+        .step-item.done .step-number > span { display: none; }
+        .step-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+        .step-item.active .step-label { color: var(--primary-blue); }
+        .step-item.done .step-label { color: var(--success); }
+        .step-divider { width: 40px; height: 2px; background: var(--border); flex-shrink: 0; }
+        .step-divider.done { background: var(--success); }
+
+        /* Card panels */
+        .supply-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px 32px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .supply-card-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .supply-card-title .icon {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+        }
+        .icon-blue { background: rgba(30,96,255,0.12); }
+        .icon-purple { background: rgba(168,85,247,0.12); }
+        .icon-green { background: rgba(16,185,129,0.12); }
+        .icon-orange { background: rgba(249,115,22,0.12); }
+
+        /* Form grid */
+        .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .form-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+        .form-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+        .form-span-2 { grid-column: span 2; }
+        .form-span-3 { grid-column: span 3; }
+        .form-span-full { grid-column: 1/-1; }
+
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+        }
+        .form-label .required { color: var(--danger); margin-left: 2px; }
+        .form-control {
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .form-control:focus {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(30,96,255,0.1);
+        }
+        select.form-control { cursor: pointer; }
+        textarea.form-control { resize: vertical; min-height: 72px; }
+
+        /* Articul preview badge */
+        .articul-preview {
+            background: linear-gradient(135deg, rgba(30,96,255,0.08), rgba(168,85,247,0.08));
+            border: 1.5px solid rgba(30,96,255,0.2);
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .articul-preview-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .articul-preview-value {
+            font-size: 20px;
+            font-weight: 800;
+            font-family: 'Courier New', monospace;
+            color: var(--primary-blue);
+            letter-spacing: 1px;
+        }
+        .articul-preview-sub {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .articul-counter-badge {
+            background: rgba(16,185,129,0.1);
+            border: 1px solid rgba(16,185,129,0.3);
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--success);
+        }
+
+        /* ── Step 2: Color Matrix ─────────────────────── */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+            gap: 12px;
+        }
+        .color-card {
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            transition: all 0.2s;
+            cursor: pointer;
+            background: var(--card);
+        }
+        .color-card:hover { border-color: var(--primary-blue); transform: translateY(-2px); }
+        .color-card.selected {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(30,96,255,0.15);
+        }
+        .color-swatch {
+            height: 44px;
+            position: relative;
+        }
+        .color-card-body { padding: 10px 12px; }
+        .color-name-tr { font-size: 12px; font-weight: 700; color: var(--text); }
+        .color-name-ru { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+        .color-code-badge {
+            font-size: 10px;
+            font-weight: 700;
+            font-family: monospace;
+            background: var(--border-light);
+            border-radius: 4px;
+            padding: 1px 5px;
+            color: var(--text-light);
+            display: inline-block;
+            margin-top: 4px;
+        }
+        .color-qty-wrap {
+            padding: 8px 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .color-qty-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+        .color-qty-input {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .color-qty-input:focus { border-color: var(--primary-blue); }
+        .color-qty-input::-webkit-inner-spin-button { display: none; }
+
+        /* Color search */
+        .color-search-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .color-search-input {
+            padding: 9px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            width: 240px;
+            transition: border-color 0.2s;
+        }
+        .color-search-input:focus { border-color: var(--primary-blue); }
+        .color-filter-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .filter-tag {
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1.5px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+            transition: all 0.15s;
+        }
+        .filter-tag:hover, .filter-tag.active {
+            background: var(--primary-blue);
+            color: #fff;
+            border-color: var(--primary-blue);
+        }
+
+        /* Matrix summary bar */
+        .matrix-summary {
+            background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(30,96,255,0.08));
+            border: 1px solid rgba(16,185,129,0.2);
+            border-radius: 12px;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .summary-stat { text-align: center; }
+        .summary-stat-val { font-size: 22px; font-weight: 800; color: var(--success); }
+        .summary-stat-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+        .summary-validation {
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .summary-validation.ok { color: var(--success); }
+        .summary-validation.err { color: var(--danger); }
+
+        /* ── Step 3: Preview Table ────────────────────── */
+        .preview-table-wrap { overflow-x: auto; border-radius: 12px; }
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .preview-table thead th {
+            background: var(--border-light);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 700;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .preview-table tbody td {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .preview-table tbody tr:last-child td { border-bottom: none; }
+        .preview-table tbody tr:hover td { background: var(--border-light); }
+        .article-mono {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            font-size: 12px;
+            background: var(--border-light);
+            padding: 2px 7px;
+            border-radius: 5px;
+            color: var(--primary-blue);
+        }
+        .color-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            border: 1px solid rgba(0,0,0,0.1);
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* ── Action Buttons ───────────────────────────── */
+        .step-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        .btn {
+            padding: 11px 22px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #1e60ff, #7c3aed);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(30,96,255,0.3);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(30,96,255,0.4); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: var(--border-light);
+            color: var(--text);
+            border: 1.5px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--border); }
+        .btn-success {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(16,185,129,0.3);
+        }
+        .btn-success:hover { transform: translateY(-1px); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-print {
+            background: linear-gradient(135deg, #f97316, #ef4444);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(249,115,22,0.3);
+        }
+
+        /* ── Success State ────────────────────────────── */
+        .success-banner {
+            background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(5,150,105,0.08));
+            border: 1.5px solid rgba(16,185,129,0.3);
+            border-radius: 16px;
+            padding: 24px 28px;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .success-icon { font-size: 48px; margin-bottom: 12px; }
+        .success-title { font-size: 20px; font-weight: 800; color: var(--success); margin-bottom: 6px; }
+        .success-sub { font-size: 13px; color: var(--text-muted); }
+        .supply-link-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 14px;
+            padding: 10px 18px;
+            background: var(--success);
+            color: #fff;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 13px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .supply-link-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* ── Label Print Area ─────────────────────────── */
+        .labels-section { margin-top: 24px; }
+        .labels-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+        }
+        .label-card {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            background: var(--card);
+            position: relative;
+        }
+        .label-brand { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .label-name { font-size: 12px; font-weight: 700; margin: 4px 0; line-height: 1.3; color: var(--text); }
+        .label-article {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            color: var(--primary);
+            margin: 6px 0;
+        }
+        .label-barcode {
+            height: 36px;
+            background: repeating-linear-gradient(90deg, #000 0, #000 2px, #fff 2px, #fff 4px);
+            border-radius: 3px;
+            margin: 6px 0;
+            opacity: 0.85;
+        }
+        .label-details { font-size: 11px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; }
+        .label-price { font-size: 15px; font-weight: 800; color: var(--primary-blue); }
+        .label-color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: middle; }
+        .label-qty { font-size: 11px; font-weight: 700; }
+
+        /* ── Loading overlay ──────────────────────────── */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            display: none;
+            place-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(4px);
+        }
+        .loading-overlay.active { display: grid; }
+        .loading-box {
+            background: var(--card);
+            border-radius: 20px;
+            padding: 36px 48px;
+            text-align: center;
+            max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .loading-spinner {
+            width: 52px; height: 52px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary-blue);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+        .loading-sub { font-size: 12px; color: var(--text-muted); }
+        .loading-progress { font-size: 12px; color: var(--primary-blue); font-weight: 600; margin-top: 10px; }
+
+        /* ── Toast notification ───────────────────────── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease;
+            max-width: 360px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+        .toast.info { background: var(--primary-blue); }
+        @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+
+        /* ── Print styles ─────────────────────────────── */
+        @media print {
+            .app-navbar, .step-bar, .step-actions, .supply-header,
+            .loading-overlay, .toast-container,
+            #step1Panel, #step2Panel, #step3Panel,
+            .labels-section > .btn-print,
+            .success-banner a,
+            .labels-section .supply-card-title,
+            #printBtn { display: none !important; }
+
+            .labels-grid {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 8px !important;
+                page-break-inside: avoid;
+            }
+            .label-card {
+                border: 1.5px solid #ccc !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            body { background: var(--card)!important; }
+            .supply-wrapper { padding: 0 !important; }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr 1fr; }
+            .form-grid.cols-4 { grid-template-columns: 1fr 1fr; }
+            .labels-grid { grid-template-columns: repeat(2, 1fr); }
+            .color-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+        }
+
+        /* ── Dark Mode Overrides (Supply) ── */
+        body.dark-mode .supply-card {
+            background: #162032 !important;
+            border-color: #25334d !important;
+        }
+        body.dark-mode .supply-card-title {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .step-item:hover:not(.active):not(.done) {
+            background: #1e293b !important;
+        }
+        body.dark-mode .step-number {
+            background: #1e293b !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .step-divider {
+            background: #25334d !important;
+        }
+        body.dark-mode .form-input,
+        body.dark-mode .form-select,
+        body.dark-mode .color-search-input,
+        body.dark-mode .color-qty-input {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .form-input:focus,
+        body.dark-mode .form-select:focus,
+        body.dark-mode .color-search-input:focus,
+        body.dark-mode .color-qty-input:focus {
+            border-color: #38bdf8 !important;
+        }
+        body.dark-mode .color-card {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .color-card:hover {
+            border-color: #38bdf8 !important;
+        }
+        body.dark-mode .color-card.selected {
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25) !important;
+        }
+        body.dark-mode .color-name-tr {
+            color: #f8fafc !important;
+        }
+        body.dark-mode .color-name-ru {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .color-code-badge,
+        body.dark-mode .article-mono {
+            background: #0f172a !important;
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .preview-table thead th,
+        body.dark-mode .matrix-table thead th {
+            background: #1e293b !important;
+            color: #94a3b8 !important;
+            border-bottom: 1px solid #25334d !important;
+        }
+        body.dark-mode .preview-table tbody td,
+        body.dark-mode .matrix-table tbody td {
+            border-bottom-color: #25334d !important;
+            color: #f8fafc !important;
+        }
+        body.dark-mode .preview-table tbody tr:hover td {
+            background: rgba(56, 189, 248, 0.06) !important;
+        }
+        body.dark-mode .btn-secondary {
+            background: #334155 !important;
+            color: #ffffff !important;
+        }
+        body.dark-mode .btn-secondary:hover {
+            background: #475569 !important;
+        }
+        body.dark-mode .btn-outline {
+            border-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode .btn-outline:hover {
+            background: #334155 !important;
+            color: #ffffff !important;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══ Top Navbar ══════════════════════════════════════════════════ -->
+<header class="app-navbar">
+    <div class="app-navbar-inner">
+        <div class="navbar-brand-group">
+            <a href="/" class="brand-link">
+                <div class="brand-icon-box">📦</div>
+                <span class="brand-title">Azer</span>
+            </a>
+            <nav class="navbar-tabs">
+                    <a href="/" class="nav-tab-item">
+                        <span>📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/demands" class="nav-tab-item">
+                        <span>📦</span>
+                        <span>Sotuvlar</span>
+                    </a>
+                    <a href="/customers" class="nav-tab-item">
+                        <span>👥</span>
+                        <span>Mijozlar</span>
+                    </a>
+                    <a href="/payments" class="nav-tab-item">
+                        <span>💰</span>
+                        <span>To'lovlar</span>
+                    </a>
+                    <a href="/supply" class="nav-tab-item active">
+                        <span>🏬</span>
+                        <span>Asosiy ombor</span>
+                    </a>
+                </nav>
+        </div>
+        <div class="navbar-right-group">
+            <button class="nav-icon-circle-btn theme-toggle-btn" onclick="toggleTheme()" title="Tungi/Kunduzgi rejim">🌙</button>
+            <div class="nav-user-dropdown-wrapper" id="navUserDropdownWrapper">
+                    <button class="nav-user-pill-btn" onclick="toggleUserDropdown(event)" id="navUserPillBtn" title="Admin Profili">
+                        <div class="user-avatar-circle">👤</div>
+                        <div class="user-info-text-box">
+                            <span class="user-name-text" id="currentUserLabel">Admin</span>
+                            <span class="user-role-badge">Administrator</span>
+                        </div>
+                        <span class="dropdown-chevron">▼</span>
+                    </button>
+                    <div class="nav-user-dropdown-menu" id="navUserDropdownMenu">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-avatar-large" id="dropdownAvatarLarge">👤</div>
+                            <div class="dropdown-user-meta">
+                                <div class="dropdown-name" id="dropdownUserName">Admin</div>
+                                <div class="dropdown-email" id="dropdownUserLogin">admin@azer</div>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openUserProfileModal()">
+                            <span>👤</span>
+                            <span>Profil & Avatar sozlash</span>
+                        </button>
+                        <a href="/settings" class="dropdown-item">
+                            <span>⚙️</span>
+                            <span>Tizim sozlamalari</span>
+                        </a>
+                        <a href="/docs" class="dropdown-item">
+                            <span>📖</span>
+                            <span>Foydalanish qo'llanmasi</span>
+                        </a>
+                        <button class="dropdown-item" onclick="triggerSyncNow()">
+                            <span>🔄</span>
+                            <span>MoySklad bilan sinxronlash</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <span>🚪</span>
+                            <span>Tizimdan chiqish</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+    </div>
+</header>
+
+<!-- ══ Main Content ════════════════════════════════════════════════ -->
+<main class="supply-wrapper">
+
+    <!-- Header -->
+    <div class="supply-header">
+        <h1 class="supply-title">📥 Tovar Kirimi (Приемка)</h1>
+        <p class="supply-subtitle">Tovarlarni to'g'ridan-to'g'ri rang matritsasi orqali kirim qiling</p>
+    </div>
+
+    <!-- Step progress bar -->
+    <div class="step-bar" id="stepBar">
+        <div class="step-item active" id="stepTab1" onclick="goToStep(1)">
+            <div class="step-number"><span>1</span></div>
+            <div>
+                <div class="step-label">Model Ma'lumotlari</div>
+            </div>
+        </div>
+        <div class="step-divider" id="div1"></div>
+        <div class="step-item" id="stepTab2" onclick="goToStep(2)">
+            <div class="step-number"><span>2</span></div>
+            <div>
+                <div class="step-label">Rang Matritsasi</div>
+            </div>
+        </div>
+        <div class="step-divider" id="div2"></div>
+        <div class="step-item" id="stepTab3" onclick="goToStep(3)">
+            <div class="step-number"><span>3</span></div>
+            <div>
+                <div class="step-label">Ko'rib chiqish &amp; Yuklash</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── STEP 1: Model Info ─────────────────────────────────── -->
+    <div id="step1Panel">
+
+        <!-- Articul preview -->
+        <div class="articul-preview" id="articulPreview">
+            <div style="flex:1">
+                <div class="articul-preview-label">Keyingi Model Artikul</div>
+                <div class="articul-preview-value" id="articulValue">—</div>
+                <div class="articul-preview-sub" id="articulSub">Mavsum + Guruh + Raqam</div>
+            </div>
+            <div class="articul-counter-badge" id="counterBadge">
+                #<span id="counterNum">...</span>
+            </div>
+        </div>
+
+        <!-- Section 1: Categorization -->
+        <div class="supply-card">
+            <div class="supply-card-title">
+                <div class="icon icon-blue">🗂️</div>
+                Tovar Ierarxiyasi
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Kolleksiya <span class="required">*</span></label>
+                    <select class="form-control" id="collection" onchange="updateArticul()">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Guruh (Папка) <span class="required">*</span></label>
+                    <select class="form-control" id="folder" onchange="updateArticul()">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mavsum <span class="required">*</span></label>
+                    <select class="form-control" id="season">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Вид товара <span class="required">*</span></label>
+                    <select class="form-control" id="productType">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kategoriya <span class="required">*</span></label>
+                    <select class="form-control" id="category">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Seriya</label>
+                    <select class="form-control" id="series">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Product details -->
+        <div class="supply-card">
+            <div class="supply-card-title">
+                <div class="icon icon-purple">🏷️</div>
+                Tovar Tafsilotlari
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Brend <span class="required">*</span></label>
+                    <select class="form-control" id="brand">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kod Modeli (Ishlab chiqaruvchi) <span class="required">*</span></label>
+                    <input class="form-control" id="modelCode" type="text" placeholder="1M21241-1587" oninput="updateProductName()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Razmer Qatori <span class="required">*</span></label>
+                    <select class="form-control" id="sizeRange">
+                        <option value="">— Tanlang —</option>
+                    </select>
+                </div>
+                <div class="form-group form-span-3">
+                    <label class="form-label">Qo'shimcha Tavsif (Описание)</label>
+                    <input class="form-control" id="description" type="text" placeholder="варот замок мадел..." oninput="updateProductName()">
+                </div>
+            </div>
+
+            <!-- Auto-generated product name -->
+            <div style="margin-top:16px; background:var(--border-light); border-radius:10px; padding:12px 16px;">
+                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:4px;">Tovar Nomi (Наименование) — Avtomatik</div>
+                <div id="productNamePreview" style="font-size:14px; font-weight:600; color:var(--text);">—</div>
+            </div>
+        </div>
+
+        <!-- Section 3: Pricing -->
+        <div class="supply-card">
+            <div class="supply-card-title">
+                <div class="icon icon-green">💰</div>
+                Narxlar
+            </div>
+            <div class="form-grid cols-4">
+                <div class="form-group">
+                    <label class="form-label">Xarid Narxi (UZS) <span class="required">*</span></label>
+                    <input class="form-control format-number" id="purchasePrice" type="text" inputmode="numeric" placeholder="150 000" oninput="calcSalePrice()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ustama % <span class="required">*</span></label>
+                    <input class="form-control" id="markup" type="number" min="0" max="500" placeholder="20" value="20" oninput="calcSalePrice()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Sotuv Narxi (UZS)</label>
+                    <input class="form-control format-number" id="salePrice" type="text" inputmode="numeric" placeholder="175 000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Yetkazib beruvchi</label>
+                    <select class="form-control" id="supplier">
+                        <option value="">— (Ixtiyoriy) —</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:14px;">
+                <label class="form-label">Priemka Eslatmasi</label>
+                <input class="form-control" id="supplyNote" type="text" placeholder="Kirim izohi...">
+            </div>
+        </div>
+
+        <div class="step-actions">
+            <div></div>
+            <button class="btn btn-primary" onclick="goToStep2()">
+                Keyingi: Rang Matritsasi →
+            </button>
+        </div>
+    </div>
+
+    <!-- ─── STEP 2: Color Matrix ──────────────────────────────────── -->
+    <div id="step2Panel" style="display:none;">
+        <div class="supply-card">
+            <div class="supply-card-title">
+                <div class="icon icon-orange">🎨</div>
+                Rang Matritsasi
+                <span style="font-size:12px; font-weight:500; color:var(--text-muted);">— Kerakli ranglarga miqdor kiriting</span>
+            </div>
+
+            <div class="color-search-bar">
+                <input class="color-search-input" id="colorSearch" type="text" placeholder="🔍 Rang qidiring..." oninput="filterColors()">
+                <div class="color-filter-tags">
+                    <button class="filter-tag active" onclick="filterByGroup('all', this)">Barchasi</button>
+                    <button class="filter-tag" onclick="filterByGroup('selected', this)">✅ Tanlanganlar</button>
+                </div>
+            </div>
+
+            <div class="color-grid" id="colorGrid">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="matrix-summary" id="matrixSummary">
+                <div style="display:flex; gap:32px;">
+                    <div class="summary-stat">
+                        <div class="summary-stat-val" id="totalColors">0</div>
+                        <div class="summary-stat-label">Rang</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="summary-stat-val" id="totalQty">0</div>
+                        <div class="summary-stat-label">Jami Dona</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="summary-stat-val" id="totalSum">—</div>
+                        <div class="summary-stat-label">Xarid Summasi</div>
+                    </div>
+                </div>
+                <div class="summary-validation ok" id="matrixValidation">
+                    ⓘ Kamida 1 ta rangga miqdor kiriting
+                </div>
+            </div>
+        </div>
+
+        <div class="step-actions">
+            <button class="btn btn-secondary" onclick="goToStep(1)">← Orqaga</button>
+            <button class="btn btn-primary" onclick="goToStep3()">
+                Ko'rib chiqish →
+            </button>
+        </div>
+    </div>
+
+    <!-- ─── STEP 3: Preview & Confirm ───────────────────────────── -->
+    <div id="step3Panel" style="display:none;">
+
+        <!-- Summary info -->
+        <div class="supply-card" id="step3SummaryCard">
+            <div class="supply-card-title">
+                <div class="icon icon-blue">📋</div>
+                Kirim Xulosasi
+            </div>
+            <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">Model Artikul</div>
+                    <div class="article-mono" id="previewArticul" style="font-size:18px; display:inline-block; margin-top:4px;">—</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">Tovar Nomi</div>
+                    <div style="font-size:13px; font-weight:700; margin-top:4px;" id="previewName">—</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">Xarid / Sotuv Narxi</div>
+                    <div style="font-size:13px; font-weight:700; margin-top:4px;" id="previewPrices">—</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">Yetkazib beruvchi</div>
+                    <div style="font-size:13px; font-weight:700; margin-top:4px;" id="previewSupplier">—</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Products preview table -->
+        <div class="supply-card">
+            <div class="supply-card-title">
+                <div class="icon icon-purple">🗃️</div>
+                Yaratilayotgan Tovarlar
+                <span id="previewCount" style="font-size:12px; font-weight:500; color:var(--text-muted);"></span>
+            </div>
+            <div class="preview-table-wrap">
+                <table class="preview-table" id="previewTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Rang</th>
+                            <th>Artikul</th>
+                            <th>Tovar Nomi</th>
+                            <th>Miqdor</th>
+                            <th>Xarid Narxi</th>
+                            <th>Sotuv Narxi</th>
+                            <th>Jami Xarid</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewTableBody">
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight:700; border-top:2px solid var(--border);">
+                            <td colspan="4" style="padding:12px 14px; color:var(--text-muted);">Jami:</td>
+                            <td id="previewTotalQty" style="padding:12px 14px; font-size:15px; color:var(--success);"></td>
+                            <td colspan="2"></td>
+                            <td id="previewTotalSum" style="padding:12px 14px; font-size:15px; color:var(--primary-blue);"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <div class="step-actions">
+            <button class="btn btn-secondary" onclick="goToStep(2)">← Orqaga</button>
+            <div style="display:flex; gap:12px;">
+                <button class="btn btn-success" id="uploadBtn" onclick="submitSupply()">
+                    ✅ MoySkladga Yuklash
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── SUCCESS State ─────────────────────────────────────────── -->
+    <div id="successPanel" style="display:none;">
+
+        <div class="success-banner">
+            <div class="success-icon">🎉</div>
+            <div class="success-title" id="successTitle">Muvaffaqiyatli yuklandi!</div>
+            <div class="success-sub" id="successSub">Tovarlar va Priemka hujjati yaratildi.</div>
+            <a href="#" id="supplyLink" class="supply-link-btn" target="_blank" style="display:none;">
+                📄 MoySkladda ko'rish →
+            </a>
+        </div>
+
+        <!-- Labels section -->
+        <div class="supply-card labels-section" id="labelsSection" style="display:none;">
+            <div class="supply-card-title">
+                <div class="icon icon-orange">🖨️</div>
+                Yorliqlar (Labels)
+                <div style="margin-left:auto; display:flex; gap:8px;">
+                    <button class="btn btn-print" id="printBtn" onclick="window.print()">🖨️ Chop etish</button>
+                    <button class="btn btn-secondary" onclick="startNewSupply()">➕ Yangi Kirim</button>
+                </div>
+            </div>
+            <div class="labels-grid" id="labelsGrid">
+                <!-- Label cards populated by JS -->
+            </div>
+        </div>
+
+        <div style="margin-top:16px; text-align:center;" id="noLabelsActions">
+            <button class="btn btn-primary" onclick="startNewSupply()" style="margin:0 auto;">➕ Yangi Tovar Kirimi</button>
+        </div>
+    </div>
+
+</main>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-box">
+        <div class="loading-spinner"></div>
+        <div class="loading-title" id="loadingTitle">Yuklanmoqda...</div>
+        <div class="loading-sub" id="loadingSub">Iltimos kuting</div>
+        <div class="loading-progress" id="loadingProgress"></div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ══════════════════════════════════════════════
+//  Global state
+// ══════════════════════════════════════════════
+let refs = null;       // All reference data from API
+let currentStep = 1;
+let selectedColors = {};  // {color_code: {qty, ...colorObj}}
+let lastResult = null;    // Last API result
+let colorHexMap = {};
+
+// ══════════════════════════════════════════════
+//  Auth & Theme
+// ══════════════════════════════════════════════
+function getToken() { 
+    return localStorage.getItem('token') || localStorage.getItem('access_token') || ''; 
+}
+function logout() { 
+    localStorage.removeItem('token'); 
+    localStorage.removeItem('access_token'); 
+    localStorage.removeItem('user'); 
+    window.location.href = '/login'; 
+}
+
+function toggleTheme() {
+    document.body.classList.toggle('dark-mode');
+    localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+    document.querySelector('.theme-toggle-btn').textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+}
+
+// ══════════════════════════════════════════════
+//  Toast notifications
+// ══════════════════════════════════════════════
+function toast(msg, type = 'info', duration = 4000) {
+    const div = document.createElement('div');
+    div.className = `toast ${type}`;
+    div.innerHTML = `<span>${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span> ${msg}`;
+    document.getElementById('toastContainer').appendChild(div);
+    setTimeout(() => div.remove(), duration);
+}
+
+// ══════════════════════════════════════════════
+//  Loading overlay helpers
+// ══════════════════════════════════════════════
+function showLoading(title = 'Yuklanmoqda...', sub = '', progress = '') {
+    document.getElementById('loadingTitle').textContent = title;
+    document.getElementById('loadingSub').textContent = sub;
+    document.getElementById('loadingProgress').textContent = progress;
+    document.getElementById('loadingOverlay').classList.add('active');
+}
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('active');
+}
+
+// ══════════════════════════════════════════════
+//  API calls
+// ══════════════════════════════════════════════
+async function apiFetch(path, opts = {}) {
+    const resp = await fetch(path, {
+        ...opts,
+        headers: {
+            'Authorization': 'Bearer ' + getToken(),
+            'Content-Type': 'application/json',
+            ...(opts.headers || {}),
+        },
+    });
+    if (resp.status === 401) { logout(); return; }
+    return resp.json();
+}
+
+// ══════════════════════════════════════════════
+//  Init: load references
+// ══════════════════════════════════════════════
+async function init() {
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark-mode');
+        document.querySelector('.theme-toggle-btn').textContent = '☀️';
+    }
+    try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            const u = JSON.parse(userStr);
+            const name = u.full_name || u.username || 'admin';
+            const el = document.getElementById('currentUserLabel');
+            if (el) el.textContent = name;
+        }
+    } catch(e) {}
+    showLoading('Ma\'lumotlar yuklanmoqda...', 'MoySklad spravochniklarini o\'qimoqda');
+
+    try {
+        const data = await apiFetch('/api/supply/references');
+        if (!data || !data.success) throw new Error(data?.detail || 'References yuklanmadi');
+        refs = data.data;
+        colorHexMap = refs.color_hex_map || {};
+        populateForms();
+    } catch (e) {
+        toast('Xato: ' + e.message, 'error', 8000);
+        console.error(e);
+    } finally {
+        hideLoading();
+    }
+}
+
+// ══════════════════════════════════════════════
+//  Populate dropdowns from refs
+// ══════════════════════════════════════════════
+function populateForms() {
+    const ev = refs.entity_values || {};
+    const folders = refs.folders || [];
+
+    // Collection (Коллекция)
+    populateSelect('collection', ev['Коллекция'] || [], null, updateArticul);
+    // Season (Сезон)
+    populateSelect('season', ev['Сезон'] || []);
+    // Product type (Вид товара)
+    populateSelect('productType', ev['Вид товара'] || [], null, updateProductName);
+    // Category (Категория)
+    populateSelect('category', ev['Категория'] || []);
+    // Brand (Бренд)
+    populateSelect('brand', ev['Бренд'] || [], null, updateProductName);
+    // Size range
+    populateSelect('sizeRange', ev['Размерный ряд'] || []);
+    // Series
+    populateSelect('series', ev['Серия'] || []);
+    // Suppliers
+    populateSelect('supplier', refs.suppliers || [], 'name', null, true);
+
+    // Folders as "Guruh" select
+    const folderSel = document.getElementById('folder');
+    folderSel.innerHTML = '<option value="">— Tanlang —</option>';
+    for (const f of folders) {
+        const opt = document.createElement('option');
+        opt.value = f.id;
+        opt.dataset.meta = JSON.stringify(f.meta);
+        opt.dataset.name = f.name;
+        opt.textContent = f.name;
+        folderSel.appendChild(opt);
+    }
+
+    // Update articul after loading
+    updateArticulCounter();
+}
+
+function populateSelect(id, items, nameKey = 'name', onchange = null, isObj = false) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Tanlang —</option>';
+    for (const item of items) {
+        const name = item[nameKey || 'name'] || item.name || '';
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.dataset.id = item.id || '';
+        opt.dataset.meta = JSON.stringify(item.meta || item);
+        opt.textContent = name;
+        sel.appendChild(opt);
+    }
+}
+
+// ══════════════════════════════════════════════
+//  Articul generation logic
+// ══════════════════════════════════════════════
+function updateArticul() {
+    updateArticulCounter();
+}
+
+async function updateArticulCounter() {
+    const colVal = document.getElementById('collection').value;
+    const folderSel = document.getElementById('folder');
+    const folderName = folderSel.options[folderSel.selectedIndex]?.dataset?.name || '';
+
+    const seasonCodes = refs?.season_codes || {};
+    const groupCodes = refs?.group_codes || {};
+
+    const seasonCode = seasonCodes[colVal] || '';
+    const groupCode = groupCodes[folderName] || '';
+
+    const nextNum = refs?.next_articul_number || 1;
+    const paddedNum = String(nextNum).padStart(5, '0');
+
+    const articul = seasonCode && groupCode ? `${seasonCode}${groupCode}${paddedNum}` : '—';
+    document.getElementById('articulValue').textContent = articul;
+    document.getElementById('articulSub').textContent = seasonCode && groupCode
+        ? `${seasonCode} + ${groupCode} + ${paddedNum}`
+        : 'Kolleksiya va Guruhni tanlang';
+    document.getElementById('counterNum').textContent = nextNum;
+}
+
+function getCurrentArticul() {
+    return document.getElementById('articulValue').textContent;
+}
+
+// ══════════════════════════════════════════════
+//  Product name preview
+// ══════════════════════════════════════════════
+function updateProductName() {
+    const type = document.getElementById('productType').value;
+    const desc = document.getElementById('description').value;
+    const brand = document.getElementById('brand').value;
+    const code = document.getElementById('modelCode').value;
+
+    let parts = [type, desc, brand, code].filter(Boolean);
+    const name = parts.join(' ');
+    document.getElementById('productNamePreview').textContent = name || '—';
+}
+
+function getProductName() {
+    const type = document.getElementById('productType').value;
+    const desc = document.getElementById('description').value;
+    const brand = document.getElementById('brand').value;
+    const code = document.getElementById('modelCode').value;
+    return [type, desc, brand, code].filter(Boolean).join(' ');
+}
+
+// ══════════════════════════════════════════════
+//  Price calculation
+// ══════════════════════════════════════════════
+function calcSalePrice() {
+    const purchase = parseAmount(document.getElementById('purchasePrice').value);
+    const markupPct = parseFloat(document.getElementById('markup').value) || 0;
+    const sale = Math.round(purchase * (1 + markupPct / 100));
+    document.getElementById('salePrice').value = sale ? formatNumber(sale) : '';
+}
+
+function formatNum(n) {
+    return new Intl.NumberFormat('uz-UZ').format(Math.round(n));
+}
+
+// ══════════════════════════════════════════════
+//  Step navigation & validation
+// ══════════════════════════════════════════════
+function goToStep(n) {
+    if (n < currentStep) {
+        currentStep = n;
+        updateStepUI();
+        return;
+    }
+    if (n > currentStep) {
+        if (currentStep === 1 && n === 2) { goToStep2(); return; }
+        if (currentStep === 2 && n === 3) { goToStep3(); return; }
+    }
+}
+
+function updateStepUI() {
+    const panels = ['step1Panel', 'step2Panel', 'step3Panel'];
+    panels.forEach((id, i) => {
+        document.getElementById(id).style.display = (i + 1 === currentStep) ? '' : 'none';
+    });
+    for (let i = 1; i <= 3; i++) {
+        const tab = document.getElementById(`stepTab${i}`);
+        const div = document.getElementById(`div${i}`);
+        tab.classList.remove('active', 'done');
+        if (i < currentStep) { tab.classList.add('done'); if (div) div.classList.add('done'); }
+        else if (i === currentStep) { tab.classList.add('active'); if (div) div.classList.remove('done'); }
+        else { if (div) div.classList.remove('done'); }
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function validateStep1() {
+    const required = [
+        ['collection', 'Kolleksiya'],
+        ['folder', 'Guruh/Papka'],
+        ['season', 'Mavsum'],
+        ['productType', 'Вид товара'],
+        ['category', 'Kategoriya'],
+        ['brand', 'Brend'],
+        ['modelCode', 'Kod Modeli'],
+        ['sizeRange', 'Razmer Qatori'],
+        ['purchasePrice', 'Xarid Narxi'],
+    ];
+    for (const [id, label] of required) {
+        const el = document.getElementById(id);
+        if (!el.value || el.value.trim() === '') {
+            toast(`«${label}» to'ldirilishi shart!`, 'error');
+            el.focus();
+            el.style.borderColor = 'var(--danger)';
+            setTimeout(() => el.style.borderColor = '', 2000);
+            return false;
+        }
+    }
+    if (getCurrentArticul() === '—') {
+        toast('Artikul generatsiya bo\'lmadi. Kolleksiya va Guruhni to\'g\'ri tanlang!', 'error');
+        return false;
+    }
+    return true;
+}
+
+function goToStep2() {
+    if (!validateStep1()) return;
+    buildColorGrid();
+    currentStep = 2;
+    updateStepUI();
+}
+
+function validateStep2() {
+    const total = Object.values(selectedColors).reduce((s, c) => s + (c.qty || 0), 0);
+    if (total === 0) {
+        toast('Kamida bitta rangga miqdor kiriting!', 'error');
+        return false;
+    }
+    return true;
+}
+
+function goToStep3() {
+    if (!validateStep2()) return;
+    buildPreview();
+    currentStep = 3;
+    updateStepUI();
+}
+
+// ══════════════════════════════════════════════
+//  Color Grid (Step 2)
+// ══════════════════════════════════════════════
+let allColors = [];
+let activeColorFilter = 'all';
+
+function buildColorGrid() {
+    allColors = refs?.colors || [];
+    renderColorGrid(allColors);
+    updateMatrixSummary();
+}
+
+function getColorHex(code) {
+    return colorHexMap[code] || '#CCCCCC';
+}
+
+function renderColorGrid(colors) {
+    const grid = document.getElementById('colorGrid');
+    grid.innerHTML = '';
+
+    for (const color of colors) {
+        const code = color.code;
+        const hex = getColorHex(code);
+        const sel = selectedColors[code];
+        const qty = sel ? sel.qty : 0;
+
+        const card = document.createElement('div');
+        card.className = `color-card${qty > 0 ? ' selected' : ''}`;
+        card.id = `colorCard_${code}`;
+
+        const isGradient = hex.startsWith('linear-gradient');
+        const swatchStyle = isGradient ? `background: ${hex};` : `background-color: ${hex};`;
+
+        card.innerHTML = `
+            <div class="color-swatch" style="${swatchStyle}"></div>
+            <div class="color-card-body">
+                <div class="color-name-tr">${color.tr}</div>
+                <div class="color-name-ru">${color.ru || ''}</div>
+                <span class="color-code-badge">${code}</span>
+            </div>
+            <div class="color-qty-wrap">
+                <label class="color-qty-label">Dona:</label>
+                <input class="color-qty-input"
+                       id="qty_${code}"
+                       type="number"
+                       min="0"
+                       max="9999"
+                       value="${qty || ''}"
+                       placeholder="0"
+                       oninput="onQtyChange('${code}', this.value)"
+                       onclick="event.stopPropagation()">
+            </div>
+        `;
+        card.onclick = () => focusQty(code);
+        grid.appendChild(card);
+    }
+}
+
+function focusQty(code) {
+    const inp = document.getElementById(`qty_${code}`);
+    if (inp) { inp.focus(); inp.select(); }
+}
+
+function onQtyChange(code, val) {
+    const qty = parseInt(val) || 0;
+    const colorObj = allColors.find(c => c.code === code);
+    if (!colorObj) return;
+
+    if (qty > 0) {
+        selectedColors[code] = { ...colorObj, qty };
+    } else {
+        delete selectedColors[code];
+    }
+
+    const card = document.getElementById(`colorCard_${code}`);
+    if (card) card.classList.toggle('selected', qty > 0);
+
+    updateMatrixSummary();
+}
+
+function updateMatrixSummary() {
+    const entries = Object.values(selectedColors);
+    const totalColors = entries.length;
+    const totalQty = entries.reduce((s, c) => s + c.qty, 0);
+    const purchasePrice = parseAmount(document.getElementById('purchasePrice').value);
+    const totalSum = totalQty * purchasePrice;
+
+    document.getElementById('totalColors').textContent = totalColors;
+    document.getElementById('totalQty').textContent = totalQty;
+    document.getElementById('totalSum').textContent = totalSum > 0 ? formatNum(totalSum) + ' so\'m' : '—';
+
+    const valid = document.getElementById('matrixValidation');
+    if (totalQty > 0) {
+        valid.className = 'summary-validation ok';
+        valid.textContent = `✅ ${totalColors} ta rang, jami ${totalQty} dona tayyor`;
+    } else {
+        valid.className = 'summary-validation err';
+        valid.textContent = '⚠️ Kamida 1 ta rangga miqdor kiriting';
+    }
+}
+
+function filterColors() {
+    const q = document.getElementById('colorSearch').value.toLowerCase().trim();
+    let filtered = allColors.filter(c =>
+        c.tr.toLowerCase().includes(q) ||
+        (c.ru || '').toLowerCase().includes(q) ||
+        c.code.toLowerCase().includes(q) ||
+        (c.en || '').toLowerCase().includes(q)
+    );
+    if (activeColorFilter === 'selected') {
+        filtered = filtered.filter(c => selectedColors[c.code]);
+    }
+    renderColorGrid(filtered);
+}
+
+function filterByGroup(group, el) {
+    activeColorFilter = group;
+    document.querySelectorAll('.filter-tag').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    filterColors();
+}
+
+// ══════════════════════════════════════════════
+//  Preview (Step 3)
+// ══════════════════════════════════════════════
+function buildPreview() {
+    const articul = getCurrentArticul();
+    const name = getProductName();
+    const purchase = parseAmount(document.getElementById('purchasePrice').value);
+    const sale = parseAmount(document.getElementById('salePrice').value);
+    const supplierSel = document.getElementById('supplier');
+    const supplierName = supplierSel.options[supplierSel.selectedIndex]?.textContent || 'Ko\'rsatilmagan';
+
+    document.getElementById('previewArticul').textContent = articul;
+    document.getElementById('previewName').textContent = name;
+    document.getElementById('previewPrices').textContent =
+        `${formatNum(purchase)} / ${formatNum(sale)} so'm`;
+    document.getElementById('previewSupplier').textContent = supplierName;
+
+    const tbody = document.getElementById('previewTableBody');
+    tbody.innerHTML = '';
+    let totalQty = 0, totalSum = 0, i = 0;
+
+    for (const [code, colorData] of Object.entries(selectedColors)) {
+        if (!colorData.qty) continue;
+        i++;
+        const hex = getColorHex(code);
+        const dotStyle = hex.startsWith('linear-gradient')
+            ? `style="background:${hex}; border-radius:50%;" class="color-dot"`
+            : `style="background:${hex};" class="color-dot"`;
+        const colorArticul = articul + code;
+        const lineSum = colorData.qty * purchase;
+        totalQty += colorData.qty;
+        totalSum += lineSum;
+
+        tbody.innerHTML += `
+            <tr>
+                <td>${i}</td>
+                <td><span ${dotStyle}></span>${colorData.tr}${colorData.ru ? ' <small style="color:var(--text-muted);">('+colorData.ru+')</small>' : ''}</td>
+                <td><span class="article-mono">${colorArticul}</span></td>
+                <td style="font-size:12px; color:var(--text-muted);">${name}</td>
+                <td style="font-weight:700; font-size:15px; color:var(--success);">${colorData.qty}</td>
+                <td>${formatNum(purchase)} so'm</td>
+                <td>${formatNum(sale)} so'm</td>
+                <td style="font-weight:700; color:var(--primary-blue);">${formatNum(lineSum)} so'm</td>
+            </tr>`;
+    }
+
+    document.getElementById('previewCount').textContent =
+        `— ${i} ta rang, jami ${totalQty} dona`;
+    document.getElementById('previewTotalQty').textContent = totalQty + ' dona';
+    document.getElementById('previewTotalSum').textContent = formatNum(totalSum) + ' so\'m';
+}
+
+// ══════════════════════════════════════════════
+//  Submit Supply to MoySklad
+// ══════════════════════════════════════════════
+async function submitSupply() {
+    const btn = document.getElementById('uploadBtn');
+    btn.disabled = true;
+    showLoading(
+        'MoySkladga yuklanmoqda...',
+        'Tovarlar yaratilmoqda va Priemka hujjati tuzilmoqda.',
+        'Iltimos kuting...'
+    );
+
+    try {
+        const articul = getCurrentArticul();
+        const name = getProductName();
+        const purchase = parseAmount(document.getElementById('purchasePrice').value);
+        const sale = parseAmount(document.getElementById('salePrice').value);
+        const markup = parseFloat(document.getElementById('markup').value) || 0;
+
+        const folderSel = document.getElementById('folder');
+        const folderOpt = folderSel.options[folderSel.selectedIndex];
+        const folderMeta = JSON.parse(folderOpt?.dataset?.meta || 'null');
+        const folderName = folderOpt?.dataset?.name || '';
+
+        const supplierSel = document.getElementById('supplier');
+        const supplierOpt = supplierSel.options[supplierSel.selectedIndex];
+        const supplierMeta = supplierOpt?.value ? JSON.parse(supplierOpt.dataset.meta || 'null') : null;
+
+        // Build colors list
+        const colors = Object.values(selectedColors)
+            .filter(c => c.qty > 0)
+            .map(c => ({
+                color_name: c.tr,
+                color_code: c.code,
+                color_ru: c.ru || c.tr,
+                quantity: c.qty,
+            }));
+
+        const payload = {
+            product_folder_id: folderSel.value,
+            product_folder_meta: folderMeta,
+            product_folder_name: folderName,
+            product_type: document.getElementById('productType').value,
+            category: document.getElementById('category').value,
+            collection: document.getElementById('collection').value,
+            season: document.getElementById('season').value,
+            brand: document.getElementById('brand').value,
+            size_range: document.getElementById('sizeRange').value,
+            series: document.getElementById('series').value || '',
+            model_code: document.getElementById('modelCode').value,
+            description: document.getElementById('description').value || '',
+            purchase_price: purchase,
+            sale_price: sale,
+            markup: markup / 100,
+            model_articul: articul,
+            product_name: name,
+            supplier_meta: supplierMeta,
+            supplier_name: supplierSel.options[supplierSel.selectedIndex]?.textContent || '',
+            note: document.getElementById('supplyNote').value || '',
+            colors,
+        };
+
+        const result = await apiFetch('/api/supply/create', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        if (!result || !result.success) {
+            throw new Error(result?.detail || result?.message || 'Noma\'lum xato');
+        }
+
+        lastResult = result;
+        hideLoading();
+        showSuccess(result);
+
+        // Update next articul in refs
+        if (refs) {
+            refs.next_articul_number = (refs.next_articul_number || 1) + 1;
+        }
+
+    } catch (e) {
+        hideLoading();
+        btn.disabled = false;
+        toast('Xato: ' + (e.message || e), 'error', 8000);
+        console.error(e);
+    }
+}
+
+// ══════════════════════════════════════════════
+//  Show success state + labels
+// ══════════════════════════════════════════════
+function showSuccess(result) {
+    // Hide all step panels
+    ['step1Panel', 'step2Panel', 'step3Panel'].forEach(id =>
+        document.getElementById(id).style.display = 'none');
+    ['stepTab1', 'stepTab2', 'stepTab3'].forEach(id =>
+        document.getElementById(id).classList.replace('active', 'done'));
+
+    document.getElementById('successPanel').style.display = '';
+
+    document.getElementById('successTitle').textContent = result.partial
+        ? '⚠️ Qisman muvaffaqiyatli!'
+        : '🎉 Muvaffaqiyatli yuklandi!';
+    document.getElementById('successSub').textContent = result.message;
+
+    if (result.supply_url) {
+        const link = document.getElementById('supplyLink');
+        link.href = result.supply_url;
+        link.textContent = `📄 ${result.supply_name || 'Priemka'} — MoySkladda ko'rish →`;
+        link.style.display = 'inline-flex';
+    }
+
+    // Build label cards
+    const products = result.products || [];
+    if (products.length > 0) {
+        buildLabels(products);
+        document.getElementById('labelsSection').style.display = '';
+        document.getElementById('noLabelsActions').style.display = 'none';
+    }
+
+    // Show errors if any
+    if (result.errors && result.errors.length > 0) {
+        toast(`${result.errors.length} ta xato: ${result.errors.join('; ')}`, 'error', 10000);
+    }
+}
+
+function buildLabels(products) {
+    const grid = document.getElementById('labelsGrid');
+    grid.innerHTML = '';
+
+    const name = getProductName();
+    const sale = parseAmount(document.getElementById('salePrice').value);
+    const purchase = parseAmount(document.getElementById('purchasePrice').value);
+    const brand = document.getElementById('brand').value;
+    const sizeRange = document.getElementById('sizeRange').value;
+    const collection = document.getElementById('collection').value;
+
+    for (const p of products) {
+        const hex = getColorHex(p.article.slice(-3));
+        const isGradient = (hex || '').startsWith('linear-gradient');
+        const dotStyle = isGradient
+            ? `background:${hex};`
+            : `background:${hex};`;
+
+        // Generate fake barcode visual from article
+        const barcodeStr = p.article;
+        const barsCount = 70;
+        let barsHTML = '';
+        for (let i = 0; i < barsCount; i++) {
+            const charCode = barcodeStr.charCodeAt(i % barcodeStr.length);
+            const w = (charCode % 3) + 1;
+            barsHTML += `<span style="display:inline-block;width:${w}px;background:#000;height:100%;margin-right:1px;"></span>`;
+        }
+
+        grid.innerHTML += `
+        <div class="label-card">
+            <div class="label-brand">${brand} · ${collection} · ${sizeRange}</div>
+            <div class="label-name">${name}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin:6px 0;">
+                <span class="label-color-dot" style="${dotStyle} display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,0.15);"></span>
+                <span style="font-size:11px;font-weight:700;color:var(--text);">${p.color_ru || p.color_name}</span>
+            </div>
+            <div class="label-article">${p.article}</div>
+            <div class="label-barcode" style="display:flex;align-items:stretch;overflow:hidden;">${barsHTML}</div>
+            <div style="font-size:9px;text-align:center;color:var(--text-muted);margin-bottom:4px;">${p.article}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                <div class="label-price">${formatNum(sale)} so'm</div>
+                <div class="label-qty">📦 ${p.quantity} dona</div>
+            </div>
+            <div class="label-details">
+                <span>Xarid: ${formatNum(purchase)}</span>
+                <span>${p.is_new ? '🆕 Yangi' : '♻️ Mavjud'}</span>
+            </div>
+        </div>`;
+    }
+}
+
+function startNewSupply() {
+    // Reset form
+    location.reload();
+}
+
+// ══════════════════════════════════════════════
+//  Boot
+// ══════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+    if (!getToken()) { window.location.href = '/login'; return; }
+    init();
+});
+</script>
+</body>
+</html>
