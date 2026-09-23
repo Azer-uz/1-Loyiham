@@ -1,0 +1,22 @@
+# Vaqtinchalik va keraksiz fayllar
+*.xlsx
+powershell.txt
+*.bat
+
+# Python keshi va vaqtinchalik fayllari
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Muhit o'zgaruvchilari (maxfiy ma'lumotlar)
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE va tahrirlovchi papkalari
+.vscode/
+.idea/
+.gemini/
