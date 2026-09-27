@@ -13,6 +13,8 @@ let currentOrgName = 'Said_Baraka';
 let appPaymentMethods = [];
 let appAccountsList = [];
 let appReferenceRate = 12850;
+let appCustomers = [];
+window.allLoadedCustomers = [];
 
 // ===== SARALASH HOLATI =====
 let demandSortField = null;
@@ -20,11 +22,16 @@ let demandSortDir = 'asc';
 
 async function loadPaymentSettings() {
     try {
-        const [methodsResp, accsResp, rateResp] = await Promise.all([
+        const [methodsResp, accsResp, rateResp, custResp] = await Promise.all([
             apiFetch('/settings/payment-methods').catch(() => null),
             apiFetch('/settings/accounts').catch(() => null),
-            apiFetch('/settings/reference-rate').catch(() => null)
+            apiFetch('/settings/reference-rate').catch(() => null),
+            apiFetch('/customers?limit=2000').catch(() => null)
         ]);
+        if (custResp && custResp.success && custResp.data) {
+            window.allLoadedCustomers = Array.isArray(custResp.data) ? custResp.data : (custResp.data.customers || []);
+            appCustomers = window.allLoadedCustomers;
+        }
         if (methodsResp && methodsResp.success && methodsResp.data) {
             appPaymentMethods = methodsResp.data.methods || (Array.isArray(methodsResp.data) ? methodsResp.data : []);
             const usdM = appPaymentMethods.find(m => m.id === 'usd' || m.currency === 'USD');
@@ -654,19 +661,18 @@ function renderEditForm(demand, paymentsData, currentBalance) {
     window.currentBalance = currentBalance;
     window.demandPaid = totalPaid;
     window.demandRemaining = demandRemaining;
+    window.isDiscountManuallyEdited = false;
+    window.initialPositions = (demand.positions || []).map(p => ({
+        position_id: p.position_id,
+        quantity: p.quantity,
+        price: p.price,
+    }));
 
     const stateOptions = demandStates.map(s =>
         `<option value="${s.href}" ${s.name === demand.state_name ? 'selected' : ''}>${s.name}</option>`
     ).join('');
 
     // To'lov usullari va hisoblarini tayyorlash
-    const uzsAccounts = (appAccountsList && appAccountsList.length > 0)
-        ? appAccountsList.filter(a => !a.is_dollar && a.currency !== 'USD')
-        : orgAccounts;
-    const dollarAccounts = (appAccountsList && appAccountsList.length > 0)
-        ? appAccountsList.filter(a => a.is_dollar || a.currency === 'USD')
-        : [];
-
     const cashMethod = appPaymentMethods.find(m => m.id === 'cash');
     const cardMethod = appPaymentMethods.find(m => m.id === 'card');
     const usdMethod = appPaymentMethods.find(m => m.id === 'usd');
@@ -675,45 +681,66 @@ function renderEditForm(demand, paymentsData, currentBalance) {
     const isCardActive = cardMethod ? cardMethod.is_active : true;
     const isUsdActive = usdMethod ? usdMethod.is_active : true;
 
-    // Card accounts filter — faqat 1 tadan ko'p bo'lsagina dropdown ko'rinadi
-    const cardLinkedIds = cardMethod?.linked_account_ids || (cardMethod?.linked_account_id ? [cardMethod.linked_account_id] : []);
-    const activeCardAccounts = cardLinkedIds.length > 0
-        ? uzsAccounts.filter(a => cardLinkedIds.includes(a.id))
-        : uzsAccounts;
-    const showCardDropdown = activeCardAccounts.length > 1;
+    // Card accounts (Karta hisoblari)
+    let activeCardAccounts = [];
+    if (cardMethod && Array.isArray(cardMethod.linked_accounts_detail) && cardMethod.linked_accounts_detail.length > 0) {
+        activeCardAccounts = cardMethod.linked_accounts_detail;
+    } else {
+        const cardLinkedIds = cardMethod?.linked_account_ids || [];
+        const allAccs = (window.appAvailableAccounts && window.appAvailableAccounts.length > 0)
+            ? window.appAvailableAccounts
+            : (appAccountsList || []);
+        if (cardLinkedIds.length > 0) {
+            activeCardAccounts = allAccs.filter(a => cardLinkedIds.includes(a.id));
+        } else {
+            activeCardAccounts = allAccs.filter(a => !a.is_dollar && a.currency !== 'USD' && a.id !== 'cash_default');
+        }
+    }
     const defaultCardAccId = activeCardAccounts[0]?.id || '';
 
-    // Dollar accounts filter — faqat 1 tadan ko'p bo'lsagina dropdown ko'rinadi
-    const usdLinkedIds = usdMethod?.linked_account_ids || (usdMethod?.linked_account_id ? [usdMethod.linked_account_id] : []);
-    const activeDollarAccounts = usdLinkedIds.length > 0
-        ? dollarAccounts.filter(a => usdLinkedIds.includes(a.id))
-        : dollarAccounts;
-    const showUsdDropdown = activeDollarAccounts.length > 1;
+    // Dollar accounts (Dollar hisoblari)
+    let activeDollarAccounts = [];
+    if (usdMethod && Array.isArray(usdMethod.linked_accounts_detail) && usdMethod.linked_accounts_detail.length > 0) {
+        activeDollarAccounts = usdMethod.linked_accounts_detail;
+    } else {
+        const usdLinkedIds = usdMethod?.linked_account_ids || [];
+        const allAccs = (window.appAvailableAccounts && window.appAvailableAccounts.length > 0)
+            ? window.appAvailableAccounts
+            : (appAccountsList || []);
+        if (usdLinkedIds.length > 0) {
+            activeDollarAccounts = allAccs.filter(a => usdLinkedIds.includes(a.id));
+        } else {
+            activeDollarAccounts = allAccs.filter(a => a.is_dollar || a.currency === 'USD' || a.id === 'usd_default');
+        }
+    }
     const defaultUsdAccId = activeDollarAccounts[0]?.id || '';
 
     const cardAccountAndFullPayHtml = `
-        <div class="card-account-fullpay-row" style="display:flex; justify-content:space-between; align-items:flex-end; gap:6px; margin-top:4px;">
-            ${showCardDropdown ? `
+        <div class="card-account-fullpay-row" style="display:flex; justify-content:space-between; align-items:flex-end; gap:8px; margin-top:6px; margin-bottom:6px;">
+            ${isCardActive && activeCardAccounts.length > 0 ? `
             <div class="pay-input-field" style="flex:1; min-width:0;">
-                <label>🏦 Bank hisobi:</label>
-                <select id="paymentAccount" class="select-modern-account" style="width:100%; padding:5px 8px; border-radius:6px; font-weight:600; font-size:11.5px; border:1px solid var(--border); height:32px; box-sizing:border-box;">
+                <label style="font-size:11px; font-weight:700; color:var(--primary); display:flex; align-items:center; gap:4px; margin-bottom:3px;">
+                    🏦 Karta / Bank hisobi: <span style="font-size:10.5px; font-weight:600; color:var(--text-light); background:#f1f5f9; padding:1px 6px; border-radius:10px;">${activeCardAccounts.length} ta hisob</span>
+                </label>
+                <select id="paymentAccount" class="select-modern-account" style="width:100%; padding:6px 10px; border-radius:6px; font-weight:700; font-size:12px; border:1.5px solid #0284c7; background:#fff; height:34px; box-sizing:border-box; color:#0f172a; cursor:pointer;">
                     ${activeCardAccounts.map(a => `<option value="${a.id}">${a.name || a.bankName}</option>`).join('')}
                 </select>
             </div>
             ` : `<input type="hidden" id="paymentAccount" value="${defaultCardAccId}">`}
-            <div style="${showCardDropdown ? '' : 'width:100%; display:flex; justify-content:flex-end;'}">
-                <button type="button" class="btn-full-payment" onclick="setEditAmount('full')" title="Qolgan barcha sotuv qarzini to'lovga kiritish">
+            
+            <div style="${isCardActive && activeCardAccounts.length > 0 ? '' : 'width:100%; display:flex; justify-content:flex-end;'}">
+                <button type="button" class="btn-full-payment" onclick="setEditAmount('full')" title="Qolgan barcha sotuv qarzini to'lovga kiritish" style="height:34px; padding:0 14px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; border-radius:6px; background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; border:none; cursor:pointer; box-shadow:0 2px 6px rgba(2,132,199,0.3);">
                     💯 To'liq to'lash
                 </button>
             </div>
         </div>
     `;
 
-    const usdAccountSelectHtml = showUsdDropdown
-        ? `<div class="compact-pay-field" style="min-width:140px;">
-               <label style="color:#166534;">🏦 Dollar hisobi</label>
-               <select id="usdAccountSelect">
-                   ${activeDollarAccounts.map(a => `<option value="${a.id}">💵 ${a.name}</option>`).join('')}
+    const usdAccountSelectHtml = (isUsdActive && activeDollarAccounts.length > 1)
+        ? `<div class="compact-pay-field" style="min-width:140px; margin-top:6px;">
+               <label style="font-size:11px; font-weight:700; color:#166534; display:block; margin-bottom:2px;">🏦 Dollar hisobi:</label>
+               <select id="usdAccountSelect" class="form-control" style="font-size:11.5px; font-weight:600; padding:4px 8px; height:30px; border-radius:6px; border:1px solid #16a34a; background:#fff;">
+                   ${activeDollarAccounts.map(a => `<option value="${a.id}">${a.name.startsWith('💵') || a.name.startsWith('💲') ? a.name : '💲 ' + a.name}</option>`).join('')}
                </select>
            </div>`
         : `<input type="hidden" id="usdAccountSelect" value="${defaultUsdAccId}">`;
@@ -750,17 +777,47 @@ function renderEditForm(demand, paymentsData, currentBalance) {
         <!-- YUQORI BIRLASHGAN BOSHQARUV TASMASI (Mijoz + Balans + Status + Saqlash) -->
         <div class="demand-edit-topbar">
             <div class="topbar-left">
-                <!-- Mijoz nomi va yangi tabda ochish silkasi -->
-                <div class="agent-info-badge">
+                <!-- Mijoz qismi (Link yoki Tahrirlash) -->
+                <div class="agent-info-badge" style="display:flex; align-items:center; gap:6px;">
                     <span style="font-size:11px; color:var(--text-light); text-transform:uppercase; font-weight:700;">Mijoz:</span>
-                    <a href="/customers?id=${encodeURIComponent(demand.agent_id || '')}" target="_blank" class="agent-name-link" onclick="openCustomerProfile(event, '${demand.agent_id || ''}')" title="Mijoz kartochkasini ochish (yangi oyna)">
-                        <span>👤</span> <strong>${demand.agent_name}</strong>
-                        <span style="font-size:11px; opacity:0.75;">↗️</span>
-                    </a>
+                    
+                    <!-- 1. Odatiy ko'rinish: Silkali mijoz nomi + ✏️ qalam belgisi -->
+                    <div id="customerDisplayBox" style="display:${demand.agent_name ? 'inline-flex' : 'none'}; align-items:center; gap:6px;">
+                        <a id="customerProfileLink" href="${demand.agent_id ? `/customers?id=${encodeURIComponent(demand.agent_id)}` : '#'}" target="_blank" class="agent-name-link" onclick="openCustomerProfile(event, '${demand.agent_id || ''}')" title="Mijoz kartochkasini ochish" style="font-size:13.5px; font-weight:700; color:var(--primary); text-decoration:none; display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:6px; background:#eff6ff; border:1px solid #bfdbfe; transition:all 0.2s;">
+                            👤 <span id="displayCustomerName">${(demand.agent_name || 'Mijoz tanlanmagan').replace(/"/g, '&quot;')}</span>
+                        </a>
+                        <button type="button" class="btn-top-action" onclick="toggleCustomerEditMode(true)" title="Mijozni o'zgartirish yoki yangi qo'shish" style="font-size:12px; padding:3px 7px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; color:#334155; display:inline-flex; align-items:center;">
+                            ✏️
+                        </button>
+                    </div>
+
+                    <!-- 2. Tahrirlash ko'rinishi: Qidiruv input + ➕ Yangi + ✖ Bekor qilish -->
+                    <div id="customerEditBox" style="display:${demand.agent_name ? 'none' : 'inline-flex'}; align-items:center; gap:6px; position:relative;">
+                        <div style="position:relative; min-width:240px;">
+                            <input type="text" id="customerSearchInput" class="form-control" 
+                                placeholder="🔍 Mijozni qidirish yoki tanlash..." 
+                                value="${(demand.agent_name || '').replace(/"/g, '&quot;')}" 
+                                autocomplete="off" 
+                                style="font-size:13px; font-weight:700; padding:6px 10px; border-radius:6px; width:100%; border:1.5px solid #0284c7; background:#fff;"
+                                onfocus="showCustomerDropdownList()"
+                                oninput="filterCustomerDropdownList(this.value)"
+                            />
+                            <input type="hidden" id="editCustomerSelect" value="${demand.agent_id || ''}">
+                            
+                            <div id="customerSuggestionsList" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:220px; overflow-y:auto; background:#fff; border:1.5px solid #0284c7; border-top:none; border-radius:0 0 8px 8px; z-index:9999; box-shadow:0 8px 20px rgba(0,0,0,0.18);">
+                            </div>
+                        </div>
+                        <button type="button" class="btn-top-action btn-save-cust" onclick="openNewCustomerModal()" style="font-size:11.5px; padding:6px 10px; background:#16a34a; color:#fff; border-radius:6px; cursor:pointer; font-weight:700; white-space:nowrap;" title="Yangi mijoz yaratish">
+                            ➕ Yangi
+                        </button>
+                        <button type="button" class="btn-top-action" onclick="toggleCustomerEditMode(false)" style="font-size:11.5px; padding:6px 8px; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer;" title="Yopish">
+                            ✖
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- Mijozning joriy umumiy balansi / qarzi -->
-                <div class="customer-balance-badge ${currentBalance > 0 ? 'debt' : (currentBalance < 0 ? 'credit' : 'zero')}" title="Mijozning barcha operatsiyalar bo'yicha jami balansi">
+                <div id="editCustomerBalanceBadge" class="customer-balance-badge ${currentBalance > 0 ? 'debt' : (currentBalance < 0 ? 'credit' : 'zero')}" title="Mijozning barcha operatsiyalar bo'yicha jami balansi">
                     <span class="badge-label">${currentBalance > 0 ? 'Qarzi:' : (currentBalance < 0 ? 'Haqi:' : 'Balans:')}</span>
                     <strong class="badge-value">${formatMoney(Math.abs(currentBalance))}</strong>
                 </div>
@@ -849,7 +906,7 @@ function renderEditForm(demand, paymentsData, currentBalance) {
                         <div class="discount-header">
                             <span style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-light);">🏷️ Skidka / Chegirma:</span>
                             <span id="discountSummaryText" class="discount-calc-badge" style="font-size:12px; font-weight:700; color:var(--accent);">
-                                ${existingDiscountPercent > 0 ? `${existingDiscountPercent.toFixed(1)}% (${formatMoney(existingDiscountAmount)})` : '0 so\'m'}
+                                ${existingDiscountPercent > 0 ? `${Number(existingDiscountPercent.toFixed(6))}% (${formatMoney(existingDiscountAmount)})` : '0 so\'m'}
                             </span>
                         </div>
                         <div class="discount-controls-spacious">
@@ -858,8 +915,8 @@ function renderEditForm(demand, paymentsData, currentBalance) {
                                 <button type="button" class="discount-toggle-btn ${window.currentDiscountType === 'sum' ? 'active' : ''}" id="btnSum" onclick="setDiscountType('sum')">So'm</button>
                             </div>
                             <input type="number" id="editDiscount"
-                                   value="${window.currentDiscountType === 'percent' ? existingDiscountPercent.toFixed(2) : existingDiscountAmount}"
-                                   min="0" step="${window.currentDiscountType === 'percent' ? '0.5' : '1000'}"
+                                   value="${window.currentDiscountType === 'percent' ? Number(existingDiscountPercent.toFixed(6)) : existingDiscountAmount}"
+                                   min="0" step="${window.currentDiscountType === 'percent' ? '0.000001' : '1000'}"
                                    class="discount-input-spacious" placeholder="0">
                         </div>
                     </div>
@@ -947,7 +1004,10 @@ function renderEditForm(demand, paymentsData, currentBalance) {
 
     renderPositionsTable();
 
-    document.getElementById('editDiscount').addEventListener('input', () => recalculateTotals(false));
+    document.getElementById('editDiscount').addEventListener('input', () => {
+        window.isDiscountManuallyEdited = true;
+        recalculateTotals(false);
+    });
     recalculateTotals(true);
 
     if (window.initGhostZeros) window.initGhostZeros(document.getElementById('editModal'));
@@ -969,7 +1029,7 @@ function renderPositionsTable() {
     }
 
     const discountDisplay = (window.currentDiscountPercent && window.currentDiscountPercent > 0)
-        ? `${window.currentDiscountPercent.toFixed(2)}%`
+        ? `${Number(window.currentDiscountPercent.toFixed(6))}%`
         : '—';
 
     tbody.innerHTML = currentEditDemand.positions.map((p, i) => `
@@ -980,24 +1040,43 @@ function renderPositionsTable() {
                 <br><small style="color:var(--text);">${p.name}</small>
             </td>
             <td>
-                <input type="number" class="pos-qty" data-index="${i}" value="${p.quantity}" min="0.01" step="any" oninput="recalculatePosition(${i})">
+                <div style="display:inline-flex; align-items:center;">
+                    <button type="button" onclick="adjustPositionQty(${i}, -1)" style="border:1px solid #cbd5e1; background:#f8fafc; border-radius:4px 0 0 4px; padding:3px 7px; font-weight:700; cursor:pointer; font-size:12px; color:#475569;" title="1 taga kamaytirish">-</button>
+                    <input type="number" class="pos-qty" data-index="${i}" value="${p.quantity}" min="0.01" step="any" oninput="recalculatePosition(${i})" style="width:52px; text-align:center; border-radius:0; padding:4px 2px; border-left:none; border-right:none; font-weight:700;">
+                    <button type="button" onclick="adjustPositionQty(${i}, 1)" style="border:1px solid #cbd5e1; background:#f8fafc; border-radius:0 4px 4px 0; padding:3px 7px; font-weight:700; cursor:pointer; font-size:12px; color:#475569;" title="1 taga oshirish">+</button>
+                </div>
             </td>
             <td>
-                <input type="number" class="pos-price" data-index="${i}" value="${p.price}" min="0" step="100" oninput="recalculatePosition(${i})">
+                <input type="number" class="pos-price" data-index="${i}" value="${p.price}" min="0" step="100" oninput="recalculatePosition(${i})" style="font-weight:600;">
             </td>
-            <td class="pos-sum" id="pos_sum_${i}">${formatNumber(p.quantity * p.price)}</td>
+            <td class="pos-sum" id="pos_sum_${i}" style="font-weight:700; white-space:nowrap;">${formatMoney(p.quantity * p.price)}</td>
             <td style="text-align:center;">
-                <span class="pos-discount-display" id="pos_discount_${i}">${p.discount ? p.discount.toFixed(2) + '%' : discountDisplay}</span>
+                <span class="pos-discount-display" id="pos_discount_${i}">${p.discount ? Number(p.discount.toFixed(6)) + '%' : discountDisplay}</span>
             </td>
-            <td style="text-align:center;">
+            <td style="text-align:center; white-space:nowrap;">
+                ${(!p.is_new && currentEditDemand.id !== 'new') ? `
+                <button type="button" class="btn-pos-swap" onclick="openQuickSwapModalForDemandPosition(${i})" title="Tovarni boshqasiga almashtirish (Swap)" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; border-radius:6px; padding:3px 7px; font-size:12px; cursor:pointer; margin-right:4px;">
+                    🔄
+                </button>
+                ` : ''}
                 <button type="button" class="delete-pos-btn" onclick="deletePosition(${i})" title="O'chirish">🗑️</button>
             </td>
         </tr>
     `).join('');
 }
 
+window.adjustPositionQty = function(i, delta) {
+    const qtyInputs = document.querySelectorAll('.pos-qty');
+    if (!qtyInputs || !qtyInputs[i]) return;
+    let val = parseAmount(qtyInputs[i].value) || 0;
+    val = Math.max(0.01, val + delta);
+    qtyInputs[i].value = val;
+    recalculatePosition(i);
+};
+
 function setDiscountType(type) {
     window.currentDiscountType = type;
+    window.isDiscountManuallyEdited = true;
     const btnSum = document.getElementById('btnSum');
     const btnPercent = document.getElementById('btnPercent');
     if (btnSum) btnSum.classList.toggle('active', type === 'sum');
@@ -1005,9 +1084,9 @@ function setDiscountType(type) {
 
     const input = document.getElementById('editDiscount');
     if (input) {
-        input.step = type === 'sum' ? '1000' : '0.5';
+        input.step = type === 'sum' ? '1000' : '0.000001';
         if (type === 'percent') {
-            input.value = (window.currentDiscountPercent || 0).toFixed(2);
+            input.value = Number((window.currentDiscountPercent || 0).toFixed(6));
         } else {
             input.value = formatNumber(Math.round(window.currentDiscountAmount || 0));
         }
@@ -1283,13 +1362,17 @@ async function saveEdit() {
 
     try {
         const demandId = currentEditDemand.id;
-        const discountType = window.currentDiscountType || 'sum';
-        const rawDiscountInput = parseAmount(document.getElementById('editDiscount')?.value);
-        let discountValue = rawDiscountInput;
-        if (discountType === 'percent') {
-            discountValue = Math.floor(rawDiscountInput * 1000000) / 1000000;
-        } else {
-            discountValue = Math.round(rawDiscountInput);
+        let discountType = null;
+        let discountValue = null;
+
+        if (window.isDiscountManuallyEdited) {
+            discountType = window.currentDiscountType || 'sum';
+            const rawDiscountInput = parseAmount(document.getElementById('editDiscount')?.value);
+            if (discountType === 'percent') {
+                discountValue = Math.floor(rawDiscountInput * 1000000) / 1000000;
+            } else {
+                discountValue = Math.round(rawDiscountInput);
+            }
         }
         const stateHref = document.getElementById('editState')?.value || null;
 
@@ -1325,19 +1408,33 @@ async function saveEdit() {
                     price: p,
                 });
             } else {
-                positionsToUpdate.push({
-                    position_id: pos.position_id,
-                    quantity: q,
-                    price: p,
-                });
+                const orig = (window.initialPositions || []).find(op => op.position_id === pos.position_id);
+                // Faqatgina haqiqatda o'zgargan pozitsiyalarni yuboramiz (ortiqcha sekinlashtirmaslik va mavjud skidkani buzmaslik uchun)
+                if (!orig || Number(orig.quantity) !== Number(q) || Number(orig.price) !== Number(p)) {
+                    positionsToUpdate.push({
+                        position_id: pos.position_id,
+                        quantity: q,
+                        price: p,
+                    });
+                }
             }
         });
 
+        const customerSelect = document.getElementById('editCustomerSelect');
+        const chosenAgentId = customerSelect && customerSelect.value ? customerSelect.value : (currentEditDemand ? currentEditDemand.agent_id : null);
+        if (!chosenAgentId) {
+            alert("Iltimos, avval mijozni tanlang yoki yangi mijoz qo'shing!");
+            saveBtn.disabled = false;
+            saveBtn.textContent = '💾 Saqlash';
+            return;
+        }
+
         const payload = {
+            agent_id: chosenAgentId,
             discount_type: discountType,
             discount_value: discountValue,
             state_href: stateHref,
-            positions: positionsToUpdate,
+            positions: positionsToUpdate.length > 0 ? positionsToUpdate : null,
             added_positions: addedPositions.length > 0 ? addedPositions : null,
             deleted_positions: (window.deletedPositionIds && window.deletedPositionIds.length > 0) ? window.deletedPositionIds : null,
             cash_amount: cashAmount,
@@ -1644,11 +1741,11 @@ async function printReceipt80mm(demandId) {
         if (!resp.success || !resp.data) throw new Error('Sotuv ma\'lumotlarini olib bo\'lmadi');
         const d = resp.data;
 
-        let customerBalance = 0;
-        if (d.agent_id) {
+        let customerBalance = (d.agent_balance !== undefined && d.agent_balance !== null) ? d.agent_balance : 0;
+        if (customerBalance === 0 && d.agent_id && d.agent_balance === undefined) {
             try {
                 const balResp = await apiFetch(`/payments/balance/${d.agent_id}`);
-                if (balResp.success && balResp.data) {
+                if (balResp && balResp.success && balResp.data) {
                     customerBalance = parseFloat(balResp.data.balance) || 0;
                 }
             } catch (e) {}
@@ -1894,8 +1991,18 @@ function executeReceiptPrint() {
 }
 
 function closeReceiptPreviewModal() {
-    document.getElementById('receiptPreviewModal').classList.remove('active');
+    const previewModal = document.getElementById('receiptPreviewModal');
+    if (previewModal) previewModal.classList.remove('active');
+    const printArea = document.getElementById('receiptPrintArea');
+    if (printArea) printArea.innerHTML = '';
 }
+
+window.addEventListener('afterprint', () => {
+    const printArea = document.getElementById('receiptPrintArea');
+    if (printArea) printArea.innerHTML = '';
+    const genericArea = document.getElementById('genericPrintArea');
+    if (genericArea) genericArea.innerHTML = '';
+});
 
 document.getElementById('receiptPreviewModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'receiptPreviewModal') closeReceiptPreviewModal();
@@ -1903,3 +2010,758 @@ document.getElementById('receiptPreviewModal')?.addEventListener('click', (e) =>
 document.getElementById('receiptSettingsModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'receiptSettingsModal') closeReceiptSettingsModal();
 });
+
+// ================= MIJOZLAR BILAN ISHLASH (AUTOCOMPLETE & YANGI MIJOZ) =================
+async function ensureCustomersLoaded() {
+    if (window.allLoadedCustomers && window.allLoadedCustomers.length > 0) return window.allLoadedCustomers;
+    try {
+        const cResp = await apiFetch('/customers?limit=2000');
+        if (cResp && cResp.success && cResp.data) {
+            window.allLoadedCustomers = Array.isArray(cResp.data) ? cResp.data : (cResp.data.customers || []);
+            appCustomers = window.allLoadedCustomers;
+            return window.allLoadedCustomers;
+        }
+    } catch (e) {
+        console.warn("Mijozlar ro'yxati yuklanmadi:", e);
+    }
+    return [];
+}
+
+window.showCustomerDropdownList = function() {
+    const list = document.getElementById('customerSuggestionsList');
+    if (!list) return;
+    window.filterCustomerDropdownList(document.getElementById('customerSearchInput')?.value || '');
+    list.style.display = 'block';
+};
+
+window.filterCustomerDropdownList = function(query) {
+    const list = document.getElementById('customerSuggestionsList');
+    if (!list) return;
+    const q = (query || '').toLowerCase().trim();
+    const customers = window.allLoadedCustomers || [];
+    
+    const filtered = q ? customers.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) || 
+        (c.phone && c.phone.toLowerCase().includes(q))
+    ) : customers.slice(0, 60);
+
+    if (filtered.length === 0) {
+        list.innerHTML = `
+            <div style="padding:10px 12px; font-size:12px; color:#64748b; text-align:center;">
+                Mijoz topilmadi.
+                <button type="button" onclick="openNewCustomerModal()" style="display:block; margin:6px auto 0; padding:4px 10px; font-size:12px; background:#16a34a; color:#fff; border-radius:4px; border:none; cursor:pointer;">➕ Yangi mijoz yaratish</button>
+            </div>
+        `;
+    } else {
+        list.innerHTML = filtered.map(c => {
+            const bal = Number(c.balance || 0);
+            const balText = bal > 0 ? `<span style="color:#ef4444;font-size:11px;font-weight:700;">(Qarz: ${formatMoney(bal)})</span>` : (bal < 0 ? `<span style="color:#16a34a;font-size:11px;font-weight:700;">(Haq: ${formatMoney(Math.abs(bal))})</span>` : '');
+            return `
+                <div class="customer-suggest-item" onclick="selectCustomerFromList('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}')" style="padding:7px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                    <div>
+                        <strong style="color:var(--text-color);">👤 ${c.name}</strong>
+                        ${c.phone ? `<span style="color:#64748b;font-size:11.5px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
+                    </div>
+                    <div>${balText}</div>
+                </div>
+            `;
+        }).join('');
+    }
+    list.style.display = 'block';
+};
+
+window.toggleCustomerEditMode = function(showEdit) {
+    const dispBox = document.getElementById('customerDisplayBox');
+    const editBox = document.getElementById('customerEditBox');
+    const input = document.getElementById('customerSearchInput');
+    if (showEdit) {
+        if (dispBox) dispBox.style.display = 'none';
+        if (editBox) {
+            editBox.style.display = 'inline-flex';
+            if (input) {
+                input.focus();
+                window.showCustomerDropdownList();
+            }
+        }
+    } else {
+        const custName = document.getElementById('displayCustomerName')?.textContent?.trim();
+        if (custName && custName !== 'Mijoz tanlanmagan') {
+            if (editBox) editBox.style.display = 'none';
+            if (dispBox) dispBox.style.display = 'inline-flex';
+        } else {
+            if (editBox) editBox.style.display = 'inline-flex';
+        }
+    }
+};
+
+window.selectCustomerFromList = async function(id, name) {
+    const input = document.getElementById('customerSearchInput');
+    const hidden = document.getElementById('editCustomerSelect');
+    const list = document.getElementById('customerSuggestionsList');
+    const dispName = document.getElementById('displayCustomerName');
+    const profLink = document.getElementById('customerProfileLink');
+    
+    if (input) input.value = name;
+    if (hidden) hidden.value = id;
+    if (list) list.style.display = 'none';
+    if (dispName) dispName.textContent = name || 'Mijoz tanlanmagan';
+    if (profLink) {
+        profLink.href = id ? `/customers?id=${encodeURIComponent(id)}` : '#';
+        profLink.setAttribute('onclick', `openCustomerProfile(event, '${id || ''}')`);
+    }
+
+    if (currentEditDemand) {
+        currentEditDemand.agent_id = id;
+        currentEditDemand.agent_name = name;
+    }
+
+    let bal = 0;
+    if (id) {
+        try {
+            const bResp = await apiFetch(`/payments/balance/${id}`);
+            if (bResp && bResp.success && bResp.data) {
+                bal = bResp.data.balance || 0;
+            }
+        } catch(e) {}
+    }
+    const badgeEl = document.getElementById('editCustomerBalanceBadge');
+    if (badgeEl) {
+        badgeEl.className = `customer-balance-badge ${bal > 0 ? 'debt' : (bal < 0 ? 'credit' : 'zero')}`;
+        badgeEl.innerHTML = `<span class="badge-label">${bal > 0 ? 'Qarzi:' : (bal < 0 ? 'Haqi:' : 'Balans:')}</span><strong class="badge-value">${formatMoney(Math.abs(bal))}</strong>`;
+    }
+    
+    if (name) {
+        window.toggleCustomerEditMode(false);
+    }
+    recalculateTotals();
+};
+
+window.onCustomerSelectChange = function(customerId) {
+    const found = (window.allLoadedCustomers || []).find(c => c.id === customerId);
+    window.selectCustomerFromList(customerId, found ? found.name : '');
+};
+
+async function showCreateDemand(preselectedCustomerId = null, preselectedCustomerName = null) {
+    if (!appPaymentMethods || appPaymentMethods.length === 0) {
+        await loadPaymentSettings();
+    }
+    await ensureCustomersLoaded();
+
+    let custName = preselectedCustomerName || '';
+    if (preselectedCustomerId && !custName) {
+        const found = (window.allLoadedCustomers || []).find(c => c.id === preselectedCustomerId);
+        if (found) custName = found.name;
+    }
+
+    let initialBalance = 0;
+    if (preselectedCustomerId) {
+        try {
+            const bResp = await apiFetch(`/payments/balance/${preselectedCustomerId}`);
+            if (bResp && bResp.success && bResp.data) {
+                initialBalance = bResp.data.balance || 0;
+            }
+        } catch(e) {}
+    }
+
+    const newDemand = {
+        id: 'new',
+        name: 'Yangi Sotuv',
+        moment: new Date().toISOString(),
+        agent_id: preselectedCustomerId || '',
+        agent_name: custName || '',
+        positions: [],
+        sum: 0,
+        discount: 0
+    };
+    currentEditDemand = newDemand;
+    
+    document.getElementById('editModal').classList.add('active');
+    renderEditForm(newDemand, {payments:[], total_paid:0}, initialBalance);
+}
+
+// Click outside suggestions list to close
+document.addEventListener('click', (e) => {
+    const list = document.getElementById('customerSuggestionsList');
+    const input = document.getElementById('customerSearchInput');
+    if (list && input && !input.contains(e.target) && !list.contains(e.target)) {
+        list.style.display = 'none';
+    }
+});
+
+// ===== YANGI MIJOZ =====
+function openNewCustomerModal() {
+    const n = document.getElementById('newCustName');
+    const p = document.getElementById('newCustPhone');
+    const g = document.getElementById('newCustGroup');
+    const a = document.getElementById('newCustAddress');
+    const d = document.getElementById('newCustDesc');
+    if (n) n.value = '';
+    if (p) p.value = '';
+    if (g) g.value = '';
+    if (a) a.value = '';
+    if (d) d.value = '';
+    const modal = document.getElementById('newCustomerModal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeNewCustomerModal() {
+    const modal = document.getElementById('newCustomerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function handleNewCustomerSubmit(e) {
+    e.preventDefault();
+    const name = document.getElementById('newCustName')?.value?.trim();
+    const phone = document.getElementById('newCustPhone')?.value?.trim();
+    const group = document.getElementById('newCustGroup')?.value?.trim();
+    const address = document.getElementById('newCustAddress')?.value?.trim();
+    const desc = document.getElementById('newCustDesc')?.value?.trim();
+
+    if(!name) {
+        alert("Iltimos, mijoz ismini kiriting!");
+        return;
+    }
+
+    const btn = document.getElementById('saveNewCustomerBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳...';
+    }
+
+    try {
+        const payload = {
+            name: name,
+            phone: phone || '',
+            group: group || '',
+            address: address || '',
+            description: desc || ''
+        };
+        const resp = await apiFetch('/customers', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        
+        if(resp && resp.success) {
+            alert('✅ Yangi mijoz yaratildi!');
+            closeNewCustomerModal();
+            
+            window.allLoadedCustomers = [];
+            await ensureCustomersLoaded();
+            window.selectCustomerFromList(resp.data.id, resp.data.name);
+        } else {
+            throw new Error(resp?.detail || 'Xatolik');
+        }
+    } catch(err) {
+        alert('❌ Xato: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '💾 Mijozni Saqlash';
+        }
+    }
+}
+
+// ================= TOVAR BO'YICHA SOTUVNI TOPISH VA QAYTARISH (RETURN FINDER) =================
+let returnSearchTimeout = null;
+
+window.openProductReturnFinderModal = function() {
+    const modal = document.getElementById('productReturnFinderModal');
+    if (modal) {
+        modal.classList.add('active');
+        const input = document.getElementById('returnAssortmentSearchInput');
+        if (input) {
+            input.value = '';
+            setTimeout(() => input.focus(), 150);
+        }
+        document.getElementById('returnSearchResultsContainer').innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: #94a3b8;">
+                <span style="font-size: 40px; display: block; margin-bottom: 10px;">📦 ➡️ 👤</span>
+                <strong style="color:#475569;">Tovar kodi, nomi yoki shtrixkodini kiriting</strong>
+                <p style="font-size: 12px; margin-top: 4px; color: #64748b;">Shu tovar sotilgan barcha oxirgi mijozlar va sotuvlar ro'yxati darhol chiqadi</p>
+            </div>
+        `;
+    }
+};
+
+window.closeProductReturnFinderModal = function() {
+    const modal = document.getElementById('productReturnFinderModal');
+    if (modal) modal.classList.remove('active');
+};
+
+let activeReturnAssortmentId = null;
+
+window.debounceProductReturnSearch = function(val) {
+    if (returnSearchTimeout) clearTimeout(returnSearchTimeout);
+    returnSearchTimeout = setTimeout(() => {
+        activeReturnAssortmentId = null;
+        window.executeProductReturnSearch(val);
+    }, 250);
+};
+
+window.executeProductReturnSearch = async function(query, assortmentId = null) {
+    const input = document.getElementById('returnProductSearchInput');
+    const q = (query || (input ? input.value : '') || '').trim();
+    if (!q || q.length < 1) return;
+
+    if (assortmentId !== undefined) {
+        activeReturnAssortmentId = assortmentId;
+    }
+
+    const container = document.getElementById('returnSearchResultsContainer');
+    const statusEl = document.getElementById('returnSearchStatus');
+    if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = '⚡ Qidirilmoqda...';
+    }
+
+    try {
+        let url = `/demands/search/by-product?query=${encodeURIComponent(q)}`;
+        if (activeReturnAssortmentId) {
+            url += `&assortment_id=${encodeURIComponent(activeReturnAssortmentId)}`;
+        }
+        const resp = await apiFetch(url);
+        if (statusEl) statusEl.style.display = 'none';
+
+        if (resp && resp.success && resp.data) {
+            window.renderReturnSearchResults(resp.data);
+        } else {
+            throw new Error(resp?.detail || "Ma'lumot olinmadi");
+        }
+    } catch (err) {
+        if (statusEl) statusEl.style.display = 'none';
+        container.innerHTML = `
+            <div style="text-align: center; padding: 30px; color: #ef4444;">
+                ❌ Xatolik yuz berdi: ${err.message}
+            </div>
+        `;
+    }
+};
+
+window.renderReturnSearchResults = function(data) {
+    const container = document.getElementById('returnSearchResultsContainer');
+    if (!container) return;
+
+    const assortments = data.assortments || [];
+    const sales = data.matched_sales || [];
+    const currentQ = data.query || '';
+
+    if (sales.length === 0 && assortments.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: #64748b;">
+                <span style="font-size: 32px; display: block; margin-bottom: 8px;">🔍❓</span>
+                <strong>"${data.query}" bo'yicha hech qanday tovar yoki sotuv topilmadi</strong>
+                <p style="font-size: 12px; margin-top: 4px;">Kodni yoki tovar nomini to'g'ri kiritganingizni tekshiring</p>
+            </div>
+        `;
+        return;
+    }
+
+    let assortmentsHeaderHtml = '';
+    if (assortments.length > 0) {
+        assortmentsHeaderHtml = `
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase;">Topilgan Tovar(lar) — Filtrlash uchun bosing:</div>
+                    ${activeReturnAssortmentId ? `
+                        <button type="button" onclick="window.executeProductReturnSearch('${currentQ}', null)" style="background:none; border:none; color:#0284c7; font-size:11px; font-weight:700; cursor:pointer; text-decoration:underline;">
+                            ✕ Barcha tovarlar bo'yicha ko'rsatish
+                        </button>
+                    ` : ''}
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    ${assortments.map(a => {
+                        const isActive = activeReturnAssortmentId === a.id;
+                        return `
+                        <div onclick="window.executeProductReturnSearch('${currentQ}', '${a.id}')" 
+                             style="cursor:pointer; background:${isActive ? '#0284c7' : '#fff'}; color:${isActive ? '#fff' : '#1e293b'}; border:1.5px solid ${isActive ? '#0284c7' : '#93c5fd'}; padding:5px 12px; border-radius:6px; font-size:12.5px; transition:all 0.15s; box-shadow:${isActive ? '0 2px 6px rgba(2,132,199,0.3)' : 'none'};">
+                            <strong style="color:${isActive ? '#fff' : '#0284c7'};">${a.code}</strong> — <span style="font-weight:600;">${a.name}</span>
+                            <span style="color:${isActive ? '#bbf7d0' : '#16a34a'}; font-weight:700; margin-left:6px;">${formatMoney(a.price)}</span>
+                        </div>
+                    `}).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    if (sales.length === 0) {
+        container.innerHTML = assortmentsHeaderHtml + `
+            <div style="text-align: center; padding: 30px 20px; color: #64748b; background:#fff; border-radius:8px; border:1px dashed #cbd5e1;">
+                ℹ️ Ushbu tovar bazada mavjud, lekin so'nggi sotuvlarda topilmadi.
+            </div>
+        `;
+        return;
+    }
+
+    const salesListHtml = sales.map((s, idx) => {
+        const p = s.position;
+        return `
+            <div class="return-sale-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:12px; box-shadow:0 2px 5px rgba(0,0,0,0.03); transition:all 0.2s;">
+                <!-- Yuqori qism: Mijoz, Vaqt, Hujjat № -->
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; border-bottom:1px solid #f1f5f9; padding-bottom:8px;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <a href="/customers?id=${encodeURIComponent(s.agent_id)}" target="_blank" onclick="openCustomerProfile(event, '${s.agent_id}')" class="agent-name-link" style="font-size:14px; font-weight:700;">
+                                👤 ${s.agent_name}
+                            </a>
+                            <span style="font-size:12px; font-weight:700; color:#0369a1; background:#f0f9ff; padding:2px 8px; border-radius:6px; border:1px solid #bae6fd;">
+                                Sotuv №${s.demand_name}
+                            </span>
+                            <span class="state-pill" style="border-color:${s.state_color}; color:${s.state_color}; background:${s.state_color}15; font-size:11px; padding:2px 8px;">
+                                ${s.state_name || '—'}
+                            </span>
+                        </div>
+                        <div style="font-size:11.5px; color:#64748b; margin-top:4px;">
+                            🕒 ${formatDate(s.moment)} ${s.demand_remaining > 0 ? `• <span style="color:#ef4444; font-weight:700;">Qarz: ${formatMoney(s.demand_remaining)}</span>` : '• <span style="color:#16a34a; font-weight:700;">To\'langan</span>'}
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <button type="button" class="action-btn edit-btn" onclick="closeProductReturnFinderModal(); showEdit('${s.demand_id}');" style="padding:5px 12px; font-size:12px; font-weight:700; border-radius:6px; background:#eff6ff; color:#0284c7; border:1px solid #bfdbfe; cursor:pointer;" title="Sotuvni to'liq tahrirlash">
+                            ✏️ Sotuvni ochish
+                        </button>
+                    </div>
+                </div>
+
+                <!-- O'rta qism: Topilgan tovar ma'lumoti -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Sotilgan tovar:</span>
+                        <div style="font-size:13.5px; font-weight:700; color:#1e293b;">
+                            📦 <strong style="color:var(--accent);">${p.assortment_code}</strong> — ${p.assortment_name}
+                        </div>
+                        <div style="font-size:12px; color:#475569; margin-top:2px;">
+                            Sotilgan soni: <strong style="color:#0f172a;">${p.quantity} dona</strong> × <strong>${formatMoney(p.price)}</strong> = <strong style="color:#16a34a;">${formatMoney(p.total)}</strong>
+                        </div>
+                    </div>
+
+                    <!-- Qaytarish va Almashtirish amallari -->
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <!-- 1-bosishda qaytarish blokchasi -->
+                        <div style="display:flex; align-items:center; gap:4px; background:#fff; padding:4px 8px; border-radius:6px; border:1px solid #cbd5e1;">
+                            <span style="font-size:11px; font-weight:600; color:#64748b;">Qaytarish:</span>
+                            <input type="number" id="retQty_${idx}" value="1" min="0.01" max="${p.quantity}" step="any" style="width:48px; text-align:center; font-weight:700; font-size:12.5px; padding:3px 4px; border:1px solid #0284c7; border-radius:4px;">
+                            <span style="font-size:11px; color:#64748b;">ta</span>
+                            <button type="button" class="btn-top-action" onclick="executeQuickReturnFromCard('${s.demand_id}', '${p.position_id}', ${p.quantity}, '${(p.assortment_name || '').replace(/'/g, "\\'")}', 'retQty_${idx}')" style="background:#ef4444; color:#fff; border:none; padding:4px 10px; font-size:11.5px; font-weight:700; border-radius:5px; cursor:pointer;" title="1-bosishda qisman yoki to'liq qaytarish">
+                                ↩️ Qaytarish
+                            </button>
+                        </div>
+
+                        <!-- 🔄 Almashtirish tugmasi -->
+                        <button type="button" class="btn-top-action" onclick="openQuickSwapModalFromFinder('${s.demand_id}', '${p.position_id}', '${p.assortment_id}', '${(p.assortment_name || '').replace(/'/g, "\\'")}', ${p.quantity}, ${p.price})" style="background:#0284c7; color:#fff; border:none; padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; cursor:pointer;" title="Boshqa tovar bilan almashtirish (Swap)">
+                            🔄 Almashtirish
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = assortmentsHeaderHtml + `
+        <div style="font-size:12px; font-weight:700; color:#475569; margin-bottom:8px;">
+            Topilgan sotuvlar (${sales.length} ta):
+        </div>
+        ${salesListHtml}
+    `;
+};
+
+window.executeQuickReturnFromCard = async function(demandId, positionId, maxQty, prodName, inputId) {
+    const input = document.getElementById(inputId);
+    const retQty = input ? parseFloat(input.value) : 1;
+
+    if (isNaN(retQty) || retQty <= 0) {
+        alert("Iltimos, to'g'ri qaytarish miqdorini kiriting!");
+        return;
+    }
+    if (retQty > maxQty) {
+        alert(`Qaytarish miqdori mavjud sotuv miqdoridan (${maxQty} ta) ko'p bo'lishi mumkin emas!`);
+        return;
+    }
+
+    const reason = prompt(`"${prodName}" tovaridan ${retQty} dona qaytarilmoqda.\n\nQaytarish sababini kiriting (Ixtiyoriy):`, "Mijozdan qaytarildi / Tovar xato ketgan");
+    if (reason === null) return; // bekor qilindi
+
+    try {
+        const payload = {
+            position_id: positionId,
+            return_quantity: retQty,
+            reason: reason || "Mijozdan qaytarildi"
+        };
+        const resp = await apiFetch(`/demands/${demandId}/quick-return`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (resp && resp.success) {
+            alert(resp.message || "✅ Tovar muvaffaqiyatli qaytarildi va sotuv izohiga qayd etildi!");
+            // Qidiruv natijalarini qayta yangilash
+            const curQ = document.getElementById('returnAssortmentSearchInput')?.value;
+            if (curQ) window.executeProductReturnSearch(curQ);
+            if (typeof loadDemands !== 'undefined') loadDemands();
+        } else {
+            throw new Error(resp?.detail || "Xatolik yuz berdi");
+        }
+    } catch (err) {
+        alert("❌ Xato: " + err.message);
+    }
+};
+
+// ================= TOVARNI ALMASHTIRISH (QUICK SWAP) =================
+let swapSearchTimeout = null;
+let swapOldTotal = 0;
+let swapAccountsCache = null;
+
+async function loadSwapAccounts() {
+    const sel = document.getElementById('swapCashAccount');
+    if (!sel) return;
+    try {
+        if (!swapAccountsCache) {
+            const resp = await apiFetch('/settings/accounts');
+            if (resp && resp.data && resp.data.accounts) {
+                swapAccountsCache = resp.data.accounts;
+            }
+        }
+        let html = '<option value="cash">💵 Asosiy Kassa (Naqd)</option>';
+        if (swapAccountsCache && swapAccountsCache.length > 0) {
+            swapAccountsCache.forEach(acc => {
+                if (acc.type === 'bank' || acc.type === 'card') {
+                    html += `<option value="${acc.id}">💳 ${acc.name}</option>`;
+                }
+            });
+        }
+        sel.innerHTML = html;
+    } catch (e) {
+        console.warn("Swap accounts load error:", e);
+    }
+}
+
+window.toggleSwapCashFields = function() {
+    const chk = document.getElementById('swapEnableCashAction');
+    const fields = document.getElementById('swapCashFields');
+    if (fields) {
+        fields.style.display = (chk && chk.checked) ? 'grid' : 'none';
+    }
+};
+
+window.updateSwapDiff = function() {
+    const qty = parseFloat(document.getElementById('swapQtyInput')?.value) || 0;
+    const price = parseAmount(document.getElementById('swapPriceInput')?.value) || 0;
+    const newTotal = qty * price;
+    const diff = newTotal - swapOldTotal;
+
+    const section = document.getElementById('swapCashActionSection');
+    const preview = document.getElementById('swapDiffPreview');
+    const chk = document.getElementById('swapEnableCashAction');
+    const label = document.getElementById('swapCashCheckLabel');
+    const amtInput = document.getElementById('swapCashAmount');
+
+    if (!section || !preview || !chk || !label) return;
+
+    if (newTotal <= 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    if (diff > 0) {
+        preview.innerHTML = `<span style="color:#15803d;">💰 Farq: +${formatMoney(diff)} (Mijoz qo'shimcha to'lashi kerak)</span>`;
+        label.innerHTML = `📥 Farqni joyida kassaga qabul qilish (+${formatMoney(diff)} Kirim)`;
+        if (amtInput && !chk.checked) amtInput.value = formatNumber(diff);
+        section.style.borderColor = '#86efac';
+        section.style.background = '#f0fdf4';
+    } else if (diff < 0) {
+        const absDiff = Math.abs(diff);
+        preview.innerHTML = `<span style="color:#b45309;">↩️ Farq: -${formatMoney(absDiff)} (Mijozga pul qaytarilishi kerak)</span>`;
+        label.innerHTML = `💸 Farqni mijozga kassadan qaytarish (-${formatMoney(absDiff)} Chiqim)`;
+        if (amtInput && !chk.checked) amtInput.value = formatNumber(absDiff);
+        section.style.borderColor = '#fde047';
+        section.style.background = '#fefce8';
+    } else {
+        preview.innerHTML = `<span style="color:#0369a1;">⚖️ Farq: 0 so'm (Kassa harakati talab etilmaydi)</span>`;
+        label.innerHTML = `Kassa harakati shart emas`;
+        chk.checked = false;
+        window.toggleSwapCashFields();
+        section.style.borderColor = '#cbd5e1';
+        section.style.background = '#f8fafc';
+    }
+};
+
+window.openQuickSwapModalForDemandPosition = function(index) {
+    if (!currentEditDemand || !currentEditDemand.positions[index]) return;
+    const p = currentEditDemand.positions[index];
+    window.openQuickSwapModalFromFinder(
+        currentEditDemand.id,
+        p.position_id,
+        p.assortment_id,
+        p.name || p.code || 'Tovar',
+        p.quantity,
+        p.price
+    );
+};
+
+window.openQuickSwapModalFromFinder = function(demandId, positionId, oldAssortmentId, oldProdName, oldQty, oldPrice) {
+    document.getElementById('swapDemandId').value = demandId || '';
+    document.getElementById('swapPositionId').value = positionId || '';
+    document.getElementById('swapNewAssortmentId').value = '';
+    document.getElementById('swapNewAssortmentSearch').value = '';
+    document.getElementById('swapQtyInput').value = oldQty || 1;
+    document.getElementById('swapPriceInput').value = oldPrice ? formatNumber(oldPrice) : '';
+    document.getElementById('swapReasonInput').value = 'Razmer / tovar adashib ketganligi sababli';
+
+    swapOldTotal = (oldQty || 1) * (oldPrice || 0);
+
+    const oldInfo = document.getElementById('swapOldProductInfo');
+    if (oldInfo) {
+        oldInfo.innerHTML = `
+            <div style="font-weight:700; color:#991b1b; margin-bottom:2px;">Eski tovar (O'chiriladi):</div>
+            <div>📦 <strong>${oldProdName}</strong> — <strong>${oldQty} dona</strong> × ${formatMoney(oldPrice)} = <strong style="color:#991b1b;">${formatMoney(swapOldTotal)}</strong></div>
+        `;
+    }
+
+    const chk = document.getElementById('swapEnableCashAction');
+    if (chk) chk.checked = false;
+    window.toggleSwapCashFields();
+    loadSwapAccounts();
+
+    // Soni va narxi o'zgarganda farqni hisoblash listenerlari
+    const qtyInput = document.getElementById('swapQtyInput');
+    const priceInput = document.getElementById('swapPriceInput');
+    if (qtyInput) qtyInput.oninput = window.updateSwapDiff;
+    if (priceInput) priceInput.oninput = window.updateSwapDiff;
+
+    const modal = document.getElementById('quickSwapModal');
+    if (modal) {
+        modal.classList.add('active');
+        setTimeout(() => document.getElementById('swapNewAssortmentSearch')?.focus(), 150);
+    }
+};
+
+window.closeQuickSwapModal = function() {
+    const modal = document.getElementById('quickSwapModal');
+    if (modal) modal.classList.remove('active');
+};
+
+window.debounceSwapProductSearch = function(val) {
+    if (swapSearchTimeout) clearTimeout(swapSearchTimeout);
+    swapSearchTimeout = setTimeout(() => {
+        window.executeSwapProductSearch(val);
+    }, 300);
+};
+
+window.executeSwapProductSearch = async function(query) {
+    const q = (query || '').trim();
+    const suggestions = document.getElementById('swapProductSuggestions');
+    if (!suggestions) return;
+
+    if (!q) {
+        suggestions.style.display = 'none';
+        return;
+    }
+
+    try {
+        const resp = await apiFetch(`/demands/search/assortment?query=${encodeURIComponent(q)}`);
+        const items = (resp && resp.data) ? resp.data : [];
+
+        if (items.length === 0) {
+            suggestions.innerHTML = `<div style="padding:8px 12px; font-size:12px; color:#64748b;">Tovar topilmadi</div>`;
+        } else {
+            suggestions.innerHTML = items.slice(0, 15).map(item => `
+                <div onclick="selectSwapProduct('${item.id}', '${(item.name || '').replace(/'/g, "\\'")}', ${item.price || 0})" style="padding:7px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                    <div>
+                        <strong style="color:var(--accent);">${item.code || '—'}</strong>
+                        <span style="margin-left:4px; font-weight:600;">${item.name}</span>
+                    </div>
+                    <strong style="color:#16a34a;">${formatMoney(item.price)}</strong>
+                </div>
+            `).join('');
+        }
+        suggestions.style.display = 'block';
+    } catch (e) {
+        console.error(e);
+    }
+};
+
+window.selectSwapProduct = function(id, name, price) {
+    document.getElementById('swapNewAssortmentId').value = id;
+    document.getElementById('swapNewAssortmentSearch').value = name;
+    if (price) {
+        document.getElementById('swapPriceInput').value = formatNumber(price);
+    }
+    const suggestions = document.getElementById('swapProductSuggestions');
+    if (suggestions) suggestions.style.display = 'none';
+
+    window.updateSwapDiff();
+};
+
+window.handleQuickSwapSubmit = async function(e) {
+    e.preventDefault();
+
+    const demandId = document.getElementById('swapDemandId').value;
+    const positionId = document.getElementById('swapPositionId').value;
+    const newAssortmentId = document.getElementById('swapNewAssortmentId').value;
+    const qty = parseFloat(document.getElementById('swapQtyInput').value);
+    const price = parseAmount(document.getElementById('swapPriceInput').value);
+    const reason = document.getElementById('swapReasonInput').value;
+
+    if (!newAssortmentId) {
+        alert("Iltimos, yangi almashtiriladigan tovarni qidiruv ro'yxatidan tanlang!");
+        return;
+    }
+    if (isNaN(qty) || qty <= 0) {
+        alert("Soni 0 dan katta bo'lishi kerak!");
+        return;
+    }
+
+    const btn = document.getElementById('saveQuickSwapBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Saqlanmoqda...';
+
+    try {
+        const payload = {
+            position_id: positionId,
+            new_assortment_id: newAssortmentId,
+            quantity: qty,
+            new_price: price || null,
+            reason: reason || "Tovar almashtirildi"
+        };
+
+        // Kassa harakati tekshiruvi
+        const enableCash = document.getElementById('swapEnableCashAction')?.checked;
+        if (enableCash) {
+            const newTotal = qty * (price || 0);
+            const diff = newTotal - swapOldTotal;
+            const cashAmt = parseAmount(document.getElementById('swapCashAmount')?.value);
+            const cashAcc = document.getElementById('swapCashAccount')?.value;
+
+            if (cashAmt > 0) {
+                payload.cash_action = diff > 0 ? "cashin" : "cashout";
+                payload.cash_amount = cashAmt;
+                payload.cash_account_id = cashAcc;
+            }
+        }
+
+        const resp = await apiFetch(`/demands/${demandId}/quick-swap`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (resp && resp.success) {
+            alert(resp.message || "✅ Tovar muvaffaqiyatli almashtirildi va sotuv izohiga qayd etildi!");
+            closeQuickSwapModal();
+
+            if (currentEditDemand && currentEditDemand.id === demandId) {
+                showEdit(demandId);
+            }
+            const curQ = document.getElementById('returnProductSearchInput')?.value;
+            if (curQ) window.executeProductReturnSearch(curQ);
+
+            if (typeof loadDemands !== 'undefined') loadDemands();
+        } else {
+            throw new Error(resp?.detail || "Almashtirishda xatolik");
+        }
+    } catch (err) {
+        alert("❌ Xato: " + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Almashtirishni Saqlash';
+    }
+};

@@ -8,9 +8,9 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, desc
+from sqlalchemy import select, func, or_, desc, delete
 from database import get_db
-from models_db import LocalDemand, LocalAssortment, SyncQueue
+from models_db import LocalDemand, LocalAssortment, SyncQueue, LocalDemandPosition, LocalPayment
 import json
 from moysklad_client import ms_client
 from tasks import sync_all_data
@@ -135,7 +135,28 @@ class PositionUpdateRequest(BaseModel):
     quantity: Optional[float] = None
 
 
+class QuickReturnRequest(BaseModel):
+    position_id: str
+    return_quantity: float
+    reason: Optional[str] = "Mijozdan qaytarildi"
+    cash_action: Optional[str] = None  # "cashout" | None
+    cash_account_id: Optional[str] = None
+    cash_amount: Optional[float] = None
+
+
+class QuickSwapRequest(BaseModel):
+    position_id: str
+    new_assortment_id: str
+    quantity: float
+    new_price: Optional[float] = None
+    reason: Optional[str] = "Tovar adashib ketganligi sababli almashtirildi"
+    cash_action: Optional[str] = None  # "cashin" | "cashout" | None
+    cash_account_id: Optional[str] = None
+    cash_amount: Optional[float] = None
+
+
 class DemandUpdateRequest(BaseModel):
+    agent_id: Optional[str] = None
     discount: Optional[float] = None
     discount_type: Optional[str] = None
     discount_value: Optional[float] = None
@@ -393,35 +414,182 @@ def _match_payment_to_demand(payment: dict, payments_by_demand: dict, demand_nam
                 matched = True
                 break
 
-# ================= TOVAR QIDIRISH =================
+# ================= TOVAR QIDIRISH (ANIQ VA TEZKOR RELEVANCE REYTING) =================
+def calculate_product_relevance(item: dict, q_clean: str) -> int:
+    q_lower = q_clean.lower()
+    code = (item.get("code") or "").strip()
+    article = (item.get("article") or "").strip()
+    barcode = (item.get("barcode") or "").strip()
+    name = (item.get("name") or "").strip()
+    name_lower = name.lower()
+    
+    code_lower = code.lower()
+    art_lower = article.lower()
+    bc_lower = barcode.lower()
+
+    # 1. 100% Aniq moslik (Exact Match) -> 10,000 ball (Mutlaq birinchi o'rinda)
+    if code_lower == q_lower or art_lower == q_lower or bc_lower == q_lower:
+        return 10000
+    if name_lower == q_lower:
+        return 9500
+
+    # 2. Agar foydalanuvchi nollar bilan kod yozgan bo'lsa (masalan "00144"):
+    # Qat'iy qoida: faqat aynan '00144' bilan boshlanadigan yoki ichida to'liq bo'lganlar!
+    # Hech qachon 01144, 01440, 01443 kabi boshqa kodlarni chiqarmaymiz (Score = 0)
+    if q_clean.startswith("0"):
+        if code_lower.startswith(q_lower) or art_lower.startswith(q_lower):
+            return 8000 - len(code)
+        if bc_lower.startswith(q_lower):
+            return 7000
+        if name_lower.startswith(q_lower):
+            return 6000
+        if q_lower in code_lower or q_lower in art_lower:
+            return 5000 - len(code)
+        if q_lower in bc_lower or q_lower in name_lower:
+            return 4000
+        return 0
+
+    # 3. Agar toza son bo'lsa (boshida 0 yo'q, masalan "144"):
+    if q_clean.isdigit():
+        q_int = int(q_clean)
+        if code.isdigit() and int(code) == q_int:
+            return 9000 - len(code)
+        if article.isdigit() and int(article) == q_int:
+            return 8900 - len(article)
+
+    # 4. Boshlanish mosligi (Prefix Match)
+    if code_lower.startswith(q_lower) or art_lower.startswith(q_lower):
+        return 7000 - len(code)
+    if bc_lower.startswith(q_lower):
+        return 6500
+    if name_lower.startswith(q_lower):
+        return 6000
+    words = name_lower.split()
+    if any(w.startswith(q_lower) for w in words):
+        return 5000
+
+    # 5. Qisman moslik (Substring Match - faqat to'liq matn mavjud bo'lsa)
+    if q_lower in code_lower or q_lower in art_lower:
+        return 3000 - len(code)
+    if q_lower in bc_lower:
+        return 2500
+    if q_lower in name_lower:
+        return 2000
+
+    return 0
+
+
 @router.get("/search/assortment")
 async def search_assortment(query: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
     try:
-        # DB dan qidiramiz (nomi, kodi, artikuli, shtrixkodi bo'yicha)
-        search_pattern = f"%{query}%"
-        stmt = select(LocalAssortment).where(
-            or_(
-                LocalAssortment.name.ilike(search_pattern),
-                LocalAssortment.code.ilike(search_pattern),
-                LocalAssortment.article.ilike(search_pattern),
-                LocalAssortment.barcode.ilike(search_pattern)
-            )
-        ).limit(20)
+        q_clean = query.strip()
+        search_pattern = f"%{q_clean}%"
         
+        # 1. DB dan qidiramiz
+        conditions = [
+            LocalAssortment.name.ilike(search_pattern),
+            LocalAssortment.code.ilike(search_pattern),
+            LocalAssortment.article.ilike(search_pattern),
+            LocalAssortment.barcode.ilike(search_pattern)
+        ]
+        
+        # Agar nolsiz son kiritilgan bo'lsa (masalan "144"), nollar bilan to'ldirilgan variantlarni ham qo'shamiz (masalan "00144")
+        if q_clean.isdigit() and not q_clean.startswith("0"):
+            for pad in [f"0{q_clean}", f"00{q_clean}", f"000{q_clean}", f"0000{q_clean}"]:
+                conditions.append(LocalAssortment.code == pad)
+                conditions.append(LocalAssortment.article == pad)
+
+        stmt = select(LocalAssortment).where(or_(*conditions)).limit(60)
         results = (await db.execute(stmt)).scalars().all()
 
-        formatted = []
+        candidates = []
+        seen_ids = set()
         for item in results:
-            formatted.append({
+            seen_ids.add(item.id)
+            candidates.append({
                 "id": item.id,
-                "name": item.name,
-                "code": item.code or "—",
-                "barcode": item.barcode or "—",
+                "name": item.name or "",
+                "code": item.code or "",
+                "article": item.article or "",
+                "barcode": item.barcode or "",
                 "price": item.price,
                 "quantity": item.quantity,
             })
 
-        print(f"🔍 DB qidiruv '{query}': {len(formatted)} ta natija topildi")
+        # 2. Agar natijalar kam bo'lsa, to'g'ridan-to'g'ri MoySklad API dan ham qidiramiz
+        if len(candidates) < 3:
+            try:
+                ms_results = await ms_client.search_assortment_enhanced(q_clean)
+                for item in ms_results.get("rows", []):
+                    item_id = item.get("id")
+                    if not item_id or item_id in seen_ids:
+                        continue
+                    seen_ids.add(item_id)
+                    price = 0
+                    if item.get("salePrices") and len(item.get("salePrices", [])) > 0:
+                        price = item["salePrices"][0].get("value", 0) / 100.0
+                    elif item.get("salePrice"):
+                        price = item.get("salePrice", 0) / 100.0
+                    
+                    barcodes = item.get("barcodes", [])
+                    barcode = ""
+                    if barcodes:
+                        bc = barcodes[0]
+                        barcode = str(list(bc.values())[0]) if isinstance(bc, dict) and bc else str(bc)
+
+                    code_val = item.get("code") or ""
+                    art_val = item.get("article") or ""
+                    
+                    candidates.append({
+                        "id": item_id,
+                        "name": item.get("name", ""),
+                        "code": code_val,
+                        "article": art_val,
+                        "barcode": barcode,
+                        "price": price,
+                        "quantity": item.get("quantity", 0),
+                    })
+
+                    try:
+                        db.add(LocalAssortment(
+                            id=item_id,
+                            name=item.get("name", ""),
+                            code=code_val,
+                            article=art_val,
+                            barcode=barcode,
+                            price=price,
+                            quantity=item.get("quantity", 0)
+                        ))
+                    except:
+                        pass
+                await db.commit()
+            except Exception as ms_err:
+                print(f"⚠️ MoySklad live assortment search xatosi: {ms_err}")
+
+        # 3. Aniq reyting (Relevance Scoring) hisoblash va saralash
+        ranked_list = []
+        for cand in candidates:
+            score = calculate_product_relevance(cand, q_clean)
+            if score > 0:
+                ranked_list.append((score, cand))
+
+        # Ball bo'yicha kamayish tartibida saralaymiz (Score DESC, len(code) ASC)
+        ranked_list.sort(key=lambda x: (-x[0], len(x[1].get("code") or "")))
+
+        formatted = []
+        for score, item in ranked_list[:30]:
+            code_display = item.get("code") or item.get("article") or "—"
+            formatted.append({
+                "id": item["id"],
+                "name": item["name"],
+                "code": code_display,
+                "barcode": item.get("barcode") or "—",
+                "price": item["price"],
+                "quantity": item["quantity"],
+                "score": score
+            })
+
+        print(f"🔍 Tovar qidiruv '{q_clean}': {len(formatted)} ta saralangan natija")
         return {"success": True, "data": formatted}
 
     except Exception as e:
@@ -465,27 +633,22 @@ async def get_demand_detail(demand_id: str):
         agent_name = agent.get("name", "Noma'lum")
         agent_phone = agent.get("phone", "")
         
-        # Mijozning umumiy balansi (qarzi) - juda tezkor (<0.2s)
+        # Mijozning umumiy balansi (qarzi) - Mahalliy SQLite dan 0.5ms da olish
         agent_balance = 0.0
         if agent_id:
             try:
-                agent_href = agent.get("meta", {}).get("href", "")
-                if agent_href:
-                    agent_demands_resp = await ms_client._request(
-                        "GET", "/entity/demand",
-                        params={"filter": f"agent={agent_href}", "limit": 100}
-                    )
-                    agent_sales = sum(d.get("sum", 0) / 100.0 for d in agent_demands_resp.get("rows", []))
-
-                    target_part = f"/entity/counterparty/{agent_id}"
-                    agent_paid = sum(c.get("sum", 0) / 100.0 for c in all_payments.get("cashins", []) if target_part in c.get("agent", {}).get("meta", {}).get("href", "") or agent_id in c.get("agent", {}).get("meta", {}).get("href", ""))
-                    agent_paid += sum(p.get("sum", 0) / 100.0 for p in all_payments.get("paymentins", []) if target_part in p.get("agent", {}).get("meta", {}).get("href", "") or agent_id in p.get("agent", {}).get("meta", {}).get("href", ""))
-
-                    agent_balance = agent_sales - agent_paid
-                else:
-                    agent_balance = (agent.get("balance", 0) or 0) / 100.0
+                async with AsyncSessionLocal() as session:
+                    from models_db import LocalCounterparty
+                    stmt = select(LocalCounterparty).where(LocalCounterparty.id == agent_id)
+                    res = await session.execute(stmt)
+                    cp_row = res.scalar_one_or_none()
+                    if cp_row:
+                        agent_balance = float(cp_row.balance or 0.0)
+                        if not agent_phone and cp_row.phone:
+                            agent_phone = cp_row.phone
+                    else:
+                        agent_balance = (agent.get("balance", 0) or 0) / 100.0
             except Exception as be:
-                print(f"[Agent balance error] {be}")
                 agent_balance = (agent.get("balance", 0) or 0) / 100.0
 
         state = demand.get("state", {})
@@ -748,17 +911,181 @@ async def update_quick_status(demand_id: str, req: QuickStatusRequest, db: Async
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ================= OTGRUZKANI TAHRIRLASH =================
+# ================= OTGRUZKANI YARATISH VA TAHRIRLASH =================
+@router.post("")
+@router.post("/")
+async def create_demand_endpoint(update: DemandUpdateRequest, db: AsyncSession = Depends(get_db)):
+    """Yangi sotuv (otgruzka) yaratish"""
+    try:
+        if not update.agent_id:
+            raise HTTPException(status_code=400, detail="Mijoz (kontragent) tanlanishi shart")
+
+        org = await ms_client.get_organization()
+        org_id = org.get("id") or "default"
+
+        pos_items = []
+        all_positions = (update.positions or []) + (update.added_positions or [])
+        for item in all_positions:
+            assort_id = getattr(item, "assortment_id", None) or getattr(item, "position_id", None)
+            if assort_id:
+                pos_items.append({
+                    "assortment": {
+                        "meta": {
+                            "href": f"https://api.moysklad.ru/api/remap/1.2/entity/product/{assort_id}",
+                            "type": "product",
+                            "mediaType": "application/json"
+                        }
+                    },
+                    "quantity": item.quantity,
+                    "price": int(item.price * 100),
+                    "discount": getattr(item, "discount", 0) or 0
+                })
+
+        demand_payload = {
+            "organization": {
+                "meta": {
+                    "href": f"https://api.moysklad.ru/api/remap/1.2/entity/organization/{org_id}",
+                    "type": "organization",
+                    "mediaType": "application/json"
+                }
+            },
+            "agent": {
+                "meta": {
+                    "href": f"https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{update.agent_id}",
+                    "type": "counterparty",
+                    "mediaType": "application/json"
+                }
+            },
+            "positions": pos_items
+        }
+
+        if update.state_href:
+            demand_payload["state"] = {
+                "meta": {
+                    "href": update.state_href,
+                    "type": "state",
+                    "mediaType": "application/json"
+                }
+            }
+
+        created = await ms_client.create_demand(demand_payload)
+        new_id = created.get("id")
+        if not new_id:
+            raise Exception("MoySklad'da yangi sotuv yaratilmadi")
+
+        # Skidka qo'llash (agar bo'lsa)
+        if (update.discount_type in ["sum", "percent"] and update.discount_value is not None) or update.discount is not None:
+            try:
+                positions_resp = await ms_client.get_demand_positions(new_id)
+                positions = positions_resp.get("rows", [])
+                if positions:
+                    total_sum = sum(p.get("price", 0) * p.get("quantity", 0) for p in positions) / 100.0
+                    if update.discount_type == "sum" and update.discount_value is not None:
+                        discount_percent = (update.discount_value / total_sum) * 100 if total_sum > 0 else 0
+                        discount_percent = min(discount_percent, 99.99)
+                        discount_percent = math.floor(discount_percent * 1_000_000) / 1_000_000
+                    elif update.discount_type == "percent" and update.discount_value is not None:
+                        discount_percent = math.floor(update.discount_value * 1_000_000) / 1_000_000
+                    elif update.discount is not None:
+                        discount_percent = math.floor(update.discount * 1_000_000) / 1_000_000
+                    else:
+                        discount_percent = 0
+
+                    batch_data = [{"id": p.get("id"), "discount": discount_percent} for p in positions if p.get("id")]
+                    if batch_data:
+                        await ms_client.update_demand_positions_batch(new_id, batch_data)
+            except Exception as disc_err:
+                print(f"   ⚠️ Skidka qo'llash xatosi: {disc_err}")
+
+        # To'lov qabul qilish (agar summa kiritilgan bo'lsa)
+        usd_amt = update.usd_amount or 0.0
+        usd_rt = update.usd_rate or 12800.0
+        total_payment = (update.cash_amount or 0.0) + (update.card_amount or 0.0) + (usd_amt * usd_rt)
+        if total_payment > 0:
+            try:
+                from routers.payments import create_mixed_payment, MixedPaymentRequest
+                payment_req = MixedPaymentRequest(
+                    demand_id=new_id,
+                    cash_amount=update.cash_amount or 0.0,
+                    card_amount=update.card_amount or 0.0,
+                    usd_amount=usd_amt,
+                    usd_rate=usd_rt,
+                    usd_account_id=update.usd_account_id,
+                    account_id=update.account_id,
+                    update_payment_attribute=bool(update.update_payment_attribute),
+                )
+                await create_mixed_payment(payment_req)
+            except Exception as pay_err:
+                print(f"   ⚠️ Yangi sotuv to'lov xatosi: {pay_err}")
+
+        ms_client.invalidate_demands_cache()
+        ms_client.invalidate_payments_cache()
+
+        # Local DB ga yozish
+        try:
+            res_doc = await ms_client.get_demand(new_id)
+            doc_sum = res_doc.get("sum", 0) / 100.0
+            doc_payed = res_doc.get("payedSum", 0) / 100.0
+            doc_rem = max(0.0, doc_sum - doc_payed)
+            doc_status = "paid" if (doc_rem <= 0 and doc_sum > 0) else ("partial" if doc_payed > 0 else "unpaid")
+            doc_status_name = "To'liq to'langan" if doc_status == "paid" else ("Qisman" if doc_status == "partial" else "To'lanmagan")
+            
+            st = res_doc.get("state", {})
+            st_name = st.get("name", "Новый") if isinstance(st, dict) else "Новый"
+            st_color = color_int_to_hex(st.get("color", 0) if isinstance(st, dict) else 0, st_name)
+            agent_obj = res_doc.get("agent", {})
+            agent_name = agent_obj.get("name", "") if isinstance(agent_obj, dict) else ""
+
+            local_d = LocalDemand(
+                id=new_id,
+                name=res_doc.get("name", ""),
+                moment=res_doc.get("moment", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")),
+                sum=doc_sum,
+                payed_sum=doc_payed,
+                remaining=doc_rem,
+                payment_status=doc_status,
+                payment_status_name=doc_status_name,
+                state_id=extract_id_from_href(st.get("meta", {}).get("href", "")) if isinstance(st, dict) and "meta" in st else "",
+                state_name=st_name,
+                state_color=st_color,
+                state_href=st.get("meta", {}).get("href", "") if isinstance(st, dict) and "meta" in st else "",
+                agent_id=update.agent_id,
+                agent_name=agent_name,
+                organization_id=org_id,
+                raw_json=res_doc,
+                updated_at=datetime.utcnow()
+            )
+            db.add(local_d)
+            await db.commit()
+        except Exception as ldb_err:
+            print(f"   ⚠️ Local DB yangi sotuv qo'shish xatosi: {ldb_err}")
+
+        return {
+            "success": True,
+            "message": "Yangi sotuv muvaffaqiyatli yaratildi",
+            "data": {
+                "id": new_id,
+                "name": created.get("name", "")
+            }
+        }
+    except Exception as e:
+        print(f"❌ Yangi sotuv yaratish xatosi: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{demand_id}")
 async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSession = Depends(get_db)):
     """
     Otgruzkani yangilash — batch update bilan optimallashtirilgan.
-    Barcha tovarlar, status, skidka va to'lovni BIR SO'ROVDA yangilaydi.
+    Agar demand_id == 'new' bo'lsa yangi sotuv yaratadi.
     """
+    if demand_id == "new":
+        return await create_demand_endpoint(update, db)
     try:
         # Offline-first: Agar tarmoq xatosi bo'lsa, xatoni ushlab SyncQueue ga yozamiz
-        try:
-            # 1. Tovarlarni o'chirish (agar bo'lsa)
+        # 1. Tovarlarni o'chirish (agar bo'lsa)
         if update.deleted_positions:
             for pid in update.deleted_positions:
                 try:
@@ -798,10 +1125,20 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
                 await ms_client.update_demand_positions_batch(demand_id, pos_batch)
                 print(f"   📦 {len(pos_batch)} ta pozitsiya batch yangilandi")
 
-        # 4. Status o'zgartirish (butun hujjatga)
-        state_update = {}
+        # 4. Mijoz (Agent) va Status o'zgartirish
+        doc_update = {}
+        if update.agent_id:
+            doc_update["agent"] = {
+                "meta": {
+                    "href": f"https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{update.agent_id}",
+                    "type": "counterparty",
+                    "mediaType": "application/json"
+                }
+            }
+            print(f"   👤 Mijoz almashtirilmoqda: {update.agent_id}")
+
         if update.state_href:
-            state_update["state"] = {
+            doc_update["state"] = {
                 "meta": {
                     "href": update.state_href,
                     "type": "state",
@@ -809,7 +1146,7 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
                 }
             }
         elif update.state_id:
-            state_update["state"] = {
+            doc_update["state"] = {
                 "meta": {
                     "href": f"https://api.moysklad.ru/api/remap/1.2/entity/demand/metadata/states/{update.state_id}",
                     "type": "state",
@@ -817,9 +1154,8 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
                 }
             }
 
-        if state_update:
-            print(f"   📌 Status yangilanmoqda...")
-            await ms_client.update_demand(demand_id, state_update)
+        if doc_update:
+            await ms_client.update_demand(demand_id, doc_update)
 
         # 5. Skidka (BATCH UPDATE — barcha tovarlarni bir so'rovda)
         if (update.discount_type in ["sum", "percent"] and update.discount_value is not None) or update.discount is not None:
@@ -916,6 +1252,11 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
                 local_demand.remaining = remaining
                 local_demand.payment_status = payment_status
                 local_demand.payment_status_name = payment_status_name
+                if update.agent_id:
+                    local_demand.agent_id = update.agent_id
+                    agent_obj = result.get("agent", {})
+                    if isinstance(agent_obj, dict) and agent_obj.get("name"):
+                        local_demand.agent_name = agent_obj.get("name")
                 if state_name:
                     local_demand.state_name = state_name
                     local_demand.state_color = state_color
@@ -1062,4 +1403,573 @@ async def update_position(demand_id: str, position_id: str, update: PositionUpda
         raise
     except Exception as e:
         print(f"Update position xato: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ================= TOVAR BO'YICHA SOTUVLARNI QIDIRISH (RETURN FINDER) =================
+@router.get("/search/by-product")
+async def search_demands_by_product(
+    query: str = Query(..., min_length=1),
+    assortment_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Tovar kodi, nomi, artikuli yoki shtrixkodi bo'yicha lokal SQLite bazadan 0.001 soniyada
+    barcha sotuvlar (mijozlar) ro'yxatini aniq topish
+    """
+    try:
+        q_clean = query.strip()
+        matched_assortments = []
+        matched_assortment_ids = set()
+
+        # 1. Lokal bazadan tovarlarni qidirish (LocalAssortment)
+        # Aniq kod bo'yicha yoki boshlanishi bo'yicha avval qidiramiz
+        local_ass_q = select(LocalAssortment).where(
+            or_(
+                LocalAssortment.code == q_clean,
+                LocalAssortment.article == q_clean,
+                LocalAssortment.code.ilike(f"{q_clean}%"),
+                LocalAssortment.article.ilike(f"{q_clean}%"),
+                LocalAssortment.name.ilike(f"%{q_clean}%"),
+                LocalAssortment.barcode == q_clean,
+            )
+        ).limit(15)
+        local_ass_res = (await db.execute(local_ass_q)).scalars().all()
+
+        for a in local_ass_res:
+            matched_assortment_ids.add(a.id)
+            matched_assortments.append({
+                "id": a.id,
+                "name": a.name,
+                "code": a.code or a.article or "—",
+                "barcode": a.barcode or "—",
+                "price": a.price,
+                "quantity": a.quantity
+            })
+
+        # 2. LocalDemandPosition jadvalidan sotuvlarni qidirish
+        pos_conditions = []
+        if assortment_id:
+            pos_conditions.append(LocalDemandPosition.assortment_id == assortment_id)
+        else:
+            search_pattern = f"%{q_clean}%"
+            or_clauses = [
+                LocalDemandPosition.assortment_code == q_clean,
+                LocalDemandPosition.assortment_code.ilike(f"{q_clean}%"),
+                LocalDemandPosition.assortment_code.ilike(search_pattern),
+                LocalDemandPosition.assortment_article.ilike(search_pattern),
+                LocalDemandPosition.assortment_name.ilike(search_pattern),
+                LocalDemandPosition.demand_name.ilike(search_pattern),
+                LocalDemandPosition.agent_name.ilike(search_pattern),
+            ]
+            if matched_assortment_ids:
+                or_clauses.append(LocalDemandPosition.assortment_id.in_(list(matched_assortment_ids)))
+            pos_conditions.append(or_(*or_clauses))
+
+        pos_q = select(LocalDemandPosition).where(*pos_conditions).order_by(
+            desc(LocalDemandPosition.moment)
+        ).limit(100)
+
+        pos_rows = (await db.execute(pos_q)).scalars().all()
+
+        matched_sales = []
+        for p in pos_rows:
+            if p.assortment_id not in matched_assortment_ids:
+                matched_assortment_ids.add(p.assortment_id)
+                matched_assortments.append({
+                    "id": p.assortment_id,
+                    "name": p.assortment_name,
+                    "code": p.assortment_code or p.assortment_article or "—",
+                    "barcode": p.assortment_barcode or "—",
+                    "price": p.price,
+                    "quantity": 0
+                })
+
+            matched_sales.append({
+                "demand_id": p.demand_id,
+                "demand_name": p.demand_name,
+                "moment": p.moment,
+                "agent_id": p.agent_id,
+                "agent_name": p.agent_name or "Noma'lum",
+                "state_name": p.state_name or "—",
+                "state_color": p.state_color or "#64748b",
+                "demand_sum": p.demand_sum,
+                "demand_remaining": p.demand_remaining,
+                "description": p.description or "",
+                "position": {
+                    "position_id": p.id,
+                    "assortment_id": p.assortment_id,
+                    "assortment_name": p.assortment_name,
+                    "assortment_code": p.assortment_code or p.assortment_article or "—",
+                    "quantity": p.quantity,
+                    "price": p.price,
+                    "discount": p.discount,
+                    "total": p.total
+                }
+            })
+
+        return {
+            "success": True,
+            "data": {
+                "query": q_clean,
+                "assortments": matched_assortments,
+                "matched_sales": matched_sales,
+                "total_matched": len(matched_sales)
+            }
+        }
+    except Exception as e:
+        print(f"❌ search_demands_by_product error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ================= TEZKOR QAYTARISH (QUICK RETURN WITH AUDIT LOG) =================
+@router.post("/{demand_id}/quick-return")
+async def quick_return_position(
+    demand_id: str,
+    req: QuickReturnRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Sotuvdan tovar sonini kamaytirish yoki butunlay o'chirish (Vozvrat) va Izohga audit log yozish
+    """
+    try:
+        # 1. Hujjat va pozitsiyalarni olish
+        demand_task = ms_client.get_demand(demand_id)
+        positions_task = ms_client.get_demand_positions(demand_id)
+        demand, positions_resp = await asyncio.gather(demand_task, positions_task)
+
+        positions = positions_resp.get("rows", [])
+        target_pos = next((p for p in positions if p.get("id") == req.position_id), None)
+
+        if not target_pos:
+            raise HTTPException(status_code=404, detail="Ko'rsatilgan tovar pozitsiyasi ushbu sotuvda topilmadi")
+
+        cur_qty = float(target_pos.get("quantity", 0))
+        ret_qty = float(req.return_quantity)
+
+        if ret_qty <= 0:
+            raise HTTPException(status_code=400, detail="Qaytarish miqdori 0 dan katta bo'lishi kerak")
+
+        if ret_qty > cur_qty:
+            raise HTTPException(status_code=400, detail=f"Qaytarish miqdori mavjud sotuv miqdoridan ({cur_qty:g} ta) ko'p bo'lishi mumkin emas")
+
+        price_raw = target_pos.get("price", 0)
+        price_val = price_raw / 100.0
+        refund_sum = ret_qty * price_val
+
+        # 2. MoySklad'da pozitsiyani kamaytirish yoki o'chirish
+        rem_qty = cur_qty - ret_qty
+        if rem_qty <= 0:
+            await ms_client.delete_demand_position(demand_id, req.position_id)
+            print(f"   🗑️ Pozitsiya o'chirildi (to'liq qaytarildi): {req.position_id}")
+        else:
+            await ms_client.update_demand_position(
+                demand_id,
+                req.position_id,
+                {"quantity": rem_qty, "price": price_raw}
+            )
+            print(f"   📉 Pozitsiya miqdori kamaytirildi: {cur_qty} -> {rem_qty}")
+
+        # 3. Audit log tayyorlash va Izohga (description) qo'shish
+        now_str = (datetime.now() + timedelta(hours=0)).strftime("%d.%m.%Y %H:%M")
+        ass_name = target_pos.get("assortment", {}).get("name", "Tovar")
+
+        reason_text = f" Sabab: {req.reason}." if req.reason else ""
+        audit_line = f"🕒 {now_str} • ↩️ QAYTARILDI: \"{ass_name}\" ({ret_qty:g} dona x {price_val:,.0f} so'm = -{refund_sum:,.0f} so'm).{reason_text}"
+
+        existing_desc = (demand.get("description") or "").strip()
+        new_desc = f"{existing_desc}\n{audit_line}" if existing_desc else audit_line
+
+        await ms_client.update_demand(demand_id, {"description": new_desc})
+        ms_client.invalidate_demands_cache()
+
+        # 4. Yangilangan holatni olish va DB ga sinxronlash
+        updated_demand = await ms_client.get_demand(demand_id)
+        new_sum = updated_demand.get("sum", 0) / 100.0
+        payed_sum = updated_demand.get("payedSum", 0) / 100.0
+        remaining = max(0.0, new_sum - payed_sum)
+
+        try:
+            ld = await db.scalar(select(LocalDemand).where(LocalDemand.id == demand_id))
+            if ld:
+                ld.sum = new_sum
+                ld.remaining = remaining
+                ld.description = new_desc
+
+            # LocalDemandPosition yangilash
+            local_pos = await db.scalar(select(LocalDemandPosition).where(LocalDemandPosition.id == req.position_id))
+            if local_pos:
+                if rem_qty <= 0:
+                    await db.delete(local_pos)
+                else:
+                    local_pos.quantity = rem_qty
+                    local_pos.total = rem_qty * price_val * (1 - local_pos.discount / 100.0)
+                    local_pos.demand_sum = new_sum
+                    local_pos.demand_remaining = remaining
+
+            await db.commit()
+        except Exception as dbe:
+            print(f"LocalDemand / Position sync error: {dbe}")
+
+        # 5. Kassa chiqimi (agar so'ralgan bo'lsa)
+        cash_log = ""
+        if req.cash_action == "cashout" and req.cash_amount and req.cash_amount > 0:
+            try:
+                c_amt = float(req.cash_amount)
+                agent_href = demand.get("agent", {}).get("meta", {}).get("href", "")
+                org_href = demand.get("organization", {}).get("meta", {}).get("href", "")
+                if not org_href:
+                    orgs = await ms_client.get_organizations()
+                    if orgs:
+                        org_href = orgs[0].get("meta", {}).get("href", "")
+
+                p_moment = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                p_desc = f"Tovar qaytarish (Vozvrat) uchun to'landi: {ass_name} ({ret_qty:g} ta). Sotuv #{demand.get('name')}"
+
+                if req.cash_account_id and req.cash_account_id != "cash":
+                    pout_data = {
+                        "organization": {"meta": {"href": org_href, "type": "organization"}},
+                        "agent": {"meta": {"href": agent_href, "type": "counterparty"}},
+                        "sum": int(c_amt * 100),
+                        "moment": p_moment,
+                        "paymentPurpose": p_desc,
+                        "organizationAccount": {"meta": {"href": f"https://api.moysklad.ru/api/remap/1.2/entity/organization/{extract_id_from_href(org_href)}/accounts/{req.cash_account_id}", "type": "account"}}
+                    }
+                    res = await ms_client.create_paymentout(pout_data)
+                    p_id = res.get("id")
+                    p_type = "card"
+                else:
+                    cout_data = {
+                        "organization": {"meta": {"href": org_href, "type": "organization"}},
+                        "agent": {"meta": {"href": agent_href, "type": "counterparty"}},
+                        "sum": int(c_amt * 100),
+                        "moment": p_moment,
+                        "paymentPurpose": p_desc
+                    }
+                    res = await ms_client.create_cashout(cout_data)
+                    p_id = res.get("id")
+                    p_type = "cash"
+
+                if p_id:
+                    agent_id = extract_id_from_href(agent_href)
+                    db.add(LocalPayment(
+                        id=p_id,
+                        type=p_type,
+                        name=res.get("name", ""),
+                        sum=c_amt,
+                        moment=p_moment,
+                        demand_id=demand_id,
+                        agent_id=agent_id,
+                        purpose=p_desc
+                    ))
+                    await db.commit()
+                    cash_log = f" • 💸 Kassadan chiqim: -{c_amt:,.0f} so'm"
+            except Exception as cash_err:
+                print(f"⚠️ Quick return cashout error: {cash_err}")
+
+        return {
+            "success": True,
+            "message": f"✅ {ret_qty:g} dona tovar qaytarildi! Sotuv summasi -{refund_sum:,.0f} so'mga kamaytirildi.{cash_log}",
+            "data": {
+                "demand_id": demand_id,
+                "refund_sum": refund_sum,
+                "remaining_quantity": rem_qty,
+                "new_demand_sum": new_sum,
+                "new_remaining": remaining,
+                "audit_entry": audit_line
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ quick_return_position error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ================= TEZKOR ALMASHTIRISH (QUICK SWAP WITH AUDIT LOG) =================
+@router.post("/{demand_id}/quick-swap")
+async def quick_swap_position(
+    demand_id: str,
+    req: QuickSwapRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Sotuvdagi tovarni boshqa tovar bilan almashtirish va Izohga audit log yozish
+    """
+    try:
+        demand_task = ms_client.get_demand(demand_id)
+        positions_task = ms_client.get_demand_positions(demand_id)
+        demand, positions_resp = await asyncio.gather(demand_task, positions_task)
+
+        positions = positions_resp.get("rows", [])
+        target_pos = next((p for p in positions if p.get("id") == req.position_id), None)
+
+        if not target_pos:
+            raise HTTPException(status_code=404, detail="Almashtiriladigan tovar pozitsiyasi ushbu sotuvda topilmadi")
+
+        old_price_val = (target_pos.get("price", 0)) / 100.0
+        old_ass_name = target_pos.get("assortment", {}).get("name", "Eski tovar")
+
+        # 1. Yangi tovar haqida ma'lumot olish
+        new_ass_meta = {
+            "href": f"https://api.moysklad.ru/api/remap/1.2/entity/product/{req.new_assortment_id}",
+            "type": "product",
+            "mediaType": "application/json"
+        }
+        new_ass_name = "Yangi tovar"
+        new_ass_code = ""
+        new_ass_article = ""
+        new_ass_barcode = ""
+
+        # Lokal bazadan yoki MoySklad'dan tekshiramiz
+        local_ass = await db.scalar(select(LocalAssortment).where(LocalAssortment.id == req.new_assortment_id))
+        if local_ass:
+            new_ass_name = local_ass.name
+            new_ass_code = local_ass.code
+            new_ass_article = local_ass.article
+            new_ass_barcode = local_ass.barcode
+            if req.new_price is None:
+                new_price_val = local_ass.price or old_price_val
+            else:
+                new_price_val = req.new_price
+        else:
+            try:
+                ass_res = await ms_client._request("GET", f"/entity/assortment/{req.new_assortment_id}")
+                new_ass_name = ass_res.get("name", "Yangi tovar")
+                new_ass_code = ass_res.get("code", "")
+                new_ass_article = ass_res.get("article", "")
+                if ass_res.get("meta"):
+                    new_ass_meta = ass_res.get("meta")
+                if req.new_price is None:
+                    if ass_res.get("salePrices") and len(ass_res.get("salePrices", [])) > 0:
+                        new_price_val = ass_res["salePrices"][0].get("value", 0) / 100.0
+                    else:
+                        new_price_val = old_price_val
+                else:
+                    new_price_val = req.new_price
+            except Exception:
+                new_price_val = req.new_price or old_price_val
+
+        new_price_raw = int(new_price_val * 100)
+        swap_qty = float(req.quantity)
+
+        # 2. Eski pozitsiyani o'chirib, yangisini qo'shamiz
+        await ms_client.delete_demand_position(demand_id, req.position_id)
+
+        new_pos_payload = {
+            "assortment": {"meta": new_ass_meta},
+            "quantity": swap_qty,
+            "price": new_price_raw,
+            "discount": target_pos.get("discount", 0)
+        }
+        add_res = await ms_client.add_demand_position(demand_id, new_pos_payload)
+        new_pos_id = ""
+        if isinstance(add_res, list) and len(add_res) > 0:
+            new_pos_id = add_res[0].get("id", "")
+        elif isinstance(add_res, dict):
+            new_pos_id = add_res.get("id", "")
+
+        # 3. Audit log tayyorlash
+        old_total = swap_qty * old_price_val
+        new_total = swap_qty * new_price_val
+        diff_sum = new_total - old_total
+
+        diff_str = f"Farq: {diff_sum:+,.0f} so'm" if diff_sum != 0 else "Farq: 0 so'm"
+        now_str = (datetime.now() + timedelta(hours=0)).strftime("%d.%m.%Y %H:%M")
+        reason_text = f" Sabab: {req.reason}." if req.reason else ""
+
+        audit_line = f"🕒 {now_str} • 🔄 ALMASHTIRILDI: \"{old_ass_name}\" ({swap_qty:g} dona, {old_price_val:,.0f} so'm) ➡️ \"{new_ass_name}\" ({swap_qty:g} dona, {new_price_val:,.0f} so'm). {diff_str}.{reason_text}"
+
+        existing_desc = (demand.get("description") or "").strip()
+        new_desc = f"{existing_desc}\n{audit_line}" if existing_desc else audit_line
+
+        await ms_client.update_demand(demand_id, {"description": new_desc})
+        ms_client.invalidate_demands_cache()
+
+        updated_demand = await ms_client.get_demand(demand_id)
+        new_sum = updated_demand.get("sum", 0) / 100.0
+        payed_sum = updated_demand.get("payedSum", 0) / 100.0
+        remaining = max(0.0, new_sum - payed_sum)
+
+        try:
+            ld = await db.scalar(select(LocalDemand).where(LocalDemand.id == demand_id))
+            if ld:
+                ld.sum = new_sum
+                ld.remaining = remaining
+                ld.description = new_desc
+
+            # Eski pozitsiyani LocalDemandPosition dan o'chirish
+            old_local_pos = await db.scalar(select(LocalDemandPosition).where(LocalDemandPosition.id == req.position_id))
+            if old_local_pos:
+                await db.delete(old_local_pos)
+
+            # Yangi pozitsiyani LocalDemandPosition ga yozish
+            agent_id = extract_id_from_href(demand.get("agent", {}).get("meta", {}).get("href", "")) if demand.get("agent") else ""
+            agent_name = demand.get("agent", {}).get("name", "")
+            moment = demand.get("moment", "")
+            state_name = demand.get("state", {}).get("name", "")
+
+            created_pos = LocalDemandPosition(
+                id=new_pos_id or f"{demand_id}_{req.new_assortment_id}",
+                demand_id=demand_id,
+                demand_name=demand.get("name", ""),
+                agent_id=agent_id,
+                agent_name=agent_name,
+                moment=moment,
+                state_name=state_name,
+                demand_sum=new_sum,
+                demand_remaining=remaining,
+                assortment_id=req.new_assortment_id,
+                assortment_name=new_ass_name,
+                assortment_code=new_ass_code,
+                assortment_article=new_ass_article,
+                assortment_barcode=new_ass_barcode,
+                quantity=swap_qty,
+                price=new_price_val,
+                discount=target_pos.get("discount", 0),
+                total=new_total
+            )
+            db.add(created_pos)
+            await db.commit()
+        except Exception as dbe:
+            print(f"Swap LocalDemandPosition update error: {dbe}")
+
+        # 4. Kassa kirimi / chiqimi (agar so'ralgan bo'lsa)
+        cash_log = ""
+        if req.cash_action == "cashin" and req.cash_amount and req.cash_amount > 0:
+            try:
+                c_amt = float(req.cash_amount)
+                agent_href = demand.get("agent", {}).get("meta", {}).get("href", "")
+                org_href = demand.get("organization", {}).get("meta", {}).get("href", "")
+                if not org_href:
+                    orgs = await ms_client.get_organizations()
+                    if orgs:
+                        org_href = orgs[0].get("meta", {}).get("href", "")
+
+                p_moment = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                p_desc = f"Tovar almashtirish (Swap) farqi uchun to'lov. Sotuv #{demand.get('name')}"
+
+                operations = [{
+                    "meta": demand.get("meta", {}),
+                    "linkedSum": int(c_amt * 100)
+                }]
+
+                if req.cash_account_id and req.cash_account_id != "cash":
+                    pin_data = {
+                        "organization": {"meta": {"href": org_href, "type": "organization"}},
+                        "agent": {"meta": {"href": agent_href, "type": "counterparty"}},
+                        "sum": int(c_amt * 100),
+                        "moment": p_moment,
+                        "paymentPurpose": p_desc,
+                        "operations": operations,
+                        "organizationAccount": {"meta": {"href": f"https://api.moysklad.ru/api/remap/1.2/entity/organization/{extract_id_from_href(org_href)}/accounts/{req.cash_account_id}", "type": "account"}}
+                    }
+                    res = await ms_client.create_paymentin(pin_data)
+                    p_id = res.get("id")
+                    p_type = "card"
+                else:
+                    cin_data = {
+                        "organization": {"meta": {"href": org_href, "type": "organization"}},
+                        "agent": {"meta": {"href": agent_href, "type": "counterparty"}},
+                        "sum": int(c_amt * 100),
+                        "moment": p_moment,
+                        "operations": operations,
+                        "paymentPurpose": p_desc
+                    }
+                    res = await ms_client.create_cashin(cin_data)
+                    p_id = res.get("id")
+                    p_type = "cash"
+
+                if p_id:
+                    agent_id = extract_id_from_href(agent_href)
+                    db.add(LocalPayment(
+                        id=p_id,
+                        type=p_type,
+                        name=res.get("name", ""),
+                        sum=c_amt,
+                        moment=p_moment,
+                        demand_id=demand_id,
+                        agent_id=agent_id,
+                        purpose=p_desc
+                    ))
+                    await db.commit()
+                    cash_log = f" • 📥 Kassaga kirim: +{c_amt:,.0f} so'm"
+            except Exception as cash_err:
+                print(f"⚠️ Quick swap cashin error: {cash_err}")
+
+        elif req.cash_action == "cashout" and req.cash_amount and req.cash_amount > 0:
+            try:
+                c_amt = float(req.cash_amount)
+                agent_href = demand.get("agent", {}).get("meta", {}).get("href", "")
+                org_href = demand.get("organization", {}).get("meta", {}).get("href", "")
+                if not org_href:
+                    orgs = await ms_client.get_organizations()
+                    if orgs:
+                        org_href = orgs[0].get("meta", {}).get("href", "")
+
+                p_moment = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                p_desc = f"Tovar almashtirish (Swap) farqi qaytarildi. Sotuv #{demand.get('name')}"
+
+                if req.cash_account_id and req.cash_account_id != "cash":
+                    pout_data = {
+                        "organization": {"meta": {"href": org_href, "type": "organization"}},
+                        "agent": {"meta": {"href": agent_href, "type": "counterparty"}},
+                        "sum": int(c_amt * 100),
+                        "moment": p_moment,
+                        "paymentPurpose": p_desc,
+                        "organizationAccount": {"meta": {"href": f"https://api.moysklad.ru/api/remap/1.2/entity/organization/{extract_id_from_href(org_href)}/accounts/{req.cash_account_id}", "type": "account"}}
+                    }
+                    res = await ms_client.create_paymentout(pout_data)
+                    p_id = res.get("id")
+                    p_type = "card"
+                else:
+                    cout_data = {
+                        "organization": {"meta": {"href": org_href, "type": "organization"}},
+                        "agent": {"meta": {"href": agent_href, "type": "counterparty"}},
+                        "sum": int(c_amt * 100),
+                        "moment": p_moment,
+                        "paymentPurpose": p_desc
+                    }
+                    res = await ms_client.create_cashout(cout_data)
+                    p_id = res.get("id")
+                    p_type = "cash"
+
+                if p_id:
+                    agent_id = extract_id_from_href(agent_href)
+                    db.add(LocalPayment(
+                        id=p_id,
+                        type=p_type,
+                        name=res.get("name", ""),
+                        sum=c_amt,
+                        moment=p_moment,
+                        demand_id=demand_id,
+                        agent_id=agent_id,
+                        purpose=p_desc
+                    ))
+                    await db.commit()
+                    cash_log = f" • 💸 Kassadan chiqim: -{c_amt:,.0f} so'm"
+            except Exception as cash_err:
+                print(f"⚠️ Quick swap cashout error: {cash_err}")
+
+        return {
+            "success": True,
+            "message": f"✅ Tovar muvaffaqiyatli almashtirildi! {diff_str}{cash_log}",
+            "data": {
+                "demand_id": demand_id,
+                "price_difference": diff_sum,
+                "new_demand_sum": new_sum,
+                "new_remaining": remaining,
+                "audit_entry": audit_line
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ quick_swap_position error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

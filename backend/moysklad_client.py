@@ -4,7 +4,7 @@ import httpx
 import asyncio
 import time
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from config import get_settings
 
 def safe_print(*args, **kwargs):
@@ -157,14 +157,23 @@ class MoySkladClient:
                         await asyncio.sleep(wait_time)
                         continue
 
-                    response.raise_for_status()
+                    if response.status_code >= 400:
+                        err_detail = ""
+                        try:
+                            err_json = response.json()
+                            if "errors" in err_json:
+                                err_msgs = [e.get("error", "") for e in err_json.get("errors", []) if e.get("error")]
+                                err_detail = " | ".join(err_msgs)
+                        except Exception:
+                            pass
+                        if not err_detail:
+                            err_detail = response.text or f"HTTP {response.status_code}"
+                        
+                        safe_print(f"❌ MoySklad Xatolik [{response.status_code}] {method} {url}: {err_detail}")
+                        raise Exception(f"MoySklad API xatosi ({response.status_code}): {err_detail}")
+
                     return response.json()
 
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 429 and attempt < max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)
-                        continue
-                    raise
                 except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
                     if attempt < max_retries - 1:
                         safe_print(f"⚠️ Ulanish xatosi, qayta urinilmoqda... ({attempt+1}/{max_retries})")
@@ -204,9 +213,18 @@ class MoySkladClient:
         """USD valyutasining metadata sini topish"""
         currencies = await self.get_currencies()
         for c in currencies:
-            if c.get("name", "").lower() in ["usd", "dollar", "$"]:
+            iso = (c.get("isoCode") or "").upper()
+            code = str(c.get("code") or "")
+            name = (c.get("name") or "").lower()
+            full_name = (c.get("fullName") or "").lower()
+            if iso == "USD" or code == "840" or "usd" in name or "dollar" in name or "$" in name or "dollar" in full_name:
                 return c.get("meta")
-        return None
+        return {
+            "href": f"{self.base_url}/entity/currency/45062adb-ab4a-11f1-0a80-0bf500815be8",
+            "metadataHref": f"{self.base_url}/entity/currency/metadata",
+            "type": "currency",
+            "mediaType": "application/json"
+        }
 
     # ================= OTGRUZKA (DEMAND) =================
     async def get_demands(
@@ -241,6 +259,10 @@ class MoySkladClient:
             f"/entity/demand/{demand_id}", 
             params={"expand": "agent,state,owner"}
         )
+
+    async def create_demand(self, data: Dict) -> Dict:
+        """Yangi otgruzka yaratish"""
+        return await self._request("POST", "/entity/demand", json_data=data)
 
     async def update_demand(self, demand_id: str, data: Dict) -> Dict:
         """Otgruzkani yangilash (skidka, status va h.k.)"""
@@ -387,9 +409,31 @@ class MoySkladClient:
         return {"rows": list(all_results.values())}
 
     # ================= TOVARLAR =================
+    async def get_all_assortments(self) -> List[Dict]:
+        """Barcha tovarlarni to'liq tortib olish (Pagination bilan)"""
+        all_rows = []
+        offset = 0
+        limit = 1000
+        while True:
+            try:
+                resp = await self._request("GET", "/entity/assortment", params={"limit": limit, "offset": offset})
+                rows = resp.get("rows", [])
+                if not rows:
+                    break
+                all_rows.extend(rows)
+                meta = resp.get("meta", {})
+                size = meta.get("size", len(all_rows))
+                if len(all_rows) >= size or len(rows) < limit:
+                    break
+                offset += limit
+            except Exception as e:
+                print(f"⚠️ get_all_assortments error at offset {offset}: {e}")
+                break
+        return all_rows
+
     async def get_assortment(self, search: Optional[str] = None) -> Dict:
         """Tovarlar ro'yxati"""
-        params = {"limit": 50}
+        params = {"limit": 100}
         if search:
             params["search"] = search
         return await self._request("GET", "/entity/assortment", params=params)
@@ -498,6 +542,10 @@ class MoySkladClient:
     async def update_counterparty(self, cp_id: str, data: Dict) -> Dict:
         """Mijoz ma'lumotlarini tahrirlash"""
         return await self._request("PUT", f"/entity/counterparty/{cp_id}", json_data=data)
+
+    async def create_counterparty(self, data: Dict) -> Dict:
+        """Yangi mijoz (kontragent) yaratish"""
+        return await self._request("POST", "/entity/counterparty", json_data=data)
 
     async def get_all_counterparties(self, limit: int = 1000) -> Dict:
         """Barcha mijozlar ro'yxati"""
@@ -692,34 +740,32 @@ class MoySkladClient:
         response.raise_for_status()
         return response.content
 
-    # ================= BARCHA BALANSLAR (TEZ) =================
+    # ================= BARCHA BALANSLAR (MOYSKLAD NATIV HISOBOT) =================
     async def get_all_balances(self) -> Dict[str, float]:
         """
-        Barcha mijozlar balanslarini atigi 1 ta so'rovda hisoblash (MoySklad report).
-        Musbat = mijoz bizga qarzdor.
+        Barcha mijozlar rasmiy balanslarini MoySklad nativ hisobotidan (/report/counterparty) olish.
+        Bu 100% MoySklad bilan bir xil bo'lishini (akt-sverka, korrektirovkalar, tovar qaytarishlar va h.k.) ta'minlaydi.
         """
         import time
         start = time.time()
-        
         balances = {}
         try:
-            report_resp = await self._request("GET", "/report/counterparty", params={"limit": 1000})
-            for row in report_resp.get("rows", []):
-                cp_href = row.get("counterparty", {}).get("meta", {}).get("href", "")
-                cp_id = cp_href.split("/")[-1] if cp_href else None
-                
+            resp = await self._request("GET", "/report/counterparty", params={"limit": 1000})
+            for r in resp.get("rows", []):
+                cp = r.get("counterparty", {})
+                cp_id = cp.get("id")
                 if cp_id:
-                    # MoySklad'da manfiy = mijoz bizdan qarzdor. 
-                    # Bizning LocalCounterparty uchun musbat bo'lishi kerak.
-                    balance_kopecks = row.get("balance", 0)
-                    balances[cp_id] = -float(balance_kopecks) / 100.0
+                    # MoySklad report balance: manfiy = mijoz qarzi, musbat = mijoz haqdorligi
+                    # Bizning ilovada: musbat = mijoz qarzi, manfiy = mijoz haqdorligi
+                    ms_bal = float(r.get("balance", 0)) / 100.0
+                    balances[cp_id] = -ms_bal
+
+            elapsed = time.time() - start
+            safe_print(f"📊 Barcha balanslar (MoySklad Nativ): {len(balances)} ta mijoz, {elapsed:.1f}s")
+            return balances
         except Exception as e:
-            safe_print(f"⚠️ Barcha balanslarni olishda xato: {e}")
-            
-        elapsed = time.time() - start
-        safe_print(f"📊 Barcha balanslar (Report API): {len(balances)} ta mijoz, {elapsed:.1f}s")
-        
-        return balances
+            safe_print(f"⚠️ MoySklad hisobotidan balanslarni olishda xato: {e}")
+            return {}
 
 
     # ================= BARCHA SOTUVLAR (KESHLANGAN) =================
@@ -872,18 +918,16 @@ class MoySkladClient:
             return {"states": [], "groups": []}
 
     # ================= VALYUTA (CURRENCY) =================
-    async def get_currencies(self) -> list:
-        """Barcha valyutalar ro'yxati (USD, UZS, ...)"""
-        resp = await self._request("GET", "/entity/currency")
-        return resp.get("rows", [])
-
     async def get_currency(self, currency_id: str) -> Dict:
         """Bitta valyuta ma'lumotlari"""
         return await self._request("GET", f"/entity/currency/{currency_id}")
 
     async def update_currency_rate(self, currency_id: str, rate: float) -> Dict:
         """MoySklad valyuta kursini yangilash"""
-        return await self._request("PUT", f"/entity/currency/{currency_id}", json_data={"rate": rate})
+        res = await self._request("PUT", f"/entity/currency/{currency_id}", json_data={"rate": rate})
+        self._currencies_cache["data"] = None
+        self._currencies_cache["timestamp"] = 0
+        return res
 
 
 # Global instansiya

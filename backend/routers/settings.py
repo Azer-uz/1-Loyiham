@@ -295,12 +295,33 @@ async def get_accounts_with_corrections():
     try:
         cf_resp = await asyncio.wait_for(get_cashflow(), timeout=2.5)
         summary = cf_resp.get("data", {}).get("summary", {})
-        raw_balances = summary.get("account_balances", [])
     except Exception as e:
-        # Agar oldingi kesh bo'lsa darhol qaytaramiz
-        if _ACCOUNTS_CACHE is not None:
-            return _ACCOUNTS_CACHE
         raw_balances = []
+
+    # Tashkilot hisoblarini olish va raw_balances ga qo'shish
+    try:
+        org = await ms_client.get_organization()
+        if org.get("id") and org.get("id") != "default":
+            org_accs = await asyncio.wait_for(ms_client.get_organization_accounts(org.get("id")), timeout=2.0)
+            existing_ids = {a.get("id") for a in raw_balances}
+            for oa in org_accs:
+                oa_id = oa.get("id")
+                if oa_id and oa_id not in existing_ids:
+                    oa_name = oa.get("name") or oa.get("accountnumber") or "Bank hisobi"
+                    is_dol = "dollar" in (oa_name + " " + oa.get("accountnumber", "")).lower()
+                    raw_balances.append({
+                        "id": oa_id,
+                        "name": f"{'💵' if is_dol else '🏦'} {oa_name}",
+                        "raw_name": oa_name,
+                        "accountnumber": oa.get("accountnumber"),
+                        "type": "dollar" if is_dol else "bank",
+                        "currency": "USD" if is_dol else "UZS",
+                        "is_dollar": is_dol,
+                        "balance": 0.0,
+                        "usd_balance": 0.0
+                    })
+    except Exception as e:
+        pass
 
     if not raw_balances:
         raw_balances = [

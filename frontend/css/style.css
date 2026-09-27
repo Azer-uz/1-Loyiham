@@ -2684,8 +2684,28 @@ body.dark-mode .stat-card.danger {
 }
 
 /* ===== AKT SVERKA VA CHOP ETISH (PRINT) STILLARI ===== */
+#aktSverkaModal .modal-content {
+    max-width: 1040px;
+    width: 95vw;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+    background: var(--card, #ffffff);
+}
+
+.akt-filter-strip {
+    background: #f8fafc;
+    border-bottom: 1.5px solid var(--border, #e2e8f0);
+    padding: 12px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .akt-document {
-    background: var(--card);
+    background: var(--card, #ffffff);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: #1e293b;
 }
@@ -3219,6 +3239,13 @@ body.dark-mode .stat-card.danger {
     color: #555555 !important;
 }
 
+/* ================= EKRANDA PRINT MAYDONLARINI MUTLAQO YASHIRISH ================= */
+#receiptPrintArea,
+#genericPrintArea,
+.print-only-container {
+    display: none !important;
+}
+
 @media print {
     body * {
         visibility: hidden !important;
@@ -3380,17 +3407,90 @@ body.print-a5 {
 }
 
 /* Sortable ustunlar uchun umumiy stillar */
+/* ==========================================================================
+   UNIFIED SORTABLE TABLE HEADERS (LIGHT & DARK MODE)
+   ========================================================================== */
+.sortable,
+.demands-sortable,
 .payments-sortable {
-    cursor: pointer;
+    cursor: pointer !important;
     user-select: none;
-    transition: background 0.2s;
+    transition: background-color 0.18s ease, color 0.18s ease;
+    position: relative;
 }
+
+/* Light Mode Hover */
+.sortable:hover,
+.demands-sortable:hover,
 .payments-sortable:hover {
-    background: #1a3a6e !important;
+    background-color: #f1f5f9 !important;
+    color: #0284c7 !important;
 }
+
+/* Light Mode Active Sorted Column */
+.sortable.sorted-asc,
+.sortable.sorted-desc,
+.demands-sortable.sorted-asc,
+.demands-sortable.sorted-desc,
 .payments-sortable.sorted-asc,
 .payments-sortable.sorted-desc {
-    background: var(--accent) !important;
+    background-color: #e0f2fe !important;
+    color: #0369a1 !important;
+    font-weight: 700 !important;
+}
+
+.sort-arrow {
+    margin-left: 5px;
+    font-size: 11px;
+    opacity: 0.5;
+    transition: opacity 0.2s, color 0.2s;
+    color: inherit;
+    display: inline-block;
+}
+
+.sortable:hover .sort-arrow,
+.demands-sortable:hover .sort-arrow,
+.payments-sortable:hover .sort-arrow,
+.sortable.sorted-asc .sort-arrow,
+.sortable.sorted-desc .sort-arrow,
+.demands-sortable.sorted-asc .sort-arrow,
+.demands-sortable.sorted-desc .sort-arrow,
+.payments-sortable.sorted-asc .sort-arrow,
+.payments-sortable.sorted-desc .sort-arrow {
+    opacity: 1 !important;
+    color: #0284c7 !important;
+}
+
+/* ================= DARK MODE SORTABLE HEADERS ================= */
+body.dark-mode .sortable:hover,
+body.dark-mode .demands-sortable:hover,
+body.dark-mode .payments-sortable:hover {
+    background-color: #1e293b !important;
+    color: #38bdf8 !important;
+}
+
+body.dark-mode .sortable.sorted-asc,
+body.dark-mode .sortable.sorted-desc,
+body.dark-mode .demands-sortable.sorted-asc,
+body.dark-mode .demands-sortable.sorted-desc,
+body.dark-mode .payments-sortable.sorted-asc,
+body.dark-mode .payments-sortable.sorted-desc {
+    background-color: rgba(56, 189, 248, 0.15) !important;
+    color: #38bdf8 !important;
+    border-bottom: 2px solid #38bdf8 !important;
+}
+
+body.dark-mode .sortable.sorted-asc .sort-arrow,
+body.dark-mode .sortable.sorted-desc .sort-arrow,
+body.dark-mode .demands-sortable.sorted-asc .sort-arrow,
+body.dark-mode .demands-sortable.sorted-desc .sort-arrow,
+body.dark-mode .payments-sortable.sorted-asc .sort-arrow,
+body.dark-mode .payments-sortable.sorted-desc .sort-arrow,
+body.dark-mode .sortable:hover .sort-arrow,
+body.dark-mode .demands-sortable:hover .sort-arrow,
+body.dark-mode .payments-sortable:hover .sort-arrow {
+    color: #38bdf8 !important;
+    opacity: 1 !important;
 }
 
 /* ==========================================================================
@@ -6224,5 +6324,327 @@ body.dark-mode .badge-acc-dollar {
     border: 1px solid rgba(74, 222, 128, 0.35) !important;
 }
 
-.demand-edit-modal-wide { max-width: 900px !important; width: 95% !important; }
+.demand-edit-modal-wide { max-width: 1400px !important; width: 98vw !important; }
+
+/* ==========================================================================
+   UNIVERSAL QUICK-PAY DRAWER & FIFO ALLOCATION STYLES
+   ========================================================================== */
+.drawer-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(3px);
+    z-index: 9998;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.25s ease;
+}
+.drawer-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.quick-pay-drawer {
+    position: fixed;
+    top: 0;
+    right: -1100px;
+    bottom: 0;
+    width: 1040px;
+    max-width: 96vw;
+    background: var(--card, #ffffff);
+    box-shadow: -16px 0 50px rgba(0, 0, 0, 0.28);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+.quick-pay-drawer.active {
+    right: 0;
+}
+
+.drawer-header {
+    padding: 16px 24px;
+    background: #f8fafc;
+    border-bottom: 1.5px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+body.dark-mode .drawer-header {
+    background: #1e293b;
+    border-bottom-color: #334155;
+}
+
+.drawer-tabs {
+    display: flex;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 8px;
+    gap: 4px;
+}
+body.dark-mode .drawer-tabs {
+    background: #0f172a;
+}
+
+.drawer-tab-btn {
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: none;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    background: transparent;
+    color: #64748b;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+.drawer-tab-btn.active#tabBtnIncome {
+    background: #16a34a;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+}
+.drawer-tab-btn.active#tabBtnExpense {
+    background: #dc2626;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+}
+
+.drawer-kbd-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    background: #e2e8f0;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+}
+body.dark-mode .drawer-kbd-badge {
+    background: #0f172a;
+    border-color: #334155;
+    color: #94a3b8;
+}
+
+.drawer-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 26px;
+    line-height: 1;
+    color: #64748b;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.drawer-close-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+body.dark-mode .drawer-close-btn:hover {
+    background: #334155;
+    color: #f8fafc;
+}
+
+.drawer-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.drawer-section {
+    display: none;
+}
+.drawer-section.active {
+    display: block;
+}
+
+.drawer-2col-grid {
+    display: grid;
+    grid-template-columns: 460px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+@media (max-width: 960px) {
+    .drawer-2col-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.drawer-suggest-box {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    border: 1.5px solid #0284c7;
+    border-radius: 8px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin-top: 4px;
+}
+body.dark-mode .drawer-suggest-box {
+    background: #1e293b;
+    border-color: #38bdf8;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+}
+
+.payment-debt-summary-card {
+    background: #f0f7ff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    border: 1.5px solid #bae6fd;
+}
+body.dark-mode .payment-debt-summary-card {
+    background: rgba(14, 165, 233, 0.12);
+    border-color: rgba(56, 189, 248, 0.3);
+}
+
+.btn-fill-all-debt {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #7dd3fc;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.btn-fill-all-debt:hover {
+    background: #bae6fd;
+}
+body.dark-mode .btn-fill-all-debt {
+    background: #0369a1;
+    color: #e0f2fe;
+    border-color: #0284c7;
+}
+
+.payment-usd-box {
+    background: #f0fdf4;
+    border: 1.5px solid #86efac;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+body.dark-mode .payment-usd-box {
+    background: rgba(22, 163, 74, 0.12);
+    border-color: rgba(74, 222, 128, 0.35);
+}
+
+.payment-usd-box .usd-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #166534;
+    margin-bottom: 6px;
+}
+body.dark-mode .payment-usd-box .usd-header {
+    color: #4ade80;
+}
+
+.fifo-mode-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    transition: all 0.15s ease;
+}
+.fifo-mode-badge.auto {
+    background: #dcfce7;
+    color: #15803d;
+}
+.fifo-mode-badge.manual {
+    background: #fef3c7;
+    color: #b45309;
+}
+.fifo-mode-badge.solo {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.demand-card {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: #ffffff;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+body.dark-mode .demand-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+.demand-card.fully-paid {
+    border-color: #86efac !important;
+    background: #f0fdf4 !important;
+}
+body.dark-mode .demand-card.fully-paid {
+    background: rgba(22, 163, 74, 0.15) !important;
+    border-color: rgba(74, 222, 128, 0.4) !important;
+}
+.demand-card.partial-paid {
+    border-color: #fde047 !important;
+    background: #fefce8 !important;
+}
+body.dark-mode .demand-card.partial-paid {
+    background: rgba(234, 179, 8, 0.15) !important;
+    border-color: rgba(250, 204, 21, 0.4) !important;
+}
+.demand-card.unpaid {
+    border-color: #e2e8f0;
+    opacity: 0.85;
+}
+
+.btn-solo-demand {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.15s ease;
+}
+.btn-solo-demand:hover {
+    background: #dbeafe;
+}
+body.dark-mode .btn-solo-demand {
+    background: #1e3a8a;
+    color: #93c5fd;
+    border-color: #3b82f6;
+}
+
+.fifo-summary-bar {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 11.5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+body.dark-mode .fifo-summary-bar {
+    background: #1e293b;
+    border-color: #334155;
+}
+
 

@@ -108,3 +108,39 @@ class SyncQueue(Base):
     error_message = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class LocalDemandPosition(Base):
+    __tablename__ = "local_demand_positions"
+
+    id = Column(String(100), primary_key=True, index=True)
+    demand_id = Column(String(100), index=True, nullable=False)
+    demand_name = Column(String(100), index=True, default="")
+    agent_id = Column(String(100), index=True, default="")
+    agent_name = Column(String(200), index=True, default="")
+    moment = Column(String(50), index=True, default="")
+    state_name = Column(String(50), default="")
+    state_color = Column(String(20), default="#64748b")
+    demand_sum = Column(Float, default=0.0)
+    demand_remaining = Column(Float, default=0.0)
+    description = Column(Text, default="")
+
+    assortment_id = Column(String(100), index=True, nullable=False)
+    assortment_name = Column(String(255), index=True, default="")
+    assortment_code = Column(String(100), index=True, default="")
+    assortment_article = Column(String(100), index=True, default="")
+    assortment_barcode = Column(String(100), index=True, default="")
+
+    quantity = Column(Float, default=0.0)
+    price = Column(Float, default=0.0)
+    discount = Column(Float, default=0.0)
+    total = Column(Float, default=0.0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_demand_pos_assortment", "assortment_id"),
+        Index("ix_demand_pos_code", "assortment_code"),
+        Index("ix_demand_pos_name", "assortment_name"),
+        Index("ix_demand_pos_moment", "moment"),
+    )
+
+

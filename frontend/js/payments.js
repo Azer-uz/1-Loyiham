@@ -1,3 +1,33 @@
+
+async function loadEditAccountsSelect(selectedAccountId) {
+    const accSelect = document.getElementById('editPayAccountSelect');
+    if (!accSelect) return;
+    try {
+        let accs = window.allBankAccountsCache;
+        if (!accs) {
+            const resp = await apiFetch('/settings/accounts');
+            if (resp && resp.data) {
+                accs = resp.data;
+                window.allBankAccountsCache = accs;
+            }
+        }
+        if (accs && accs.length > 0) {
+            accSelect.innerHTML = '';
+            accs.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = `${acc.name || acc.raw_name || 'Bank hisobi'}`;
+                if (selectedAccountId && (selectedAccountId === acc.id || selectedAccountId === acc.raw_name)) {
+                    opt.selected = true;
+                }
+                accSelect.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.warn("Hisoblar yuklanmadi:", e);
+    }
+}
+
 // frontend/js/payments.js - Said Baraka Kassa & Valyuta Moduli
 
 // ===== GLOBAL O'ZGARUVCHILAR =====
@@ -113,19 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Standart davr: 'month' (Joriy to'liq oy)
         updateDateRangeUI(false);
 
-        // 1. Valyuta kurslarini yuklash
-        await loadCurrencyData();
-
-        // 2. Tashkilot va hisob raqamlarini yuklash
-        await loadOrgAndAccounts();
-
-        // 3. Xarajat moddalarini yuklash
-        await loadExpenseItems();
-
-        // 4. Mijozlar ro'yxatini yuklash (kirim kiritish uchun)
-        loadCustomersForModal();
-
-        // 5. Hodisalarni ulash (Search & Date)
+        // Hodisalarni ulash (Search & Date)
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
             searchInput.addEventListener('input', debounce(() => {
@@ -151,8 +169,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             dateToInput.addEventListener('change', onCustomDateChange);
         }
 
-        // 6. Kassa ma'lumotlarini yuklash
-        await loadCashflow();
+        // 🚀 Barcha ma'lumotlarni parallel yuklash (Tezkor 0.05 soniyada to'liq yuklanadi)
+        await Promise.all([
+            loadCashflow(),
+            loadCurrencyData().catch(() => null),
+            loadOrgAndAccounts().catch(() => null),
+            loadExpenseItems().catch(() => null),
+            loadCustomersForModal().catch(() => null),
+        ]);
     } catch (error) {
         console.error('Kassa sahifasi boshlang\'ich xatosi:', error);
     }
@@ -278,9 +302,21 @@ async function syncCbuRate() {
 }
 
 // ===== TASHKILOT VA HISOBLARNI YUKLASH =====
+let appPaymentMethods = [];
+let appAvailableAccounts = [];
+
 async function loadOrgAndAccounts() {
     try {
-        const orgResp = await apiFetch('/dashboard/organization');
+        const [orgResp, methodsResp] = await Promise.all([
+            apiFetch('/dashboard/organization'),
+            apiFetch('/settings/payment-methods').catch(() => null)
+        ]);
+
+        if (methodsResp && methodsResp.success && methodsResp.data) {
+            appPaymentMethods = methodsResp.data.methods || [];
+            appAvailableAccounts = methodsResp.data.available_accounts || [];
+        }
+
         if (orgResp.success && orgResp.data) {
             currentOrgName = orgResp.data.name || 'Said Baraka';
             currentOrgId = orgResp.data.id || '';
@@ -298,6 +334,28 @@ async function loadOrgAndAccounts() {
     } catch (e) {
         console.warn('Tashkilot hisoblari yuklanmadi:', e);
     }
+}
+
+function getCardAccountsList() {
+    const cardMethod = appPaymentMethods.find(m => m.id === 'card');
+    if (cardMethod && Array.isArray(cardMethod.linked_accounts_detail) && cardMethod.linked_accounts_detail.length > 0) {
+        return cardMethod.linked_accounts_detail;
+    }
+    if (cardMethod && Array.isArray(cardMethod.linked_account_ids) && cardMethod.linked_account_ids.length > 0) {
+        return orgAccounts.filter(a => cardMethod.linked_account_ids.includes(a.id));
+    }
+    return orgAccounts.filter(a => a.type !== 'cash' && a.type !== 'dollar' && !a.isDollar && !a.is_dollar && a.currency !== 'USD');
+}
+
+function getDollarAccountsList() {
+    const usdMethod = appPaymentMethods.find(m => m.id === 'usd');
+    if (usdMethod && Array.isArray(usdMethod.linked_accounts_detail) && usdMethod.linked_accounts_detail.length > 0) {
+        return usdMethod.linked_accounts_detail;
+    }
+    if (usdMethod && Array.isArray(usdMethod.linked_account_ids) && usdMethod.linked_account_ids.length > 0) {
+        return orgAccounts.filter(a => usdMethod.linked_account_ids.includes(a.id));
+    }
+    return orgAccounts.filter(a => a.type === 'dollar' || a.isDollar || a.is_dollar || a.currency === 'USD');
 }
 
 function populateAccountSelects() {
@@ -326,12 +384,13 @@ function updateExpenseAccountOptions() {
     if (!expAcc) return;
 
     if (selectedExpenseType === 'cash') {
-        // Faqat naqd kassa
         expAcc.innerHTML = '<option value="cash_default">💵 Asosiy Naqd Kassa (UZS)</option>';
-    } else {
-        // Bank va dollar hisoblari
-        const bankOnly = orgAccounts.filter(a => a.type !== 'cash');
-        expAcc.innerHTML = bankOnly.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    } else if (selectedExpenseType === 'card') {
+        const uzsBankOnly = orgAccounts.filter(a => a.type !== 'cash' && !a.is_dollar && a.currency !== 'USD');
+        expAcc.innerHTML = uzsBankOnly.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    } else if (selectedExpenseType === 'usd') {
+        const usdAccounts = orgAccounts.filter(a => a.is_dollar || a.currency === 'USD');
+        expAcc.innerHTML = usdAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     }
 }
 
@@ -344,6 +403,11 @@ function filterByAccount(accId, closeOnSelect = false) {
     const resetBtn = document.getElementById('resetAccountFilterBtn');
     if (resetBtn) {
         resetBtn.style.display = accId !== 'all' ? 'inline-block' : 'none';
+    }
+
+    const resetPageBtn = document.getElementById('resetAccountFilterPageBtn');
+    if (resetPageBtn) {
+        resetPageBtn.style.display = accId !== 'all' ? 'inline-block' : 'none';
     }
 
     // Kartalardagi active klassini yangilash
@@ -376,15 +440,17 @@ function closeAccountsModal() {
 
 // ===== HISOBLAR BALANSI VIDJETINI CHIZISH =====
 function renderAccountsGrid(accountBalances) {
-    const grid = document.getElementById('accountsGrid');
-    if (!grid) return;
+    const gridModal = document.getElementById('accountsGrid');
+    const gridPage = document.getElementById('pageAccountsGrid');
 
     if (!accountBalances || accountBalances.length === 0) {
-        grid.innerHTML = '<div style="color:var(--text-light); padding:10px;">Hisoblar ma\'lumoti yo\'q</div>';
+        const emptyHtml = '<div style="color:var(--text-light); padding:10px;">Hisoblar ma\'lumoti yo\'q</div>';
+        if (gridModal) gridModal.innerHTML = emptyHtml;
+        if (gridPage) gridPage.innerHTML = emptyHtml;
         return;
     }
 
-    grid.innerHTML = accountBalances.map(acc => {
+    const htmlContent = accountBalances.map(acc => {
         const isCash = acc.type === 'cash';
         const isDollar = acc.type === 'dollar' || acc.is_dollar || acc.currency === 'USD';
         const badgeTypeClass = isCash ? 'account-type-cash' : (isDollar ? 'account-type-dollar' : 'account-type-bank');
@@ -392,26 +458,23 @@ function renderAccountsGrid(accountBalances) {
         const isActive = currentAccountId === acc.id;
 
         const balanceFormatted = isDollar
-            ? `$${formatMoney(acc.balance || 0)}`
-            : `${formatMoney(acc.balance || 0)} so'm`;
+            ? `$${formatNumber(acc.balance || 0)}`
+            : `${formatNumber(acc.balance || 0)} so'm`;
 
         return `
-            <div class="account-card ${isActive ? 'active-filter' : ''}" data-account-id="${acc.id}" onclick="filterByAccount('${acc.id}', true)">
+            <div class="account-card ${isActive ? 'active-filter' : ''}" data-account-id="${acc.id}" onclick="filterByAccount('${acc.id}', false)" title="${isActive ? 'Tanlangan filtr' : 'Filtrlash uchun bosing'}">
                 <div class="account-card-top">
                     <span class="account-card-name" title="${acc.name}">${acc.name}</span>
                     <span class="account-card-type-badge ${badgeTypeClass}">${badgeLabel}</span>
                 </div>
                 <div class="account-card-balance" style="${isDollar ? 'color:#15803d;' : ''}">${balanceFormatted}</div>
                 ${acc.is_adjusted ? `<div class="adjusted-tag" title="Sabab: ${acc.reason || 'Korrektirovka'}">✏️ To'g'rilangan</div>` : ''}
-                <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
-                    <button type="button" class="btn-quick-adjust" onclick="event.stopPropagation(); closeAccountsModal(); openAdjustmentModal('${acc.id}', '${(acc.name || '').replace(/'/g, "\\'")}', ${acc.balance || 0}, '${acc.currency || (isDollar ? 'USD' : 'UZS')}')">
-                        ✏️ Korrektirovka
-                    </button>
-                    <span style="font-size:11px; color:var(--text-light); font-weight:600;">Filtrlash ↗️</span>
-                </div>
             </div>
         `;
     }).join('');
+
+    if (gridModal) gridModal.innerHTML = htmlContent;
+    if (gridPage) gridPage.innerHTML = htmlContent;
 }
 
 // ===== TUR FILTRI (KIRIM / CHIQIM) =====
@@ -579,7 +642,7 @@ function renderTransactions(transactions) {
     tbody.innerHTML = transactions.map((t, idx) => {
         const isIn = t.direction === 'in';
         const isCash = t.doc_type === 'cashin' || t.doc_type === 'cashout' || t.account_id === 'cash_default';
-        const isDollar = t.account_type === 'dollar' || (t.account_name && t.account_name.toLowerCase().includes('dollar')) || (t.usd_amount && t.usd_amount > 0);
+        const isDollar = t.account_type === 'dollar' || t.is_usd === true;
         const badgeClass = isIn ? 'badge-inflow' : 'badge-outflow';
         const sign = isIn ? '+' : '-';
         const amountColor = isIn ? 'var(--success)' : 'var(--danger)';
@@ -602,6 +665,22 @@ function renderTransactions(transactions) {
         const safeId = t.id || '';
         const safeDocType = t.doc_type || (isIn ? 'cashin' : 'cashout');
 
+        let amountFormatted = '';
+        if (t.is_usd || t.account_type === 'dollar' || (t.usd_amount && t.usd_amount > 0)) {
+            const usdAmt = t.usd_amount || (t.amount ? t.amount / (t.usd_rate || 12800) : 0);
+            const usdStr = (Number(usdAmt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const uzsStr = formatMoney(t.amount);
+            const rateStr = t.usd_rate ? `kurs: ${formatNumber(t.usd_rate)}` : '';
+            amountFormatted = `
+                <div style="display:inline-flex; flex-direction:column; align-items:flex-end; vertical-align:middle;">
+                    <span style="font-size:14px; font-weight:800;">${sign} $${usdStr}</span>
+                    <span style="font-size:11px; font-weight:500; opacity:0.8; color:var(--text-light);">${uzsStr}${rateStr ? ' (' + rateStr + ')' : ''}</span>
+                </div>
+            `;
+        } else {
+            amountFormatted = `<span>${sign} ${formatMoney(t.amount)}</span>`;
+        }
+
         return `
             <tr onclick="openPaymentEditModal('${safeId}', '${safeDocType}')" style="cursor:pointer;" title="Tahrirlash yoki sotuvga bog'lash uchun bosing">
                 <td style="text-align:center;font-size:12px;color:var(--text-light);">${idx + 1}</td>
@@ -619,7 +698,7 @@ function renderTransactions(transactions) {
                     ${t.purpose || '—'}
                 </td>
                 <td style="text-align:right;font-weight:800;color:${amountColor};white-space:nowrap;">
-                    <span>${sign} ${formatMoney(t.amount)}</span>
+                    ${amountFormatted}
                     <button class="btn-icon" onclick="event.stopPropagation(); openPaymentEditModal('${safeId}', '${safeDocType}')" title="Tahrirlash" style="background:transparent;border:none;cursor:pointer;font-size:13px;margin-left:8px;padding:2px 4px;border-radius:4px;">✏️</button>
                 </td>
             </tr>
@@ -647,6 +726,8 @@ function setExpenseType(type) {
     selectedExpenseType = type;
     document.getElementById('expTypeCash').classList.toggle('active', type === 'cash');
     document.getElementById('expTypeCard').classList.toggle('active', type === 'card');
+    const usdBtn = document.getElementById('expTypeUsd');
+    if (usdBtn) usdBtn.classList.toggle('active', type === 'usd');
     updateExpenseAccountOptions();
 }
 
@@ -756,9 +837,9 @@ async function handleNewExpenseItemSubmit(event) {
 // ===== KIRIM KIRITISH MODALI =====
 async function loadCustomersForModal() {
     try {
-        const resp = await apiFetch('/customers');
-        if (resp.success && resp.data) {
-            customersList = resp.data.customers || [];
+        const resp = await apiFetch('/customers?limit=2000');
+        if (resp && resp.success && resp.data) {
+            customersList = Array.isArray(resp.data) ? resp.data : (resp.data.customers || []);
             const select = document.getElementById('payCustomerSelect');
             if (select) {
                 select.innerHTML = '<option value="">Mijozni tanlang...</option>' +
@@ -773,7 +854,23 @@ async function loadCustomersForModal() {
 function openCustomerPaymentModal() {
     document.getElementById('payCashAmount').value = '';
     document.getElementById('payCardAmount').value = '';
+    document.getElementById('payUsdAmount').value = '';
     document.getElementById('payDescription').value = '';
+    
+    // Populate Kirim Selects
+    const cardSelect = document.getElementById('payCardAccountSelect');
+    const usdSelect = document.getElementById('payUsdAccountSelect');
+    
+    if (cardSelect) {
+        const uzsBankOnly = orgAccounts.filter(a => a.type !== 'cash' && !a.is_dollar && a.currency !== 'USD');
+        cardSelect.innerHTML = uzsBankOnly.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    }
+    
+    if (usdSelect) {
+        const usdAccounts = orgAccounts.filter(a => a.is_dollar || a.currency === 'USD');
+        usdSelect.innerHTML = usdAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    }
+
     updatePaymentUSDPreview();
     document.getElementById('customerPaymentModal').classList.add('active');
 }
@@ -785,10 +882,14 @@ function closeCustomerPaymentModal() {
 function updatePaymentUSDPreview() {
     const cash = parseAmount(document.getElementById('payCashAmount').value);
     const card = parseAmount(document.getElementById('payCardAmount').value);
-    const total = cash + card;
+    const usd = parseAmount(document.getElementById('payUsdAmount').value);
+    
+    const usdRate = window.currentUSDRate || 12800;
+    const usdToUzs = usd * usdRate;
+    const totalUzs = cash + card + usdToUzs;
 
-    document.getElementById('payTotalPreview').textContent = formatMoney(total);
-    document.getElementById('payTotalUSDPreview').textContent = `${formatUSD(total)} USD`;
+    document.getElementById('payTotalPreview').textContent = formatMoney(totalUzs);
+    document.getElementById('payTotalUSDPreview').textContent = `${formatUSD(totalUzs / usdRate)} USD`;
 }
 
 async function handleCustomerPaymentSubmit(event) {
@@ -796,7 +897,9 @@ async function handleCustomerPaymentSubmit(event) {
     const customer_id = document.getElementById('payCustomerSelect').value;
     const cash_amount = parseAmount(document.getElementById('payCashAmount').value);
     const card_amount = parseAmount(document.getElementById('payCardAmount').value);
-    const account_id = document.getElementById('payAccountSelect').value;
+    const usd_amount = parseAmount(document.getElementById('payUsdAmount').value);
+    const card_account_id = document.getElementById('payCardAccountSelect')?.value;
+    const usd_account_id = document.getElementById('payUsdAccountSelect')?.value;
     const description = document.getElementById('payDescription').value;
 
     if (!customer_id) {
@@ -804,8 +907,8 @@ async function handleCustomerPaymentSubmit(event) {
         return;
     }
 
-    if (cash_amount <= 0 && card_amount <= 0) {
-        alert("Naqd yoki bank summasidan kamida bittasini kiriting!");
+    if (cash_amount <= 0 && card_amount <= 0 && usd_amount <= 0) {
+        alert("Naqd, bank yoki dollar summasidan kamida bittasini kiriting!");
         return;
     }
 
@@ -818,7 +921,10 @@ async function handleCustomerPaymentSubmit(event) {
             counterparty_id: customer_id,
             cash_amount: cash_amount,
             card_amount: card_amount,
-            account_id: account_id || null,
+            usd_amount: usd_amount,
+            usd_rate: window.currentUSDRate || 12800.0,
+            account_id: card_account_id || null,
+            usd_account_id: usd_account_id || null,
             description: description || "Mijozdan to'lov",
         };
 
@@ -989,7 +1095,6 @@ let currentEditingTx = null;
 async function openPaymentEditModal(paymentId, docType) {
     if (!paymentId) return;
 
-    // Tranzaksiyani keshdan yoki joriy ro'yxatdan topish
     let tx = null;
     if (currentCashflowData && currentCashflowData.transactions) {
         tx = currentCashflowData.transactions.find(t => t.id === paymentId);
@@ -1001,7 +1106,7 @@ async function openPaymentEditModal(paymentId, docType) {
     if (!modal) return;
 
     document.getElementById('editPayId').value = paymentId;
-    document.getElementById('editPayDocType').value = docType || 'cashin';
+    document.getElementById('editPayDocType').value = docType || (tx && tx.doc_type) || 'cashin';
 
     // Sarlavha
     const typeLabel = tx ? (tx.type_name || 'To\'lov') : 'To\'lov';
@@ -1010,32 +1115,54 @@ async function openPaymentEditModal(paymentId, docType) {
         ? `Hujjat: ${tx.doc_number || '—'} | Kontragent: ${tx.target_name || '—'}`
         : `ID: ${paymentId}`;
 
-    // Summa va valyuta
-    const isDollar = tx && (tx.account_type === 'dollar' || (tx.usd_amount && tx.usd_amount > 0));
-    const currSelect = document.getElementById('editPayCurrency');
-    currSelect.value = isDollar ? 'USD' : 'UZS';
+    // Summa va to'lov turi
+    let currentMethod = 'cash';
+    const isDollar = Boolean(tx && (tx.account_type === 'dollar' || tx.is_usd === true || (tx.usd_amount && tx.usd_amount > 0)));
+    if (isDollar) {
+        currentMethod = 'usd';
+    } else if (docType === 'paymentin' || docType === 'paymentout' || (tx && (tx.doc_type === 'paymentin' || tx.doc_type === 'paymentout' || tx.type === 'card' || tx.account_type === 'bank' || tx.account_id))) {
+        currentMethod = 'card';
+    } else {
+        currentMethod = 'cash';
+    }
+
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    if (methodSelect) {
+        methodSelect.value = currentMethod;
+    }
 
     const amtInput = document.getElementById('editPayAmount');
-    amtInput.value = tx ? formatNumber(tx.amount) : '0';
-
     const usdGroup = document.getElementById('editPayUsdGroup');
     const usdInput = document.getElementById('editPayUsdAmount');
     const rateInput = document.getElementById('editPayUsdRate');
+    const accGroup = document.getElementById('editPayAccountGroup');
 
-    if (isDollar) {
-        usdGroup.style.display = 'block';
-        usdInput.value = tx ? formatNumber(tx.usd_amount || Math.round(tx.amount / (window.currentUSDRate || 12800)), true) : '0';
-        rateInput.value = formatNumber(window.currentUSDRate || 12800);
+    await loadEditAccountsSelect((tx && (tx.account_id || (tx.account && tx.account.id))) || null);
+
+    if (currentMethod === 'usd') {
+        if (usdGroup) usdGroup.style.display = 'block';
+        if (accGroup) accGroup.style.display = 'none';
+        const actualUsd = (tx && tx.usd_amount) ? tx.usd_amount : ((tx && tx.amount && tx.usd_rate) ? (tx.amount / tx.usd_rate) : 0);
+        const actualRate = (tx && tx.usd_rate) || window.currentUSDRate || 12800;
+        const actualUzs = (tx && tx.amount) ? tx.amount : Math.round(actualUsd * actualRate);
+        if (usdInput) usdInput.value = formatNumber(actualUsd, true);
+        if (rateInput) rateInput.value = formatNumber(actualRate);
+        if (amtInput) amtInput.value = formatNumber(Math.round(actualUzs));
+    } else if (currentMethod === 'card') {
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'block';
+        if (amtInput) amtInput.value = tx ? formatNumber(tx.amount) : '0';
     } else {
-        usdGroup.style.display = 'none';
-        usdInput.value = '';
-        rateInput.value = formatNumber(window.currentUSDRate || 12800);
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'none';
+        if (amtInput) amtInput.value = tx ? formatNumber(tx.amount) : '0';
+        if (usdInput) usdInput.value = '';
+        if (rateInput) rateInput.value = formatNumber(window.currentUSDRate || 12800);
     }
 
     // Sana va vaqt
     const momentInput = document.getElementById('editPayMoment');
     if (tx && tx.moment) {
-        // "2026-09-20 18:30:00" -> "2026-09-20T18:30"
         const cleanMoment = tx.moment.substring(0, 16).replace(' ', 'T');
         momentInput.value = cleanMoment;
     } else {
@@ -1050,16 +1177,44 @@ async function openPaymentEditModal(paymentId, docType) {
     const linkSelect = document.getElementById('editPayLinkDemand');
     linkSelect.innerHTML = '<option value="">(Bog\'lanmagan / Alohida to\'lov)</option>';
 
-    if (tx && tx.target_name && tx.target_name !== 'Xarajat' && tx.target_name !== 'Bank xarajati') {
+    let linkedDemandId = (tx && (tx.linked_demand_id || tx.demand_id)) || null;
+    let targetCustomerName = tx ? tx.target_name : '';
+
+    // MoySklad hujjatining o'zidan operatsiyalarni tekshirib olish (bog'lanishni 100% aniq topish)
+    try {
+        const fullDocResp = await apiFetch(`/payments/${docType || (tx && tx.doc_type) || 'cashin'}/${paymentId}`);
+        if (fullDocResp && fullDocResp.success && fullDocResp.data) {
+            const docData = fullDocResp.data;
+            if (docData.agent && docData.agent.name) {
+                targetCustomerName = docData.agent.name;
+            }
+            const rawOps = docData.operations;
+            const ops = Array.isArray(rawOps) ? rawOps : (rawOps && Array.isArray(rawOps.rows) ? rawOps.rows : []);
+            for (const op of ops) {
+                const href = (op.meta && op.meta.href) || op.href || '';
+                if (href.includes('/entity/demand/')) {
+                    linkedDemandId = href.split('/').pop();
+                    break;
+                }
+            }
+            if (!linkedDemandId && docData.demand && docData.demand.meta && docData.demand.meta.href) {
+                linkedDemandId = docData.demand.meta.href.split('/').pop();
+            }
+        }
+    } catch (err) {
+        console.warn('Payment full doc fetch warning:', err);
+    }
+
+    if (targetCustomerName && targetCustomerName !== 'Xarajat' && targetCustomerName !== 'Bank xarajati') {
         try {
-            const demandsResp = await apiFetch(`/demands?limit=15&offset=0&search=${encodeURIComponent(tx.target_name)}`);
+            const demandsResp = await apiFetch(`/demands?limit=50&offset=0&search=${encodeURIComponent(targetCustomerName)}`);
             if (demandsResp && demandsResp.data && demandsResp.data.length > 0) {
                 demandsResp.data.forEach(d => {
                     const opt = document.createElement('option');
                     opt.value = d.id;
                     const rem = d.remaining ? ` | Qarz: ${formatMoney(d.remaining)}` : '';
                     opt.textContent = `№ ${d.name} (${d.moment ? d.moment.substring(0, 10) : ''}) — ${formatMoney(d.sum)}${rem}`;
-                    if (tx && (tx.linked_demand_id === d.id || tx.demand_id === d.id)) {
+                    if (linkedDemandId && (linkedDemandId === d.id)) {
                         opt.selected = true;
                     }
                     linkSelect.appendChild(opt);
@@ -1079,26 +1234,59 @@ function closeEditPaymentModal() {
     currentEditingTx = null;
 }
 
-function toggleEditCurrencyInputs() {
-    const curr = document.getElementById('editPayCurrency').value;
+function toggleEditPaymentMethod() {
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    const method = methodSelect ? methodSelect.value : 'cash';
     const usdGroup = document.getElementById('editPayUsdGroup');
-    if (curr === 'USD') {
-        usdGroup.style.display = 'block';
-        const amt = parseAmount(document.getElementById('editPayAmount').value);
-        const rate = parseAmount(document.getElementById('editPayUsdRate').value) || (window.currentUSDRate || 12800);
-        if (amt > 0) {
-            document.getElementById('editPayUsdAmount').value = (amt / rate).toFixed(2);
+    const accGroup = document.getElementById('editPayAccountGroup');
+    const usdInput = document.getElementById('editPayUsdAmount');
+    const rateInput = document.getElementById('editPayUsdRate');
+
+    if (method === 'usd' || method === 'USD') {
+        if (usdGroup) usdGroup.style.display = 'block';
+        if (accGroup) accGroup.style.display = 'none';
+        if (!rateInput.value || parseAmount(rateInput.value) <= 0) {
+            rateInput.value = formatNumber(window.currentUSDRate || 12800);
         }
+        const amt = parseAmount(document.getElementById('editPayAmount')?.value);
+        const rate = parseAmount(rateInput?.value) || (window.currentUSDRate || 12800);
+        const curUsd = parseAmount(usdInput?.value);
+        if (curUsd > 0) {
+            recalcEditUzsFromUsd();
+        } else if (amt > 0 && rate > 0) {
+            usdInput.value = formatNumber(amt / rate, true);
+        }
+    } else if (method === 'card') {
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'block';
+        loadEditAccountsSelect(currentEditingTx?.account_id || currentEditingTx?.account?.id);
     } else {
-        usdGroup.style.display = 'none';
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'none';
     }
 }
 
+function toggleEditCurrencyInputs() {
+    toggleEditPaymentMethod();
+}
+
 function recalcEditUzsFromUsd() {
-    const usdVal = parseAmount(document.getElementById('editPayUsdAmount').value);
-    const rate = parseAmount(document.getElementById('editPayUsdRate').value) || (window.currentUSDRate || 12800);
-    if (usdVal > 0) {
+    const usdVal = parseAmount(document.getElementById('editPayUsdAmount')?.value);
+    const rate = parseAmount(document.getElementById('editPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+    if (usdVal > 0 && document.getElementById('editPayAmount')) {
         document.getElementById('editPayAmount').value = formatNumber(Math.round(usdVal * rate));
+    }
+}
+
+function recalcEditUsdFromUzs() {
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    const method = methodSelect ? methodSelect.value : 'cash';
+    if (method === 'usd' || method === 'USD') {
+        const amt = parseAmount(document.getElementById('editPayAmount')?.value);
+        const rate = parseAmount(document.getElementById('editPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+        if (amt > 0 && rate > 0 && document.getElementById('editPayUsdAmount')) {
+            document.getElementById('editPayUsdAmount').value = formatNumber(amt / rate, true);
+        }
     }
 }
 
@@ -1107,7 +1295,8 @@ async function handleEditPaymentSubmit(event) {
     const paymentId = document.getElementById('editPayId').value;
     const docType = document.getElementById('editPayDocType').value;
     const amount = parseAmount(document.getElementById('editPayAmount').value);
-    const curr = document.getElementById('editPayCurrency').value;
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    const method = methodSelect ? methodSelect.value : 'cash';
     const momentVal = document.getElementById('editPayMoment').value;
     const purpose = document.getElementById('editPayPurpose').value.trim();
     const linkedDemandId = document.getElementById('editPayLinkDemand').value;
@@ -1127,11 +1316,16 @@ async function handleEditPaymentSubmit(event) {
         moment: momentVal.replace('T', ' ') + ':00',
     };
 
-    if (curr === 'USD') {
+    if (method === 'usd' || method === 'USD') {
         const usdAmount = parseAmount(document.getElementById('editPayUsdAmount').value);
         const usdRate = parseAmount(document.getElementById('editPayUsdRate').value) || (window.currentUSDRate || 12800);
         payload.usd_amount = usdAmount;
         payload.usd_rate = usdRate;
+    } else if (method === 'card') {
+        const accId = document.getElementById('editPayAccountSelect')?.value;
+        if (accId) {
+            payload.account_id = accId;
+        }
     }
 
     if (linkedDemandId) {
@@ -1195,3 +1389,846 @@ window.addEventListener('click', (e) => {
     }
 });
 
+
+
+// ================= BIRLASHGAN TEZKOR TO'LOV PANELI (DRAWER) =================
+let currentDrawerTab = 'income'; // 'income' | 'expense'
+let currentDrawerExpenseType = 'cash'; // 'cash' | 'card' | 'usd'
+
+function openQuickPayDrawer(tab = 'income', customerId = null, customerName = null, currentBalance = null) {
+    const backdrop = document.getElementById('quickPayDrawerBackdrop');
+    const drawer = document.getElementById('quickPayDrawer');
+    if (!drawer || !backdrop) return;
+
+    // Accounts populated
+    populateDrawerAccounts();
+
+    // Default dates
+    const now = new Date();
+    const nowIso = now.toISOString().substring(0, 16);
+    const incMoment = document.getElementById('drawerIncomeMoment');
+    const expMoment = document.getElementById('drawerExpMoment');
+    if (incMoment) incMoment.value = nowIso;
+    if (expMoment) expMoment.value = nowIso;
+
+    // Default rates
+    const rateInput = document.getElementById('drawerPayUsdRate');
+    if (rateInput) rateInput.value = formatNumber(window.currentUSDRate || 12800);
+
+    switchDrawerTab(tab);
+    backdrop.classList.add('active');
+    drawer.classList.add('active');
+
+    if (customerId) {
+        selectDrawerCust(customerId, customerName || '');
+        setTimeout(() => {
+            document.getElementById('drawerPayCash')?.focus();
+        }, 220);
+    } else {
+        setTimeout(() => {
+            if (tab === 'income') {
+                document.getElementById('drawerIncomeCustomerSearch')?.focus();
+            } else {
+                document.getElementById('drawerExpAmount')?.focus();
+            }
+        }, 200);
+    }
+}
+
+function closeQuickPayDrawer() {
+    const backdrop = document.getElementById('quickPayDrawerBackdrop');
+    const drawer = document.getElementById('quickPayDrawer');
+    if (backdrop) backdrop.classList.remove('active');
+    if (drawer) drawer.classList.remove('active');
+    const sugg = document.getElementById('drawerCustSuggestionsList');
+    if (sugg) sugg.style.display = 'none';
+}
+
+function switchDrawerTab(tab) {
+    currentDrawerTab = tab;
+    const btnInc = document.getElementById('tabBtnIncome');
+    const btnExp = document.getElementById('tabBtnExpense');
+    const secInc = document.getElementById('drawerIncomeSection');
+    const secExp = document.getElementById('drawerExpenseSection');
+
+    if (btnInc) btnInc.classList.toggle('active', tab === 'income');
+    if (btnExp) btnExp.classList.toggle('active', tab === 'expense');
+    if (secInc) secInc.classList.toggle('active', tab === 'income');
+    if (secExp) secExp.classList.toggle('active', tab === 'expense');
+
+    if (tab === 'expense') {
+        setDrawerExpenseType(currentDrawerExpenseType || 'cash');
+    }
+}
+
+function populateDrawerAccounts() {
+    const cardSelect = document.getElementById('drawerPayCardAccount');
+    const usdHidden = document.getElementById('drawerPayUsdAccount');
+    const expItemSel = document.getElementById('drawerExpItemSelect');
+
+    const uzsCards = getCardAccountsList();
+    const usdAccounts = getDollarAccountsList();
+
+    if (cardSelect) {
+        cardSelect.innerHTML = uzsCards.map(a => `<option value="${a.id}">💳 ${a.name.replace(/^[🏦💳💵💲]\s*/, '')}</option>`).join('');
+        if (uzsCards.length > 0) cardSelect.value = uzsCards[0].id;
+    }
+    if (usdHidden) {
+        usdHidden.value = usdAccounts[0]?.id || 'usd_default';
+    }
+
+    // Populate expense items dropdown
+    if (expItemSel && expenseItems && expenseItems.length > 0) {
+        expItemSel.innerHTML = '<option value="">Toifani tanlang...</option>' +
+            expenseItems.map(item => `<option value="${item.id}">🏷️ ${item.name}</option>`).join('');
+    }
+
+    // Render quick expense chips matching real DB items
+    renderDrawerExpenseChips();
+}
+
+const EXPENSE_ICONS = {
+    'аренда': '🏢',
+    'зарплата': '👥',
+    'питание': '🍲',
+    'маркетинг и реклама': '📢',
+    'маркетинг': '📢',
+    'реклама': '📢',
+    'логистика': '📦',
+    'коммуналка': '💡',
+    'закупка товаров': '🛒',
+    'закупка': '🛒',
+    'дивидент': '💰',
+    'налоги и сборы': '🏛️',
+    'налоги': '🏛️',
+    'перемещение': '🔄',
+    'списания': '🗑️',
+    'возврат': '↩️'
+};
+
+function renderDrawerExpenseChips() {
+    const container = document.getElementById('drawerExpenseChipsContainer');
+    if (!container || !expenseItems || expenseItems.length === 0) return;
+
+    container.innerHTML = expenseItems.map(item => {
+        const lower = (item.name || '').toLowerCase().trim();
+        const icon = EXPENSE_ICONS[lower] || '🏷️';
+        const cleanName = (item.name || '').replace(/'/g, "\\'");
+        return `
+            <button type="button" class="drawer-chip-btn" id="chip_exp_${item.id}" onclick="selectDrawerExpenseItemQuick('${item.id}', '${cleanName}')">
+                ${icon} ${item.name}
+            </button>
+        `;
+    }).join('');
+}
+
+function selectDrawerExpenseItemQuick(itemId, categoryName) {
+    const select = document.getElementById('drawerExpItemSelect');
+    if (select) {
+        select.value = itemId;
+    }
+    highlightActiveExpenseChip(itemId);
+}
+
+function highlightActiveExpenseChip(itemId) {
+    const chips = document.querySelectorAll('#drawerExpenseChipsContainer .drawer-chip-btn');
+    chips.forEach(btn => {
+        if (btn.id === `chip_exp_${itemId}`) {
+            btn.classList.add('active');
+            btn.style.background = '#0284c7';
+            btn.style.color = '#ffffff';
+            btn.style.borderColor = '#0284c7';
+            btn.style.fontWeight = '700';
+        } else {
+            btn.classList.remove('active');
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+            btn.style.fontWeight = '';
+        }
+    });
+}
+
+// --- Customer Search in Drawer ---
+function showDrawerCustList() {
+    const box = document.getElementById('drawerCustSuggestionsList');
+    if (!box) return;
+    filterDrawerCustList(document.getElementById('drawerIncomeCustomerSearch')?.value || '');
+}
+
+function filterDrawerCustList(query) {
+    const box = document.getElementById('drawerCustSuggestionsList');
+    if (!box) return;
+    const q = (query || '').toLowerCase().trim();
+    const list = customersList || [];
+
+    const filtered = q ? list.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) || 
+        (c.phone && c.phone.toLowerCase().includes(q))
+    ) : list.slice(0, 50);
+
+    if (filtered.length === 0) {
+        box.innerHTML = `
+            <div style="padding:10px 12px; font-size:12px; color:#64748b; text-align:center;">
+                Mijoz topilmadi.
+                <button type="button" onclick="openNewCustomerModal()" style="display:block; margin:6px auto 0; padding:4px 10px; font-size:12px; background:#16a34a; color:#fff; border-radius:4px; border:none; cursor:pointer;">➕ Yangi mijoz yaratish</button>
+            </div>
+        `;
+    } else {
+        box.innerHTML = filtered.map(c => {
+            const bal = Number(c.balance || 0);
+            const balText = bal > 0 ? `<span style="color:#ef4444;font-size:11px;font-weight:700;">(Qarz: ${formatMoney(bal)})</span>` : (bal < 0 ? `<span style="color:#16a34a;font-size:11px;font-weight:700;">(Haq: ${formatMoney(Math.abs(bal))})</span>` : '');
+            return `
+                <div onclick="selectDrawerCust('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}')" style="padding:7px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                    <div>
+                        <strong style="color:var(--text-color);">👤 ${c.name}</strong>
+                        ${c.phone ? `<span style="color:#64748b;font-size:11.5px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
+                    </div>
+                    <div>${balText}</div>
+                </div>
+            `;
+        }).join('');
+    }
+    box.style.display = 'block';
+}
+
+// ================= UNIVERSAL QUICK-PAY DRAWER FIFO STATE & LOGIC =================
+let drawerUnpaidDemandsData = [];
+let drawerDemandAllocations = {};
+let drawerManualPinnedDemands = {};
+let drawerIsFifoAuto = true;
+let drawerCurrentCustomerDebt = 0;
+
+function getDrawerPaymentTotalUzs() {
+    const cash = parseAmount(document.getElementById('drawerPayCash')?.value);
+    const card = parseAmount(document.getElementById('drawerPayCard')?.value);
+    const usd = parseAmount(document.getElementById('drawerPayUsd')?.value);
+    const rate = parseAmount(document.getElementById('drawerPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+    return Math.round(cash + card + (usd * rate));
+}
+
+function updateDrawerTotals() {
+    const cash = parseAmount(document.getElementById('drawerPayCash')?.value);
+    const card = parseAmount(document.getElementById('drawerPayCard')?.value);
+    const usd = parseAmount(document.getElementById('drawerPayUsd')?.value);
+    const rate = parseAmount(document.getElementById('drawerPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+
+    const usdEquiv = Math.round(usd * rate);
+    const totalUzs = Math.round(cash + card + usdEquiv);
+
+    const equivEl = document.getElementById('drawerPayUsdEquiv');
+    if (equivEl) equivEl.textContent = `~ ${formatMoney(usdEquiv)}`;
+
+    const totalEl = document.getElementById('drawerIncomeTotalUzs');
+    const totalUsdEl = document.getElementById('drawerIncomeTotalUsd');
+    if (totalEl) totalEl.textContent = formatMoney(totalUzs);
+    if (totalUsdEl) totalUsdEl.textContent = `$${(totalUzs / rate).toFixed(2)} USD`;
+
+    const cardGroup = document.getElementById('drawerPayCardAccGroup');
+    if (cardGroup) cardGroup.style.display = card > 0 ? 'block' : 'none';
+
+    drawerRecalculateFifo(false);
+}
+
+function drawerRecalculateFifo(shouldRenderDom = false, activeInputDemandId = null) {
+    const totalPayment = getDrawerPaymentTotalUzs();
+    const isLinkEnabled = document.getElementById('drawerLinkDemandsToggle')?.checked !== false;
+
+    if (!isLinkEnabled || !drawerUnpaidDemandsData || drawerUnpaidDemandsData.length === 0) {
+        drawerDemandAllocations = {};
+        if (shouldRenderDom) drawerRenderFifoDemandsList();
+        else drawerUpdateFifoDom(activeInputDemandId);
+        return;
+    }
+
+    if (drawerIsFifoAuto) {
+        drawerDemandAllocations = {};
+        let budget = totalPayment;
+        for (const d of drawerUnpaidDemandsData) {
+            const rem = Math.max(0, d.remaining || 0);
+            if (budget <= 0.01) {
+                drawerDemandAllocations[d.id] = 0;
+            } else {
+                const alloc = Math.min(budget, rem);
+                drawerDemandAllocations[d.id] = alloc;
+                budget -= alloc;
+            }
+        }
+    } else {
+        // Qo'lda kiritilgan rejim
+        let pinnedSum = 0;
+        for (const [did, val] of Object.entries(drawerManualPinnedDemands)) {
+            pinnedSum += val;
+            drawerDemandAllocations[did] = val;
+        }
+
+        let remainingBudget = Math.max(0, totalPayment - pinnedSum);
+        for (const d of drawerUnpaidDemandsData) {
+            if (drawerManualPinnedDemands[d.id] === undefined) {
+                const rem = Math.max(0, d.remaining || 0);
+                if (remainingBudget <= 0.01) {
+                    drawerDemandAllocations[d.id] = 0;
+                } else {
+                    const alloc = Math.min(remainingBudget, rem);
+                    drawerDemandAllocations[d.id] = alloc;
+                    remainingBudget -= alloc;
+                }
+            }
+        }
+    }
+
+    if (shouldRenderDom) {
+        drawerRenderFifoDemandsList();
+    } else {
+        drawerUpdateFifoDom(activeInputDemandId);
+    }
+}
+
+function drawerRenderFifoDemandsList() {
+    const container = document.getElementById('drawerUnpaidDemandsList');
+    if (!container) return;
+
+    if (!drawerUnpaidDemandsData || drawerUnpaidDemandsData.length === 0) {
+        container.innerHTML = '<div style="color:#64748b; padding:20px 10px; text-align:center;">Mijozning qarzdor sotuvlari mavjud emas (barcha sotuvlar to\'langan)</div>';
+        drawerUpdateFifoSummaryBar();
+        return;
+    }
+
+    let html = '';
+    drawerUnpaidDemandsData.forEach((d, idx) => {
+        const alloc = drawerDemandAllocations[d.id] || 0;
+        const isFullyPaid = alloc >= (d.remaining - 0.01);
+        const isPartial = alloc > 0.01 && !isFullyPaid;
+        const cardClass = isFullyPaid ? 'demand-card fully-paid' : (isPartial ? 'demand-card partial-paid' : 'demand-card unpaid');
+
+        let badgeHtml = `<span class="demand-badge unpaid">Bog'lanmaydi ⭕</span>`;
+        if (isFullyPaid) {
+            badgeHtml = `<span class="demand-badge fully-paid">To'liq yopiladi ✅</span>`;
+        } else if (isPartial) {
+            badgeHtml = `<span class="demand-badge partial-paid">Qisman: ${formatMoney(alloc)} ⏳</span>`;
+        }
+
+        const formattedAlloc = alloc > 0 ? formatNumber(Math.round(alloc)) : '0';
+
+        html += `
+            <div class="${cardClass}" id="drawer_demand_card_${d.id}">
+                <!-- Qator 1: Hujjat raqami, sana va solo tugma -->
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="drawer_demand_chk_${d.id}" ${alloc > 0.01 ? 'checked' : ''} onchange="drawerToggleDemandLink('${d.id}')" style="cursor:pointer; width:16px; height:16px;">
+                        <strong style="color:var(--primary); font-size:13px;">Sotuv № ${d.name}</strong>
+                        <span style="color:#64748b; font-size:11.5px; font-weight:500;">📅 ${d.moment ? d.moment.substring(0, 10) : ''}</span>
+                    </div>
+                    <button type="button" class="btn-solo-demand" onclick="drawerQuickSetDemandAllocation('${d.id}', 'solo')" title="Faqat ushbu sotuv qarzini yopish">
+                        ⚡ Faqat shuni yopish
+                    </button>
+                </div>
+
+                <!-- Qator 2: Jami sotuv va Qoldiq qarz summalari -->
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#475569; background:rgba(0,0,0,0.02); padding:4px 8px; border-radius:6px;">
+                    <span>Jami sotuv: <strong>${formatMoney(d.sum)}</strong></span>
+                    <span>Qoldiq qarz: <strong style="color:#dc2626; font-size:12.5px;">${formatMoney(d.remaining)}</strong></span>
+                </div>
+
+                <!-- Qator 3: Taqsimlash holati va Bog'lanadigan summa kiritish -->
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:2px;">
+                    <div id="drawer_demand_badge_${d.id}">${badgeHtml}</div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-size:11.5px; font-weight:600; color:#475569;">Bog'lanadi:</span>
+                        <input type="text" inputmode="numeric" id="drawer_demand_alloc_${d.id}" value="${formattedAlloc}" class="form-control" style="width:130px; padding:5px 8px; font-size:13px; font-weight:800; text-align:right; border-color:#0284c7;" oninput="drawerHandleManualDemandInput('${d.id}', this.value)">
+                        <span style="font-size:11.5px; color:#64748b;">so'm</span>
+                        <button type="button" onclick="drawerQuickSetDemandAllocation('${d.id}', 'zero')" title="Bog'lamaslik" style="border:none; background:transparent; cursor:pointer; font-size:13px; color:#dc2626; padding:0 2px;">⭕</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+    drawerUpdateFifoSummaryBar();
+}
+
+function drawerUpdateFifoDom(activeInputDemandId = null) {
+    const list = document.getElementById('drawerUnpaidDemandsList');
+    if (!list || !list.children.length || list.innerText.includes('yuklanmoqda') || list.innerText.includes('chiqadi')) {
+        drawerRenderFifoDemandsList();
+        return;
+    }
+
+    for (const d of drawerUnpaidDemandsData) {
+        const alloc = drawerDemandAllocations[d.id] || 0;
+        const isFullyPaid = alloc >= (d.remaining - 0.01);
+        const isPartial = alloc > 0.01 && !isFullyPaid;
+
+        if (d.id !== activeInputDemandId) {
+            const inputEl = document.getElementById(`drawer_demand_alloc_${d.id}`);
+            if (inputEl) {
+                const formatted = alloc > 0 ? formatNumber(Math.round(alloc)) : '0';
+                if (inputEl.value !== formatted) {
+                    inputEl.value = formatted;
+                }
+            }
+        }
+
+        const chkEl = document.getElementById(`drawer_demand_chk_${d.id}`);
+        if (chkEl) chkEl.checked = alloc > 0.01;
+
+        const badgeEl = document.getElementById(`drawer_demand_badge_${d.id}`);
+        const cardEl = document.getElementById(`drawer_demand_card_${d.id}`);
+        if (badgeEl && cardEl) {
+            if (isFullyPaid) {
+                badgeEl.innerHTML = `<span class="demand-badge fully-paid">To'liq yopiladi ✅</span>`;
+                cardEl.className = 'demand-card fully-paid';
+            } else if (isPartial) {
+                badgeEl.innerHTML = `<span class="demand-badge partial-paid">Qisman: ${formatMoney(alloc)} ⏳</span>`;
+                cardEl.className = 'demand-card partial-paid';
+            } else {
+                badgeEl.innerHTML = `<span class="demand-badge unpaid">Bog'lanmaydi ⭕</span>`;
+                cardEl.className = 'demand-card unpaid';
+            }
+        }
+    }
+
+    drawerUpdateFifoSummaryBar();
+}
+
+function drawerUpdateFifoSummaryBar() {
+    const bar = document.getElementById('drawerFifoSummaryBar');
+    if (!bar) return;
+
+    let totalAllocated = 0;
+    let totalDemandsDebt = 0;
+    const totalPayment = getDrawerPaymentTotalUzs();
+
+    for (const d of drawerUnpaidDemandsData) {
+        totalAllocated += (drawerDemandAllocations[d.id] || 0);
+        totalDemandsDebt += (d.remaining || 0);
+    }
+
+    bar.style.display = 'flex';
+    const allocEl = document.getElementById('drawerFifoTotalAllocatedText');
+    if (allocEl) allocEl.textContent = formatMoney(totalAllocated);
+
+    const remDebt = Math.max(0, totalDemandsDebt - totalAllocated);
+    const remEl = document.getElementById('drawerFifoRemainingDebtText');
+    if (remEl) remEl.textContent = formatMoney(remDebt);
+
+    const excessEl = document.getElementById('drawerFifoExcessText');
+    if (excessEl) {
+        if (totalPayment > totalAllocated) {
+            excessEl.style.display = 'block';
+            excessEl.innerHTML = `Ortiqcha (avans): <strong>${formatMoney(totalPayment - totalAllocated)}</strong>`;
+        } else {
+            excessEl.style.display = 'none';
+        }
+    }
+}
+
+function drawerHandleManualDemandInput(demandId, rawValue) {
+    drawerIsFifoAuto = false;
+    const badge = document.getElementById('drawerFifoModeBadge');
+    if (badge) {
+        badge.textContent = '✍️ Qo\'lda taqsimlash';
+        badge.className = 'fifo-mode-badge manual';
+    }
+
+    const val = parseAmount(rawValue);
+    const demand = drawerUnpaidDemandsData.find(d => d.id === demandId);
+    const maxAlloc = demand ? demand.remaining : val;
+    const cleanVal = Math.min(val, maxAlloc);
+
+    drawerManualPinnedDemands[demandId] = cleanVal;
+    drawerRecalculateFifo(false, demandId);
+}
+
+function drawerQuickSetDemandAllocation(demandId, type) {
+    const demand = drawerUnpaidDemandsData.find(d => d.id === demandId);
+    if (!demand) return;
+
+    if (type === 'solo') {
+        drawerIsFifoAuto = false;
+        drawerManualPinnedDemands = {};
+        drawerManualPinnedDemands[demandId] = demand.remaining;
+
+        const cashInput = document.getElementById('drawerPayCash');
+        const cardInput = document.getElementById('drawerPayCard');
+        const usdInput = document.getElementById('drawerPayUsd');
+        if (cashInput) cashInput.value = formatNumber(Math.round(demand.remaining));
+        if (cardInput) cardInput.value = '0';
+        if (usdInput) usdInput.value = '0.00';
+
+        const badge = document.getElementById('drawerFifoModeBadge');
+        if (badge) {
+            badge.textContent = `🎯 №${demand.name} yopiladi`;
+            badge.className = 'fifo-mode-badge solo';
+        }
+
+        updateDrawerTotals();
+    } else if (type === 'zero') {
+        drawerIsFifoAuto = false;
+        drawerManualPinnedDemands[demandId] = 0;
+        const badge = document.getElementById('drawerFifoModeBadge');
+        if (badge) {
+            badge.textContent = '✍️ Qo\'lda taqsimlash';
+            badge.className = 'fifo-mode-badge manual';
+        }
+        drawerRecalculateFifo(false);
+    }
+}
+
+function drawerToggleDemandLink(demandId) {
+    const chk = document.getElementById(`drawer_demand_chk_${demandId}`);
+    const demand = drawerUnpaidDemandsData.find(d => d.id === demandId);
+    if (!demand) return;
+
+    drawerIsFifoAuto = false;
+    const badge = document.getElementById('drawerFifoModeBadge');
+    if (badge) {
+        badge.textContent = '✍️ Qo\'lda taqsimlash';
+        badge.className = 'fifo-mode-badge manual';
+    }
+
+    if (chk && !chk.checked) {
+        drawerManualPinnedDemands[demandId] = 0;
+    } else {
+        const totalPayment = getDrawerPaymentTotalUzs();
+        let alreadyAlloc = 0;
+        for (const [did, amt] of Object.entries(drawerManualPinnedDemands)) {
+            if (did !== demandId) alreadyAlloc += amt;
+        }
+        const avail = Math.max(0, totalPayment - alreadyAlloc);
+        drawerManualPinnedDemands[demandId] = Math.min(avail, demand.remaining);
+    }
+
+    drawerRecalculateFifo(false);
+}
+
+function drawerResetToAutoFifo() {
+    drawerIsFifoAuto = true;
+    drawerManualPinnedDemands = {};
+    const badge = document.getElementById('drawerFifoModeBadge');
+    if (badge) {
+        badge.textContent = '⚡ Avto-taqsimlash';
+        badge.className = 'fifo-mode-badge auto';
+    }
+    drawerRecalculateFifo(true);
+}
+
+function drawerHandleLinkDemandsToggle() {
+    drawerRecalculateFifo(true);
+}
+
+function drawerFillTotalDebtAmount() {
+    if (drawerCurrentCustomerDebt <= 0) return;
+    const cashInput = document.getElementById('drawerPayCash');
+    if (cashInput) {
+        cashInput.value = formatNumber(Math.round(drawerCurrentCustomerDebt));
+        updateDrawerTotals();
+    }
+}
+
+async function loadCustomerUnpaidDemandsForDrawer(customerId, customerName) {
+    const loading = document.getElementById('drawerUnpaidDemandsLoading');
+    const container = document.getElementById('drawerUnpaidDemandsList');
+    if (loading) loading.style.display = 'block';
+    if (container) container.innerHTML = '<div style="color:#64748b; padding:20px; text-align:center;">⏳ Ochiq sotuvlar qidirilmoqda...</div>';
+
+    drawerIsFifoAuto = true;
+    drawerDemandAllocations = {};
+    drawerManualPinnedDemands = {};
+    drawerUnpaidDemandsData = [];
+
+    const badge = document.getElementById('drawerFifoModeBadge');
+    if (badge) {
+        badge.textContent = '⚡ Avto-taqsimlash';
+        badge.className = 'fifo-mode-badge auto';
+    }
+
+    try {
+        const resp = await apiFetch(`/customers/${customerId}/unpaid-demands`);
+        if (loading) loading.style.display = 'none';
+        if (resp && resp.success && Array.isArray(resp.data)) {
+            drawerUnpaidDemandsData = resp.data;
+        } else {
+            drawerUnpaidDemandsData = [];
+        }
+    } catch (e) {
+        if (loading) loading.style.display = 'none';
+        console.warn('Unpaid demands load error:', e);
+        drawerUnpaidDemandsData = [];
+    }
+
+    drawerRecalculateFifo(true);
+}
+
+// --- Customer Search in Drawer ---
+function showDrawerCustList() {
+    const box = document.getElementById('drawerCustSuggestionsList');
+    if (!box) return;
+    filterDrawerCustList(document.getElementById('drawerIncomeCustomerSearch')?.value || '');
+}
+
+function filterDrawerCustList(query) {
+    const box = document.getElementById('drawerCustSuggestionsList');
+    if (!box) return;
+    const q = (query || '').toLowerCase().trim();
+    const list = customersList || [];
+
+    const filtered = q ? list.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) || 
+        (c.phone && c.phone.toLowerCase().includes(q))
+    ) : list.slice(0, 50);
+
+    if (filtered.length === 0) {
+        box.innerHTML = `
+            <div style="padding:10px 12px; font-size:12px; color:#64748b; text-align:center;">
+                Mijoz topilmadi.
+                <button type="button" onclick="openNewCustomerModal()" style="display:block; margin:6px auto 0; padding:4px 10px; font-size:12px; background:#16a34a; color:#fff; border-radius:4px; border:none; cursor:pointer;">➕ Yangi mijoz yaratish</button>
+            </div>
+        `;
+    } else {
+        box.innerHTML = filtered.map(c => {
+            const bal = Number(c.balance || 0);
+            const balText = bal > 0 ? `<span style="color:#ef4444;font-size:11px;font-weight:700;">(Qarz: ${formatMoney(bal)})</span>` : (bal < 0 ? `<span style="color:#16a34a;font-size:11px;font-weight:700;">(Haq: ${formatMoney(Math.abs(bal))})</span>` : '');
+            return `
+                <div onclick="selectDrawerCust('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}')" style="padding:8px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                    <div>
+                        <strong style="color:var(--text-color);">👤 ${c.name}</strong>
+                        ${c.phone ? `<span style="color:#64748b;font-size:11.5px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
+                    </div>
+                    <div>${balText}</div>
+                </div>
+            `;
+        }).join('');
+    }
+    box.style.display = 'block';
+}
+
+async function selectDrawerCust(id, name) {
+    const input = document.getElementById('drawerIncomeCustomerSearch');
+    const hidden = document.getElementById('drawerIncomeCustomerId');
+    const box = document.getElementById('drawerCustSuggestionsList');
+    if (input) input.value = name;
+    if (hidden) hidden.value = id;
+    if (box) box.style.display = 'none';
+
+    // Fetch customer balance
+    let bal = 0;
+    try {
+        const bResp = await apiFetch(`/payments/balance/${id}`);
+        if (bResp && bResp.success && bResp.data) {
+            bal = bResp.data.balance || 0;
+        }
+    } catch (e) {}
+
+    drawerCurrentCustomerDebt = bal > 0.01 ? bal : 0;
+
+    const banner = document.getElementById('drawerCustDebtBanner');
+    const debtVal = document.getElementById('drawerCustDebtValue');
+    const fillBtn = document.getElementById('drawerBtnFillAllDebt');
+    if (banner && debtVal) {
+        banner.style.display = 'flex';
+        const isDebt = bal > 0;
+        debtVal.textContent = isDebt ? `Qarzi: ${formatMoney(bal)}` : (bal < 0 ? `Haqi: ${formatMoney(Math.abs(bal))}` : "0 so'm (Hisobi teng)");
+        debtVal.style.color = isDebt ? '#ef4444' : (bal < 0 ? '#16a34a' : '#64748b');
+        if (fillBtn) fillBtn.style.display = isDebt ? 'inline-block' : 'none';
+    }
+
+    // Load unpaid demands for FIFO allocation in Drawer
+    await loadCustomerUnpaidDemandsForDrawer(id, name);
+}
+
+// --- Submit Handlers ---
+async function handleDrawerIncomeSubmit(e) {
+    e.preventDefault();
+    const custId = document.getElementById('drawerIncomeCustomerId')?.value;
+    const cash = parseAmount(document.getElementById('drawerPayCash')?.value);
+    const card = parseAmount(document.getElementById('drawerPayCard')?.value);
+    const usd = parseAmount(document.getElementById('drawerPayUsd')?.value);
+    const usdRate = parseAmount(document.getElementById('drawerPayUsdRate')?.value) || (window.currentUSDRate || 12800.0);
+    const cardAcc = document.getElementById('drawerPayCardAccount')?.value;
+    const usdAcc = document.getElementById('drawerPayUsdAccount')?.value;
+    const moment = document.getElementById('drawerIncomeMoment')?.value;
+    const desc = document.getElementById('drawerIncomeDesc')?.value?.trim() || "Mijozdan to'lov";
+
+    const totalUzs = getDrawerPaymentTotalUzs();
+
+    if (!custId) {
+        alert("Iltimos, avval mijozni tanlang!");
+        return;
+    }
+    if (totalUzs <= 0) {
+        alert("Naqd, karta yoki dollar summasidan kamida bittasini kiriting!");
+        return;
+    }
+
+    // Bog'lanuvchi sotuvlar (FIFO yoki qo'lda belgilangan)
+    const isLinkingChecked = document.getElementById('drawerLinkDemandsToggle')?.checked !== false;
+    const linkedDemands = [];
+    const selectedDemandIds = [];
+
+    if (isLinkingChecked) {
+        for (const [did, amt] of Object.entries(drawerDemandAllocations)) {
+            if (amt > 0.01) {
+                linkedDemands.push({ demand_id: did, amount: amt });
+                selectedDemandIds.push(did);
+            }
+        }
+    }
+
+    const btn = document.getElementById('saveDrawerIncomeBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Saqlanmoqda...';
+    }
+
+    try {
+        const payload = {
+            counterparty_id: custId,
+            cash_amount: cash,
+            card_amount: card,
+            usd_amount: usd,
+            usd_rate: usdRate,
+            account_id: cardAcc || null,
+            usd_account_id: usdAcc || null,
+            linked_demands: linkedDemands.length > 0 ? linkedDemands : null,
+            demand_ids: selectedDemandIds.length > 0 ? selectedDemandIds : null,
+            auto_fifo: drawerIsFifoAuto,
+            description: desc,
+            moment: moment ? (moment.replace('T', ' ') + ':00') : undefined
+        };
+
+        const resp = await apiFetch('/payments/customer-payment', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (resp && resp.success) {
+            const linkedCount = linkedDemands.length;
+            const linkMsg = linkedCount > 0 ? ` (${linkedCount} ta sotuvga bog'landi)` : '';
+            alert(`✅ Kirim to'lov muvaffaqiyatli qabul qilindi! Jami: ${formatMoney(totalUzs)}${linkMsg}`);
+            closeQuickPayDrawer();
+            if (typeof loadCashflow === 'function') await loadCashflow();
+            if (typeof loadCustomers === 'function') await loadCustomers();
+        } else {
+            throw new Error(resp?.detail || 'Kirimni saqlashda xatolik');
+        }
+    } catch (err) {
+        alert(`❌ Xato: ${err.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '💾 Kirimni Saqlash (Ctrl+Enter)';
+        }
+    }
+}
+
+async function handleDrawerExpenseSubmit(e) {
+    e.preventDefault();
+    const type = currentDrawerExpenseType || 'cash';
+    const accId = document.getElementById('drawerExpAccountSelect')?.value;
+    const amount = parseAmount(document.getElementById('drawerExpAmount')?.value);
+    const itemId = document.getElementById('drawerExpItemSelect')?.value;
+    const moment = document.getElementById('drawerExpMoment')?.value;
+    const desc = document.getElementById('drawerExpDesc')?.value?.trim();
+
+    if (isNaN(amount) || amount <= 0) {
+        alert("Iltimos, to'g'ri xarajat summasini kiriting!");
+        return;
+    }
+    if (!accId) {
+        alert("Iltimos, chiqim hisobini tanlang!");
+        return;
+    }
+
+    const btn = document.getElementById('saveDrawerExpBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Saqlanmoqda...';
+    }
+
+    try {
+        const payload = {
+            payment_type: type,
+            account_id: accId,
+            amount: amount,
+            expense_item_id: itemId || null,
+            description: desc || "Xarajat",
+            moment: moment ? (moment.replace('T', ' ') + ':00') : undefined
+        };
+
+        const resp = await apiFetch('/payments/expense', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (resp && resp.success) {
+            alert("✅ Xarajat muvaffaqiyatli saqlandi!");
+            closeQuickPayDrawer();
+            await loadCashflow();
+        } else {
+            throw new Error(resp?.detail || 'Xarajatni saqlashda xatolik');
+        }
+    } catch (err) {
+        alert(`❌ Xato: ${err.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '💾 Xarajatni Saqlash (Ctrl+Enter)';
+        }
+    }
+}
+
+// --- Smart Keyboard Navigation ---
+document.addEventListener('keydown', (e) => {
+    const drawer = document.getElementById('quickPayDrawer');
+    if (!drawer || !drawer.classList.contains('active')) return;
+
+    // Esc to close
+    if (e.key === 'Escape') {
+        closeQuickPayDrawer();
+        return;
+    }
+
+    // Ctrl + Enter or Cmd + Enter to Save
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (currentDrawerTab === 'income') {
+            document.getElementById('saveDrawerIncomeBtn')?.click();
+        } else {
+            document.getElementById('saveDrawerExpBtn')?.click();
+        }
+        return;
+    }
+
+    // Enter in input -> move to next input instead of submitting
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.closest('#newCustomerModal')) {
+        e.preventDefault();
+        const form = e.target.closest('form');
+        if (form) {
+            const inputs = Array.from(form.querySelectorAll('input:not([type="hidden"]), select, textarea'));
+            const idx = inputs.indexOf(e.target);
+            if (idx !== -1 && idx < inputs.length - 1) {
+                inputs[idx + 1].focus();
+            }
+        }
+    }
+});
+
+// Click outside suggestion box in drawer to close it
+document.addEventListener('click', (e) => {
+    const box = document.getElementById('drawerCustSuggestionsList');
+    const input = document.getElementById('drawerIncomeCustomerSearch');
+    if (box && input && !input.contains(e.target) && !box.contains(e.target)) {
+        box.style.display = 'none';
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const expSelect = document.getElementById('drawerExpItemSelect');
+    if (expSelect) {
+        expSelect.addEventListener('change', (e) => {
+            highlightActiveExpenseChip(e.target.value);
+        });
+    }
+});

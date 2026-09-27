@@ -635,9 +635,14 @@ async function triggerSyncNow() {
         const resp = await apiFetch('/webhooks/sync-now', { method: 'POST' });
         if (resp.success) {
             showToast("MoySklad bilan sinxronizatsiya yakunlanmoqda...", "success");
-            // Agar sotuvlar yoki mijozlar sahifasida bo'lsa, birozdan so'ng ma'lumotlarni yangilash
+            // Agar sotuvlar yoki mijozlar sahifasida bo'lsa, ma'lumotlarni yangilash
             if (typeof loadDemands === 'function') {
-                setTimeout(() => loadDemands(), 2000);
+                setTimeout(() => loadDemands(), 1500);
+                setTimeout(() => loadDemands(), 4000);
+            }
+            if (typeof loadCustomers === 'function') {
+                setTimeout(() => loadCustomers(true), 1500);
+                setTimeout(() => loadCustomers(), 4000);
             }
         }
     } catch (e) {
@@ -672,11 +677,13 @@ function formatNumber(num, preserveDecimals = false) {
     const n = Number(num);
     if (isNaN(n)) return "0";
     
-    if (!preserveDecimals) {
+    const hasDecimals = Math.abs(n % 1) > 0.001;
+    if (!preserveDecimals && !hasDecimals) {
         const rounded = Math.round(n);
         return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
     } else {
-        const parts = String(num).split('.');
+        const fixed = typeof num === 'string' && num.includes('.') ? num : n.toFixed(2);
+        const parts = String(fixed).split('.');
         const intPart = Math.trunc(Number(parts[0])).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         return parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
     }
@@ -693,6 +700,10 @@ window.parseAmount = function(val) {
 
 function formatMoney(amount) {
     if (amount === undefined || amount === null || isNaN(amount)) return "0 so'm";
+    const n = Number(amount);
+    if (Math.abs(n % 1) > 0.001) {
+        return formatNumber(n.toFixed(2), true) + " so'm";
+    }
     return formatNumber(amount) + " so'm";
 }
 

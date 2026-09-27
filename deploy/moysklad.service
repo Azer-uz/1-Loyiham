@@ -1,0 +1,14 @@
+[Unit]
+Description=Said Baraka MoySklad FastAPI Service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/var/www/moysklad-app/backend
+EnvironmentFile=/var/www/moysklad-app/backend/.env
+ExecStart=/var/www/moysklad-app/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

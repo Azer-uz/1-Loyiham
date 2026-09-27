@@ -60,8 +60,8 @@ async def sync_all_data():
             metadata_task = ms_client.get_demand_metadata()
             balances_task = ms_client.get_all_balances()
             
-            # Yangi: Tovarlar keshi
-            assortments_task = ms_client.get_assortment()
+            # Yangi: Barcha tovarlar keshi
+            assortments_task = ms_client.get_all_assortments()
 
             demands_resp, all_payments, counterparties, meta_resp, balances, assortments_resp = await asyncio.gather(
                 demands_task, payments_task, counterparties_task, metadata_task, balances_task, assortments_task, return_exceptions=True
@@ -81,7 +81,12 @@ async def sync_all_data():
             raw_demands = demands_resp.get("rows", [])
             cashins = all_payments.get("cashins", [])
             paymentins = all_payments.get("paymentins", [])
-            raw_assortments = assortments_resp.get("rows", []) if not isinstance(assortments_resp, Exception) else []
+            if isinstance(assortments_resp, list):
+                raw_assortments = assortments_resp
+            elif isinstance(assortments_resp, dict):
+                raw_assortments = assortments_resp.get("rows", [])
+            else:
+                raw_assortments = []
 
             # Kengaytirilgan xaritalar (Agent va State nomlarini tezkor topish)
             cp_map = {c.get("id"): c.get("name", "Noma'lum") for c in counterparties if isinstance(c, dict) and c.get("id")}
@@ -190,13 +195,15 @@ async def sync_all_data():
                     if existing_cp:
                         existing_cp.name = cp.get("name", "")
                         existing_cp.phone = cp.get("phone", "") or ""
-                        existing_cp.balance = balance
+                        # Agar balances API dan kelgan bo'lsa (bo'sh bo'lmasa), shuni ishlatamiz
+                        if balances and len(balances) > 0:
+                            existing_cp.balance = balances.get(cpid, 0.0)
                     else:
                         db.add(LocalCounterparty(
                             id=cpid,
                             name=cp.get("name", ""),
                             phone=cp.get("phone", "") or "",
-                            balance=balance,
+                            balance=balances.get(cpid, 0.0) if balances and len(balances) > 0 else 0.0,
                         ))
 
                 # LocalPayment larni yangilash
@@ -220,6 +227,8 @@ async def sync_all_data():
                     sum_uzs = (usd_amt * rate_val) if is_usd else raw_sum
 
                     ops = p_doc.get("operations", [])
+                    if isinstance(ops, dict):
+                        ops = ops.get("rows", [])
                     linked_did = ""
                     if isinstance(ops, list) and ops:
                         for op in ops:
@@ -228,6 +237,10 @@ async def sync_all_data():
                                 if "/entity/demand/" in op_href:
                                     linked_did = extract_id_from_href(op_href)
                                     break
+                    if not linked_did and isinstance(p_doc.get("demand"), dict):
+                        d_href = p_doc.get("demand", {}).get("meta", {}).get("href", "")
+                        if "/entity/demand/" in d_href:
+                            linked_did = extract_id_from_href(d_href)
 
                     existing_p = existing_payments.get(pid)
                     if existing_p:
@@ -283,7 +296,13 @@ async def sync_all_data():
                         price = item.get("salePrice", 0) / 100.0
                         
                     barcodes = item.get("barcodes", [])
-                    barcode = barcodes[0] if barcodes else ""
+                    barcode = ""
+                    if barcodes:
+                        bc = barcodes[0]
+                        if isinstance(bc, dict) and bc:
+                            barcode = str(list(bc.values())[0])
+                        else:
+                            barcode = str(bc)
                     
                     existing_a = existing_assortments.get(item_id)
                     if existing_a:

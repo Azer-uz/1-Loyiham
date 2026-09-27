@@ -1,12 +1,11 @@
 import sys
 import io
 
-# Windows konsolida UTF-8 emoji va belgilarni to'g'ri ko'rsatish
 if sys.platform == "win32":
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    if hasattr(sys.stderr, 'buffer'):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles

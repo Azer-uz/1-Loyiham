@@ -1,3 +1,33 @@
+
+async function loadEditAccountsSelectCustomers(selectedAccountId) {
+    const accSelect = document.getElementById('editPayAccountSelect');
+    if (!accSelect) return;
+    try {
+        let accs = window.allBankAccountsCache;
+        if (!accs) {
+            const resp = await apiFetch('/settings/accounts');
+            if (resp && resp.data) {
+                accs = resp.data;
+                window.allBankAccountsCache = accs;
+            }
+        }
+        if (accs && accs.length > 0) {
+            accSelect.innerHTML = '';
+            accs.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = `${acc.name || acc.raw_name || 'Bank hisobi'}`;
+                if (selectedAccountId && (selectedAccountId === acc.id || selectedAccountId === acc.raw_name)) {
+                    opt.selected = true;
+                }
+                accSelect.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.warn("Hisoblar yuklanmadi:", e);
+    }
+}
+
 let currentOffset = 0;
 const pageSize = 50;
 let totalSize = 0;
@@ -108,7 +138,7 @@ let currentLoadedCustomers = [];
 let currentMeta = {};
 
 // ===== RO'YXATNI YUKLASH =====
-async function loadCustomers() {
+async function loadCustomers(forceRefresh = false) {
     const search = document.getElementById('searchInput').value;
 
     try {
@@ -120,6 +150,7 @@ async function loadCustomers() {
             debt_filter: currentDebtFilter,
         });
         if (search) params.append('search', search);
+        if (forceRefresh) params.append('refresh', 'true');
 
         const response = await apiFetch(`/customers?${params.toString()}`);
 
@@ -161,6 +192,7 @@ function renderCustomers(customers) {
             </td>
             <td>
                 <div style="display:flex;gap:4px;align-items:center;">
+                    <a href="/demands?action=new&customerId=${c.id}&customerName=${encodeURIComponent(c.name || '')}" class="action-btn" title="Ushbu mijozga yangi sotuv yaratish" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e0f2fe;color:#0284c7;border:1px solid #7dd3fc;font-size:12px;">📦+</a>
                     <button class="action-btn action-btn-view" onclick="showCustomerDetail('${c.id}')" title="Mijoz kartochkasi">👁️</button>
                     <button class="action-btn action-btn-akt" onclick="openAktSverka('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}')" title="Akt Sverka">📑</button>
                     <button class="action-btn action-btn-pay" onclick="openPaymentModal('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}', ${c.balance})" title="To'lov kiritish">💰</button>
@@ -233,7 +265,7 @@ async function showCustomerDetail(customerId) {
         // To'lovlar tarixi qatori
         const paymentsRows = c.payments.map(p => {
             let amountHtml = `<strong>${formatMoney(p.amount)}</strong>`;
-            if (p.is_usd || (p.usd_amount && p.usd_amount > 0)) {
+            if (p.is_usd === true) {
                 amountHtml = `
                     <div style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">
                         <strong style="color:var(--success);font-size:13px;">$${Number(p.usd_amount).toFixed(2)}</strong>
@@ -245,7 +277,7 @@ async function showCustomerDetail(customerId) {
                 <div class="cust-payment-row">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="payment-type-badge payment-${p.type}">${p.type_name}</span>
-                        ${p.name ? `<a href="https://online.moysklad.ru/app/#${p.type === 'cash' ? 'cashin' : 'paymentin'}/edit?id=${p.id}" target="_blank" class="cust-demand-link" style="color:var(--primary);text-decoration:none;" title="MoySklad da ochish"><strong>№${p.name}</strong> ↗️</a>` : ''}
+                        ${p.name ? `<a href="javascript:void(0)" onclick="openPaymentEditModal('${p.id}', '${p.type}')" class="cust-demand-link" style="color:var(--primary);text-decoration:none;" title="Tahrirlash"><strong>№${p.name}</strong> ✏️</a>` : ''}
                         ${amountHtml}
                     </div>
                     <span style="color:var(--text-light);font-size:11.5px;font-weight:600;">${formatDate(p.moment)}</span>
@@ -259,14 +291,8 @@ async function showCustomerDetail(customerId) {
             return `<option value="${s.id}" ${isSelected ? 'selected' : ''}>${s.name}</option>`;
         }).join('');
 
-        // Guruhlar (Teglar) variantlari
-        let availableTags = ['mijozlar'];
-        try {
-            const tagsResp = await apiFetch('/customers/groups-tags');
-            if (tagsResp && tagsResp.success && Array.isArray(tagsResp.data)) {
-                availableTags = tagsResp.data;
-            }
-        } catch (e) {}
+        // Guruhlar (Teglar) variantlari (backenddan to'g'ridan-to'g'ri olinadi)
+        const availableTags = c.available_tags || ['mijozlar'];
         const tagOptions = availableTags.map(t => `<option value="${t}">`).join('');
 
         // Dinamik balans nomi va rangi
@@ -291,6 +317,9 @@ async function showCustomerDetail(customerId) {
                     </div>
                 </div>
                 <div class="customer-topbar-right">
+                    <a href="/demands?action=new&customerId=${c.id}&customerName=${encodeURIComponent(c.name || '')}" class="btn-top-action" style="background:#0284c7;color:#ffffff;text-decoration:none;box-shadow:0 2px 5px rgba(2,132,199,0.25);" title="Ushbu mijozga yangi sotuv ochish">
+                        📦 Yangi sotuv
+                    </a>
                     <button type="button" class="btn-top-action btn-save-cust" onclick="saveCustomerEdit('${c.id}')" title="Mijoz ma'lumotlarini saqlash">
                         💾 Saqlash
                     </button>
@@ -545,6 +574,17 @@ async function saveCustomerEdit(customerId) {
 let currentCorrectionCustomerId = null;
 let currentCorrectionCurrentBalance = 0;
 
+function setCorrectionZero() {
+    const finalInput = document.getElementById('corr_final_balance');
+    const adjInput = document.getElementById('corr_adjustment_sum');
+    if (finalInput && adjInput) {
+        finalInput.value = '0.00';
+        const diff = -currentCorrectionCurrentBalance;
+        adjInput.value = (Math.abs(diff % 1) > 0.001) ? diff.toFixed(2) : String(Math.round(diff));
+    }
+}
+window.setCorrectionZero = setCorrectionZero;
+
 function openCorrectionModal(customerId, customerName, currentBalance) {
     currentCorrectionCustomerId = customerId;
     currentCorrectionCurrentBalance = Number(currentBalance) || 0;
@@ -575,26 +615,36 @@ function openCorrectionModal(customerId, customerName, currentBalance) {
     const finalInput = document.getElementById('corr_final_balance');
 
     if (adjInput) adjInput.value = '';
-    if (finalInput) finalInput.value = formatNumber(Math.round(currentCorrectionCurrentBalance));
+    if (finalInput) {
+        finalInput.value = (Math.abs(currentCorrectionCurrentBalance % 1) > 0.001)
+            ? currentCorrectionCurrentBalance.toFixed(2)
+            : String(Math.round(currentCorrectionCurrentBalance));
+    }
 
-    // 2 tomonlama jonli (live) hisoblash:
+    // 2 tomonlama jonli (live) hisoblash (tiyinlar bilan):
     // Итоговый остаток = Текущий остаток + Сумма корректировки
     if (adjInput && finalInput) {
         adjInput.oninput = () => {
-            const adjVal = parseAmount(adjInput.value);
-            if (adjInput.value.trim() === '') {
-                finalInput.value = formatNumber(Math.round(currentCorrectionCurrentBalance));
+            const raw = adjInput.value.trim();
+            if (raw === '' || raw === '-') {
+                finalInput.value = (Math.abs(currentCorrectionCurrentBalance % 1) > 0.001)
+                    ? currentCorrectionCurrentBalance.toFixed(2)
+                    : String(Math.round(currentCorrectionCurrentBalance));
             } else {
-                finalInput.value = formatNumber(Math.round(currentCorrectionCurrentBalance + adjVal));
+                const adjVal = parseAmount(raw);
+                const calcFinal = currentCorrectionCurrentBalance + adjVal;
+                finalInput.value = (Math.abs(calcFinal % 1) > 0.001) ? calcFinal.toFixed(2) : String(Math.round(calcFinal));
             }
         };
 
         finalInput.oninput = () => {
-            const finalVal = parseAmount(finalInput.value);
-            if (finalInput.value.trim() === '') {
+            const raw = finalInput.value.trim();
+            if (raw === '' || raw === '-') {
                 adjInput.value = '';
             } else {
-                adjInput.value = formatNumber(Math.round(finalVal - currentCorrectionCurrentBalance));
+                const finalVal = parseAmount(raw);
+                const calcAdj = finalVal - currentCorrectionCurrentBalance;
+                adjInput.value = (Math.abs(calcAdj % 1) > 0.001) ? calcAdj.toFixed(2) : String(Math.round(calcAdj));
             }
         };
     }
@@ -1106,7 +1156,7 @@ async function openPaymentModal(customerId, customerName, currentBalance) {
     document.getElementById('pay_cash').value = '';
     document.getElementById('pay_card').value = '';
     document.getElementById('pay_usd').value = '';
-    document.getElementById('pay_usd_rate').value = formatNumber(window.appReferenceRate || 11800);
+    document.getElementById('pay_usd_rate').value = formatNumber(window.currentUSDRate || window.appReferenceRate || 12800);
     document.getElementById('pay_description').value = '';
     document.getElementById('pay_usd_equiv').textContent = '~ 0 so\'m';
     if (document.getElementById('pay_total_display')) {
@@ -1121,7 +1171,7 @@ async function openPaymentModal(customerId, customerName, currentBalance) {
     // USD kurs hisoblash va FIFO avto-taqsimlash listener
     window.updatePaymentAmounts = () => {
         const usd = parseAmount(document.getElementById('pay_usd')?.value);
-        const rate = parseAmount(document.getElementById('pay_usd_rate')?.value) || 11800;
+        const rate = parseAmount(document.getElementById('pay_usd_rate')?.value) || (window.currentUSDRate || 12800);
         const equiv = Math.round(usd * rate);
         document.getElementById('pay_usd_equiv').textContent = `~ ${formatMoney(equiv)}`;
         
@@ -1280,6 +1330,11 @@ async function openAktSverka(customerId, customerName) {
     await loadAktSverka();
 }
 
+function closeAktSverkaModal() {
+    const modal = document.getElementById('aktSverkaModal');
+    if (modal) modal.classList.remove('active');
+}
+
 function selectAktPeriod(period, reload = true) {
     document.querySelectorAll('[data-akt-period]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.aktPeriod === period);
@@ -1289,7 +1344,14 @@ function selectAktPeriod(period, reload = true) {
     let fromStr = '';
     let toStr = now.toISOString().split('T')[0];
 
-    if (period === 'this_month') {
+    if (period === 'today') {
+        fromStr = toStr;
+    } else if (period === 'this_week') {
+        const day = now.getDay() || 7;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - day + 1);
+        fromStr = monday.toISOString().split('T')[0];
+    } else if (period === 'this_month') {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         fromStr = firstDay.toISOString().split('T')[0];
     } else if (period === 'last_month') {
@@ -1310,6 +1372,115 @@ function selectAktPeriod(period, reload = true) {
     if (reload) {
         loadAktSverka();
     }
+}
+
+async function copyAktSverkaTelegramText() {
+    if (!currentAktData) {
+        if (typeof showToast === 'function') showToast("Ma'lumotlar yuklanmagan!", "warning");
+        else alert("Ma'lumotlar yuklanmagan!");
+        return;
+    }
+    const { organization, counterparty, period, initial_balance, operations, summary } = currentAktData;
+
+    let text = `📑 *O'ZARO HISOB-KITOBLAR SOLISHTIRMA DALOLATNOMASI (АКТ СВЕРКИ)*\n`;
+    text += `🏢 *Tashkilot:* ${organization.name || 'Said_Baraka'}\n`;
+    text += `👤 *Mijoz:* ${counterparty.name || 'Mijoz'}${counterparty.phone ? ' (Tel: ' + counterparty.phone + ')' : ''}\n`;
+    text += `📅 *Davr:* ${period.date_from || 'Boshidan'} dan ${period.date_to || 'Hozirgacha'} gacha\n\n`;
+    text += `🏁 *Boshlang'ich qoldiq:* ${formatMoney(initial_balance)}\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+
+    if (operations && operations.length > 0) {
+        operations.forEach((op, idx) => {
+            const dateStr = (op.moment || '').substring(0, 16);
+            let change = '';
+            if (op.debit > 0) change = `➕ Sotuv: ${formatMoney(op.debit)}`;
+            if (op.credit > 0) {
+                const usdTxt = (op.is_usd && op.usd_amount) ? ` ($${Number(op.usd_amount).toFixed(2)})` : '';
+                change = `➖ To'lov: ${formatMoney(op.credit)}${usdTxt}`;
+            }
+            const docNum = op.doc_number && op.doc_number !== '—' ? ` №${op.doc_number}` : '';
+            text += `${idx + 1}. ${dateStr} | ${op.type_name}${docNum}\n   ${change} ➔ Qoldiq: ${formatMoney(op.balance_after)}\n`;
+        });
+    } else {
+        text += `(Ushbu davrda operatsiyalar mavjud emas)\n`;
+    }
+
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📈 *Jami Sotuv (Debet):* ${formatMoney(summary.total_debit)}\n`;
+    text += `📉 *Jami To'lov (Kredit):* ${formatMoney(summary.total_credit)}\n`;
+    text += `🏁 *YAKUNIY QARZDORLIK:* ${formatMoney(summary.closing_balance)}\n`;
+    text += `⚖️ *Xulosa:* ${summary.status_text || ''}\n`;
+
+    try {
+        await navigator.clipboard.writeText(text);
+        if (typeof showToast === 'function') showToast("✅ Telegram uchun matn nusxalandi!", "success");
+        else alert("✅ Telegram uchun matn nusxalandi!");
+    } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (typeof showToast === 'function') showToast("✅ Telegram uchun matn nusxalandi!", "success");
+        else alert("✅ Telegram uchun matn nusxalandi!");
+    }
+}
+
+function downloadAktSverkaFile() {
+    if (!currentAktData) {
+        if (typeof showToast === 'function') showToast("Ma'lumotlar yuklanmagan!", "warning");
+        else alert("Ma'lumotlar yuklanmagan!");
+        return;
+    }
+    const aktArea = document.getElementById('aktPrintArea');
+    if (!aktArea) return;
+
+    const custName = (currentAktData.counterparty?.name || 'Mijoz').replace(/[^a-zA-Z0-9_Ѐ-ӿ]/g, '_');
+    const filename = `Akt_Sverka_${custName}_${new Date().toISOString().substring(0, 10)}.html`;
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<title>Akt Sverki — ${currentAktData.counterparty?.name || ''}</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 30px; background: #fff; color: #1e293b; margin: 0; }
+.akt-document { max-width: 900px; margin: 0 auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; }
+th, td { border: 1px solid #cbd5e1; padding: 8px 10px; }
+th { background: #0284c7; color: white; text-align: left; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+@media print {
+    body { padding: 0; }
+    @page { margin: 1cm; size: A4; }
+}
+</style>
+</head>
+<body>
+<div class="akt-document">
+${aktArea.innerHTML}
+</div>
+</body>
+</html>`;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (typeof showToast === 'function') showToast("📄 Pechat varianti fayl sifatida yuklandi!", "success");
+    else alert("📄 Pechat varianti fayl sifatida yuklandi!");
+}
+
+// Alias for backwards compatibility
+function copyAktSverkaText() {
+    copyAktSverkaTelegramText();
 }
 
 async function loadAktSverka() {
@@ -1486,149 +1657,416 @@ function printAktSverka() {
     window.print();
 }
 
-function copyAktSverkaText() {
-    if (!currentAktData) return;
-    const { organization, counterparty, period, summary } = currentAktData;
+// ================= TO'LOVNI TAHRIRLASH, SOTUVGA BOG'LASH VA O'CHIRISH =================
+let currentEditingTx = null;
 
-    let text = `📑 SOLISHTIRMA DALOLATNOMA (AKT SVERKI)\n`;
-    text += `Davr: ${period.date_from} — ${period.date_to}\n`;
-    text += `Kompaniya: ${organization.name}\n`;
-    text += `Mijoz: ${counterparty.name}\n\n`;
-    text += `🏁 Boshlang'ich qoldiq: ${formatMoney(summary.initial_balance)}\n`;
-    text += `📦 Jami sotuvlar: ${formatMoney(summary.total_debit)}\n`;
-    text += `💳 Jami to'lovlar: ${formatMoney(summary.total_credit)}\n`;
-    text += `🏁 Yakuniy qoldiq: ${formatMoney(summary.closing_balance)}\n\n`;
-    text += `Holat: ${summary.status_text}\n`;
+async function openPaymentEditModal(paymentId, docType) {
+    if (!paymentId) return;
 
-    navigator.clipboard.writeText(text).then(() => {
-        alert('✅ Akt sverka matni buferga nusxalandi! Endi Telegram yoki WhatsApp orqali yuborishingiz mumkin.');
-    }).catch(() => {
-        alert('Nusxalashda xatolik yuz berdi');
-    });
+    let tx = null;
+    if (typeof currentEditCustomer !== 'undefined' && currentEditCustomer && currentEditCustomer.payments) {
+        tx = currentEditCustomer.payments.find(t => t.id === paymentId);
+    }
+
+    currentEditingTx = tx || { id: paymentId, type: docType || 'cashin' };
+
+    const modal = document.getElementById('editPaymentModal');
+    if (!modal) return;
+
+    const payIdEl = document.getElementById('editPayId');
+    const payDocTypeEl = document.getElementById('editPayDocType');
+    if (payIdEl) payIdEl.value = paymentId;
+    if (payDocTypeEl) payDocTypeEl.value = (tx && tx.type) || docType || 'cashin';
+
+    const typeLabel = tx ? (tx.type_name || "To'lov") : "To'lov";
+    const titleEl = document.getElementById('editPayTitle');
+    const subEl = document.getElementById('editPayDocSubtitle');
+    if (titleEl) titleEl.textContent = `✏️ ${typeLabel}ni Tahrirlash`;
+    if (subEl) {
+        subEl.textContent = tx 
+            ? `Hujjat: №${tx.name || '—'} | Mijoz: ${currentEditCustomer ? currentEditCustomer.name : '—'}`
+            : `ID: ${paymentId}`;
+    }
+
+    // Summa va to'lov turi
+    let currentMethod = 'cash';
+    const isDollar = Boolean(tx && (tx.account_type === 'dollar' || tx.is_usd === true || (tx.usd_amount && tx.usd_amount > 0)));
+    if (isDollar) {
+        currentMethod = 'usd';
+    } else if (docType === 'paymentin' || docType === 'paymentout' || (tx && (tx.doc_type === 'paymentin' || tx.doc_type === 'paymentout' || tx.type === 'card' || tx.account_type === 'bank' || tx.account_id))) {
+        currentMethod = 'card';
+    } else {
+        currentMethod = 'cash';
+    }
+
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    if (methodSelect) {
+        methodSelect.value = currentMethod;
+    }
+
+    const amtInput = document.getElementById('editPayAmount');
+    const usdGroup = document.getElementById('editPayUsdGroup');
+    const usdInput = document.getElementById('editPayUsdAmount');
+    const rateInput = document.getElementById('editPayUsdRate');
+    const accGroup = document.getElementById('editPayAccountGroup');
+
+    await loadEditAccountsSelectCustomers((tx && (tx.account_id || (tx.account && tx.account.id))) || null);
+
+    if (currentMethod === 'usd') {
+        if (usdGroup) usdGroup.style.display = 'block';
+        if (accGroup) accGroup.style.display = 'none';
+        const actualUsd = (tx && tx.usd_amount) ? tx.usd_amount : ((tx && tx.amount && tx.usd_rate) ? (tx.amount / tx.usd_rate) : 0);
+        const actualRate = (tx && tx.usd_rate) || window.currentUSDRate || 12800;
+        const actualUzs = (tx && tx.amount) ? tx.amount : Math.round(actualUsd * actualRate);
+        if (usdInput) usdInput.value = formatNumber(actualUsd, true);
+        if (rateInput) rateInput.value = formatNumber(actualRate);
+        if (amtInput) amtInput.value = formatNumber(Math.round(actualUzs));
+    } else if (currentMethod === 'card') {
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'block';
+        if (amtInput) amtInput.value = tx ? formatNumber(tx.amount || 0) : '0';
+    } else {
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'none';
+        if (amtInput) amtInput.value = tx ? formatNumber(tx.amount || 0) : '0';
+        if (usdInput) usdInput.value = '';
+        if (rateInput) rateInput.value = formatNumber(window.currentUSDRate || 12800);
+    }
+
+    const momentInput = document.getElementById('editPayMoment');
+    if (momentInput) {
+        if (tx && tx.moment) {
+            const cleanMoment = tx.moment.substring(0, 16).replace(' ', 'T');
+            momentInput.value = cleanMoment;
+        } else {
+            const now = new Date();
+            momentInput.value = now.toISOString().substring(0, 16);
+        }
+    }
+
+    const purposeInput = document.getElementById('editPayPurpose');
+    if (purposeInput) purposeInput.value = tx ? (tx.purpose || '') : '';
+
+    let linkedDemandId = (tx && (tx.linked_demand_id || tx.demand_id)) || null;
+
+    // Backenddan to'liq hujjatni olib, bog'langan sotuvni 100% tekshirish
+    try {
+        const fullDocResp = await apiFetch(`/payments/${(tx && tx.type) || docType || 'cashin'}/${paymentId}`);
+        if (fullDocResp && fullDocResp.success && fullDocResp.data) {
+            const docData = fullDocResp.data;
+            const rawOps = docData.operations;
+            const ops = Array.isArray(rawOps) ? rawOps : (rawOps && Array.isArray(rawOps.rows) ? rawOps.rows : []);
+            for (const op of ops) {
+                const href = (op.meta && op.meta.href) || op.href || '';
+                if (href.includes('/entity/demand/')) {
+                    linkedDemandId = href.split('/').pop();
+                    break;
+                }
+            }
+            if (!linkedDemandId && docData.demand && docData.demand.meta && docData.demand.meta.href) {
+                linkedDemandId = docData.demand.meta.href.split('/').pop();
+            }
+        }
+    } catch (err) {
+        console.warn('Payment doc fetch warning in customers.js:', err);
+    }
+
+    const linkSelect = document.getElementById('editPayLinkDemand');
+    if (linkSelect) {
+        linkSelect.innerHTML = '<option value="">(Bog\'lanmagan / Alohida to\'lov)</option>';
+        if (typeof currentEditCustomer !== 'undefined' && currentEditCustomer && currentEditCustomer.demands && currentEditCustomer.demands.length > 0) {
+            currentEditCustomer.demands.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                const rem = d.remaining ? ` | Qarz: ${formatMoney(d.remaining)}` : '';
+                opt.textContent = `№ ${d.name} (${d.moment ? d.moment.substring(0, 10) : ''}) — ${formatMoney(d.sum)}${rem}`;
+                if (linkedDemandId && linkedDemandId === d.id) {
+                    opt.selected = true;
+                }
+                linkSelect.appendChild(opt);
+            });
+        }
+    }
+
+    modal.classList.add('active');
 }
 
-function closeAktSverkaModal() {
-    document.getElementById('aktSverkaModal').classList.remove('active');
-    currentAktCustomerId = null;
-    currentAktData = null;
+function closeEditPaymentModal() {
+    const modal = document.getElementById('editPaymentModal');
+    if (modal) modal.classList.remove('active');
+    currentEditingTx = null;
 }
 
-document.getElementById('aktSverkaModal').addEventListener('click', (e) => {
-    if (e.target.id === 'aktSverkaModal') closeAktSverkaModal();
-});
+function toggleEditPaymentMethod() {
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    const method = methodSelect ? methodSelect.value : 'cash';
+    const usdGroup = document.getElementById('editPayUsdGroup');
+    const accGroup = document.getElementById('editPayAccountGroup');
+    const usdInput = document.getElementById('editPayUsdAmount');
+    const rateInput = document.getElementById('editPayUsdRate');
 
-// ===== MIJOZLAR RO'YXATINI CHOP ETISH (PRINT) =====
-function togglePrintDropdown(btnEl) {
-    const dropdown = btnEl?.nextElementSibling;
-    if (dropdown) dropdown.classList.toggle('show');
+    if (method === 'usd' || method === 'USD') {
+        if (usdGroup) usdGroup.style.display = 'block';
+        if (accGroup) accGroup.style.display = 'none';
+        if (!rateInput.value || parseAmount(rateInput.value) <= 0) {
+            rateInput.value = formatNumber(window.currentUSDRate || 12800);
+        }
+        const amt = parseAmount(document.getElementById('editPayAmount')?.value);
+        const rate = parseAmount(rateInput?.value) || (window.currentUSDRate || 12800);
+        const curUsd = parseAmount(usdInput?.value);
+        if (curUsd > 0) {
+            recalcEditUzsFromUsd();
+        } else if (amt > 0 && rate > 0) {
+            usdInput.value = formatNumber(amt / rate, true);
+        }
+    } else if (method === 'card') {
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'block';
+        loadEditAccountsSelectCustomers(currentEditingTx?.account_id || currentEditingTx?.account?.id);
+    } else {
+        if (usdGroup) usdGroup.style.display = 'none';
+        if (accGroup) accGroup.style.display = 'none';
+    }
 }
 
-// Dropdown tashqarisiga bosilganda yopish
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('.print-dropdown-wrapper')) {
-        document.querySelectorAll('.print-dropdown-menu.show').forEach(d => d.classList.remove('show'));
+function toggleEditCurrencyInputs() {
+    toggleEditPaymentMethod();
+}
+
+function recalcEditUzsFromUsd() {
+    const usdVal = parseAmount(document.getElementById('editPayUsdAmount')?.value);
+    const rate = parseAmount(document.getElementById('editPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+    if (usdVal > 0 && document.getElementById('editPayAmount')) {
+        document.getElementById('editPayAmount').value = formatNumber(Math.round(usdVal * rate));
+    }
+}
+
+function recalcEditUsdFromUzs() {
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    const method = methodSelect ? methodSelect.value : 'cash';
+    if (method === 'usd' || method === 'USD') {
+        const amt = parseAmount(document.getElementById('editPayAmount')?.value);
+        const rate = parseAmount(document.getElementById('editPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+        if (amt > 0 && rate > 0 && document.getElementById('editPayUsdAmount')) {
+            document.getElementById('editPayUsdAmount').value = formatNumber(amt / rate, true);
+        }
+    }
+}
+
+async function handleEditPaymentSubmit(event) {
+    event.preventDefault();
+    const paymentId = document.getElementById('editPayId')?.value;
+    const docType = document.getElementById('editPayDocType')?.value || 'cashin';
+    const amount = parseAmount(document.getElementById('editPayAmount')?.value);
+    const methodSelect = document.getElementById('editPayMethod') || document.getElementById('editPayCurrency');
+    const method = methodSelect ? methodSelect.value : 'cash';
+    const momentVal = document.getElementById('editPayMoment')?.value;
+    const purpose = document.getElementById('editPayPurpose')?.value?.trim() || '';
+    const linkedDemandId = document.getElementById('editPayLinkDemand')?.value;
+
+    if (isNaN(amount) || amount <= 0) {
+        alert("Iltimos, to'g'ri to'lov summasini kiriting!");
+        return;
+    }
+
+    const saveBtn = document.getElementById('saveEditPaymentBtn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = '⏳ Saqlanmoqda...';
+    }
+
+    const payload = {
+        amount: amount,
+        purpose: purpose,
+        moment: (momentVal || new Date().toISOString().substring(0, 16)).replace('T', ' ') + ':00',
+    };
+
+    if (method === 'usd' || method === 'USD') {
+        const usdAmount = parseAmount(document.getElementById('editPayUsdAmount')?.value);
+        const usdRate = parseAmount(document.getElementById('editPayUsdRate')?.value) || (window.currentUSDRate || 12800);
+        payload.usd_amount = usdAmount;
+        payload.usd_rate = usdRate;
+    } else if (method === 'card') {
+        const accId = document.getElementById('editPayAccountSelect')?.value;
+        if (accId) {
+            payload.account_id = accId;
+        }
+    }
+
+    if (linkedDemandId) {
+        payload.linked_demand_id = linkedDemandId;
+    } else {
+        payload.unlink_demands = true;
+    }
+
+    try {
+        const resp = await apiFetch(`/payments/${docType}/${paymentId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+
+        if (resp && resp.success) {
+            alert("✅ To'lov muvaffaqiyatli tahrirlandi!");
+            closeEditPaymentModal();
+            if (typeof currentEditCustomer !== 'undefined' && currentEditCustomer && currentEditCustomer.id) {
+                await showCustomerDetail(currentEditCustomer.id);
+            }
+            await loadCustomers();
+        } else {
+            throw new Error(resp?.detail || 'To\'lovni yangilashda xatolik');
+        }
+    } catch (e) {
+        alert(`❌ Xatolik: ${e.message}`);
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = '💾 Saqlash';
+        }
+    }
+}
+
+async function deleteCurrentPayment() {
+    const paymentId = document.getElementById('editPayId')?.value;
+    const docType = document.getElementById('editPayDocType')?.value || 'cashin';
+    if (!paymentId) return;
+
+    if (!confirm("Rostdan ham ushbu to'lovni butunlay o'chirmoqchimisiz?")) {
+        return;
+    }
+
+    try {
+        const resp = await apiFetch(`/payments/${docType}/${paymentId}`, {
+            method: 'DELETE'
+        });
+
+        if (resp && resp.success) {
+            alert("✅ To'lov o'chirildi!");
+            closeEditPaymentModal();
+            if (typeof currentEditCustomer !== 'undefined' && currentEditCustomer && currentEditCustomer.id) {
+                await showCustomerDetail(currentEditCustomer.id);
+            }
+            await loadCustomers();
+        } else {
+            throw new Error(resp?.detail || 'O\'chirishda xatolik');
+        }
+    } catch (e) {
+        alert(`❌ Xato: ${e.message}`);
+    }
+}
+
+// ===== YANGI MIJOZ =====
+function openNewCustomerModal() {
+    const n = document.getElementById('newCustName');
+    const p = document.getElementById('newCustPhone');
+    const g = document.getElementById('newCustGroup');
+    const a = document.getElementById('newCustAddress');
+    const d = document.getElementById('newCustDesc');
+    if (n) n.value = '';
+    if (p) p.value = '';
+    if (g) g.value = '';
+    if (a) a.value = '';
+    if (d) d.value = '';
+    const modal = document.getElementById('newCustomerModal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeNewCustomerModal() {
+    const modal = document.getElementById('newCustomerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function handleNewCustomerSubmit(e) {
+    e.preventDefault();
+    const name = document.getElementById('newCustName')?.value?.trim();
+    const phone = document.getElementById('newCustPhone')?.value?.trim();
+    const group = document.getElementById('newCustGroup')?.value?.trim();
+    const address = document.getElementById('newCustAddress')?.value?.trim();
+    const desc = document.getElementById('newCustDesc')?.value?.trim();
+
+    if(!name) {
+        alert("Iltimos, mijoz ismini kiriting!");
+        return;
+    }
+
+    const btn = document.getElementById('saveNewCustomerBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳...';
+    }
+
+    try {
+        const payload = {
+            name: name,
+            phone: phone || '',
+            group: group || '',
+            address: address || '',
+            description: desc || ''
+        };
+        const resp = await apiFetch('/customers', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        
+        if(resp && resp.success) {
+            alert('✅ Yangi mijoz muvaffaqiyatli yaratildi!');
+            closeNewCustomerModal();
+            await loadCustomers();
+        } else {
+            throw new Error(resp?.detail || 'Xatolik');
+        }
+    } catch(err) {
+        alert('❌ Xato: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '💾 Mijozni Saqlash';
+        }
+    }
+}
+
+// --- Keyboard Navigation for Modals ---
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const aktModal = document.getElementById('aktSverkaModal');
+        if (aktModal && aktModal.classList.contains('active')) {
+            closeAktSverkaModal();
+            return;
+        }
+        const payModal = document.getElementById('paymentModal');
+        if (payModal && payModal.classList.contains('active')) {
+            closePaymentModal();
+            return;
+        }
+        const editPayModal = document.getElementById('editPaymentModal');
+        if (editPayModal && editPayModal.classList.contains('active')) {
+            closeEditPaymentModal();
+            return;
+        }
+        const custModal = document.getElementById('customerModal');
+        if (custModal && custModal.classList.contains('active')) {
+            closeCustomerModal();
+            return;
+        }
+    }
+
+    const payModal = document.getElementById('paymentModal');
+    if (payModal && payModal.classList.contains('active')) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            submitCustomerPayment();
+        }
     }
 });
 
-async function printCustomerList(format = 'a4') {
-    // Dropdownni yopish
-    document.querySelectorAll('.print-dropdown-menu.show').forEach(d => d.classList.remove('show'));
+// Modal tashqarisiga (backdrop) bosganda yopish
+window.addEventListener('click', (e) => {
+    const aktModal = document.getElementById('aktSverkaModal');
+    if (e.target === aktModal) {
+        closeAktSverkaModal();
+    }
+    const editPayModal = document.getElementById('editPaymentModal');
+    if (e.target === editPayModal) {
+        closeEditPaymentModal();
+    }
+});
 
-    document.body.classList.remove('print-a4', 'print-a5');
-    document.body.classList.add(`print-${format}`);
-
-    const printArea = document.getElementById('genericPrintArea');
-    if (!printArea) return;
-
-    const orgName = document.getElementById('orgName')?.textContent || 'Azer';
-    const nowStr = new Date().toLocaleString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    
-    let filterTitle = 'Barcha mijozlar ro\'yxati';
-    if (currentDebtFilter === 'debtors') filterTitle = 'Qarzdor mijozlar ro\'yxati (Qarzdorlik vedomosti)';
-    if (currentDebtFilter === 'no_debt') filterTitle = 'Qarzi yo\'q mijozlar ro\'yxati';
-
-    const searchVal = document.getElementById('searchInput')?.value;
-    if (searchVal) filterTitle += ` (Qidiruv: "${searchVal}")`;
-
-    // Chop etish uchun ro'yxatni tezkor tayyorlash (qo'shimcha tarmoq so'rovisiz darhol chop etish)
-    const listToPrint = currentLoadedCustomers || [];
-
-    const totalCustomersCount = listToPrint.length;
-    const totalDebtSum = listToPrint.reduce((acc, c) => acc + (c.balance > 0 ? c.balance : 0), 0);
-    const debtorsCount = listToPrint.filter(c => c.balance > 0).length;
-
-    const isA5 = format === 'a5';
-    const fontSize = isA5 ? 'font-size:10px;' : '';
-    const thPad = isA5 ? 'padding:4px 6px;' : '';
-    const tdPad = isA5 ? 'padding:3px 6px;' : '';
-
-    let rowsHtml = '';
-    listToPrint.forEach((c, idx) => {
-        rowsHtml += `
-            <tr>
-                <td style="text-align:center;width:35px;${tdPad}">${idx + 1}</td>
-                <td style="font-weight:700;${tdPad}">${c.name}</td>
-                <td style="${tdPad}">${c.phone || '—'}</td>
-                <td style="${tdPad}">${c.group || '—'}</td>
-                <td style="text-align:right;font-weight:700;color:${c.balance > 0.01 ? '#b91c1c' : (c.balance < -0.01 ? '#15803d' : '#15803d')};${tdPad}">
-                    ${formatCustomerBalance(c.balance)}
-                </td>
-            </tr>
-        `;
-    });
-
-    printArea.innerHTML = `
-        <div class="print-report-header" style="${isA5 ? 'padding:8px 12px;' : ''}">
-            <div>
-                <div class="print-report-title" style="${isA5 ? 'font-size:14px;' : ''}">📑 ${filterTitle}</div>
-                <div class="print-report-subtitle" style="${isA5 ? 'font-size:10px;' : ''}">Tashkilot: <strong>${orgName}</strong> | Sana: ${nowStr}</div>
-            </div>
-            <div style="text-align:right;">
-                <div style="font-size:${isA5 ? '10px' : '12px'};font-weight:700;color:#64748b;">Azer tizimi${isA5 ? ' (A5)' : ''}</div>
-            </div>
-        </div>
-
-        <div class="print-summary-box" style="${isA5 ? 'padding:6px 10px;gap:10px;' : ''}">
-            <div class="print-summary-item">
-                <div class="print-summary-label">Jami Mijozlar</div>
-                <div class="print-summary-value" style="${isA5 ? 'font-size:14px;' : ''}">${totalCustomersCount} ta</div>
-            </div>
-            <div class="print-summary-item">
-                <div class="print-summary-label">Qarzdorlar Soni</div>
-                <div class="print-summary-value" style="color:#b91c1c;${isA5 ? 'font-size:14px;' : ''}">${debtorsCount} ta</div>
-            </div>
-            <div class="print-summary-item">
-                <div class="print-summary-label">Jami Qarzdorlik Summasi</div>
-                <div class="print-summary-value" style="color:#b91c1c;${isA5 ? 'font-size:14px;' : ''}">${formatMoney(totalDebtSum)}</div>
-            </div>
-        </div>
-
-        <table class="print-table" style="${fontSize}">
-            <thead>
-                <tr>
-                    <th style="text-align:center;width:35px;${thPad}">№</th>
-                    <th style="${thPad}">Mijoz (Kontragent)</th>
-                    <th style="${thPad}">Telefon</th>
-                    <th style="${thPad}">Guruh</th>
-                    <th style="text-align:right;${thPad}">Balans</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rowsHtml || '<tr><td colspan="5" style="text-align:center;">Ma\'lumot yo\'q</td></tr>'}
-            </tbody>
-        </table>
-
-        <div class="print-signatures" style="${isA5 ? 'margin-top:12px;gap:20px;font-size:11px;' : ''}">
-            <div>
-                <div>Hisobotni tayyorladi: ____________________</div>
-                <div style="font-size:10px;color:#64748b;margin-top:4px;">(imzo va F.I.SH)</div>
-            </div>
-            <div>
-                <div>Tasdiqladi (Rahbar): ____________________</div>
-                <div style="font-size:10px;color:#64748b;margin-top:4px;">(imzo va muhr)</div>
-            </div>
-        </div>
-    `;
-
-    window.print();
-}

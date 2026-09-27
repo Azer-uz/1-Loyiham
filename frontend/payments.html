@@ -531,6 +531,193 @@
         body.dark-mode .type-selector-tabs {
             background: #0f172a !important;
         }
+    
+        /* ================= UNIFIED QUICK-PAY DRAWER (FINTECH) ================= */
+        .drawer-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(3px);
+            z-index: 9998;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.25s ease;
+        }
+        .drawer-backdrop.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .quick-pay-drawer {
+            position: fixed;
+            top: 0;
+            right: -600px;
+            bottom: 0;
+            width: 540px;
+            max-width: 95vw;
+            background: var(--card, #ffffff);
+            box-shadow: -10px 0 35px rgba(0, 0, 0, 0.2);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+        .quick-pay-drawer.active {
+            right: 0;
+        }
+
+        .drawer-header {
+            padding: 14px 18px;
+            background: #f8fafc;
+            border-bottom: 1.5px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .drawer-tabs {
+            display: flex;
+            background: #e2e8f0;
+            padding: 3px;
+            border-radius: 8px;
+            gap: 3px;
+        }
+
+        .drawer-tab-btn {
+            padding: 7px 14px;
+            border-radius: 6px;
+            border: none;
+            font-size: 12.5px;
+            font-weight: 700;
+            cursor: pointer;
+            background: transparent;
+            color: #64748b;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .drawer-tab-btn.active#tabBtnIncome {
+            background: #16a34a;
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(22, 163, 74, 0.3);
+        }
+        .drawer-tab-btn.active#tabBtnExpense {
+            background: #dc2626;
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);
+        }
+
+        .drawer-kbd-badge {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #64748b;
+            background: #e2e8f0;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+        }
+
+        .drawer-close-btn {
+            background: transparent;
+            border: none;
+            font-size: 24px;
+            line-height: 1;
+            color: #64748b;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .drawer-close-btn:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+        .drawer-body {
+            padding: 18px 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .drawer-section {
+            display: none;
+        }
+        .drawer-section.active {
+            display: block;
+            animation: drawerFade 0.2s ease;
+        }
+        @keyframes drawerFade {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .drawer-suggest-box {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1.5px solid #0284c7;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            z-index: 9999;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .drawer-chips-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .drawer-chip-btn {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .drawer-chip-btn:hover, .drawer-chip-btn.active {
+            background: #e0f2fe;
+            border-color: #0284c7;
+            color: #0369a1;
+        }
+
+        /* Dark mode drawer */
+        body.dark-mode .quick-pay-drawer {
+            background: #0f172a;
+            border-left: 1px solid #1e293b;
+        }
+        body.dark-mode .drawer-header {
+            background: #1e293b;
+            border-color: #334155;
+        }
+        body.dark-mode .drawer-tabs {
+            background: #0f172a;
+        }
+        body.dark-mode .drawer-suggest-box {
+            background: #1e293b;
+            border-color: #38bdf8;
+        }
+        body.dark-mode .drawer-chip-btn {
+            background: #1e293b;
+            border-color: #334155;
+            color: #e2e8f0;
+        }
+
     </style>
 </head>
 <body>
@@ -631,10 +818,10 @@
                     <span class="v7-greeting-subtitle">Pul oqimi, kassa va hisob-kitoblar aylanmasi</span>
                 </div>
                 <div class="actions-bar" style="display:flex; align-items:center; gap:8px;">
-                    <button class="btn-fintech-action btn-new-income" onclick="openCustomerPaymentModal()" title="Mijozdan to'lov qabul qilish">
+                    <button class="btn-fintech-action btn-new-income" onclick="openQuickPayDrawer('income')" title="Mijozdan to'lov qabul qilish">
                         💰 Yangi Kirim
                     </button>
-                    <button class="btn-fintech-action btn-new-expense" onclick="openExpenseModal()" title="Kassa yoki hisobdan chiqim/xarajat">
+                    <button class="btn-fintech-action btn-new-expense" onclick="openQuickPayDrawer('expense')" title="Kassa yoki hisobdan chiqim/xarajat">
                         💸 Yangi Xarajat
                     </button>
                     <button class="btn-fintech-action btn-accounts-overview" onclick="openAccountsModal()" title="Hisoblar va kassalar qoldiqlari">
@@ -705,6 +892,7 @@
                     </div>
                 </div>
             </div>
+
 
             <!-- 4. Filtr Paneli (MoySklad Davr Navigatsiyasi) -->
             <div class="filter-panel" style="padding: 12px 16px; margin-bottom: 14px;">
@@ -873,8 +1061,9 @@
                     <div class="form-group">
                         <label>To'lov usuli / Kassa turi</label>
                         <div class="type-selector-tabs">
-                            <button type="button" class="type-tab-btn active" id="expTypeCash" onclick="setExpenseType('cash')">💵 Naqd pul (Kassa)</button>
-                            <button type="button" class="type-tab-btn" id="expTypeCard" onclick="setExpenseType('card')">💳 Bank / Hisobdan</button>
+                            <button type="button" class="type-tab-btn active" id="expTypeCash" onclick="setExpenseType('cash')">💵 Naqd pul</button>
+                            <button type="button" class="type-tab-btn" id="expTypeCard" onclick="setExpenseType('card')">💳 Karta / Bank</button>
+                            <button type="button" class="type-tab-btn" id="expTypeUsd" onclick="setExpenseType('usd')">💲 Dollar</button>
                         </div>
                     </div>
 
@@ -966,16 +1155,28 @@
                         <input type="text" inputmode="numeric" id="payCashAmount" class="form-control format-number" placeholder="0" oninput="updatePaymentUSDPreview()">
                     </div>
 
-                    <div class="form-group">
-                        <label for="payCardAmount">💳 Bank / Valyuta summa (so'm)</label>
-                        <input type="text" inputmode="numeric" id="payCardAmount" class="form-control format-number" placeholder="0" oninput="updatePaymentUSDPreview()">
+                    <div class="form-group" style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label for="payCardAmount">💳 Karta / Bank summa (so'm)</label>
+                            <input type="text" inputmode="numeric" id="payCardAmount" class="form-control format-number" placeholder="0" oninput="updatePaymentUSDPreview()">
+                        </div>
+                        <div style="flex: 1;" id="payCardAccountGroup">
+                            <label for="payCardAccountSelect">Karta hisobi</label>
+                            <select id="payCardAccountSelect" class="form-control">
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="form-group" id="payAccountGroup">
-                        <label for="payAccountSelect">Kirim hisob raqami</label>
-                        <select id="payAccountSelect" class="form-control">
-                            <option value="">Asosiy hisob</option>
-                        </select>
+                    <div class="form-group" style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label for="payUsdAmount">💲 Dollar summa ($)</label>
+                            <input type="text" inputmode="decimal" id="payUsdAmount" class="form-control format-number" placeholder="0" oninput="updatePaymentUSDPreview()">
+                        </div>
+                        <div style="flex: 1;" id="payUsdAccountGroup">
+                            <label for="payUsdAccountSelect">Dollar hisobi</label>
+                            <select id="payUsdAccountSelect" class="form-control">
+                            </select>
+                        </div>
                     </div>
 
                     <div style="background:#f8fafc; border-radius:8px; padding:10px 14px; margin-bottom:16px;">
@@ -1057,18 +1258,25 @@
                     <input type="hidden" id="editPayId">
                     <input type="hidden" id="editPayDocType">
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+                    <div style="display:grid; grid-template-columns: 1.1fr 0.9fr; gap:12px; margin-bottom:14px;">
                         <div class="form-group">
                             <label for="editPayAmount">Summa *</label>
-                            <input type="text" inputmode="numeric" id="editPayAmount" class="form-control format-number" placeholder="0" required style="font-size:16px; font-weight:700;">
+                            <input type="text" inputmode="numeric" id="editPayAmount" class="form-control format-number" placeholder="0" required style="font-size:16px; font-weight:700;" oninput="recalcEditUsdFromUzs()">
                         </div>
                         <div class="form-group">
-                            <label for="editPayCurrency">Valyuta</label>
-                            <select id="editPayCurrency" class="form-control" onchange="toggleEditCurrencyInputs()">
-                                <option value="UZS">UZS (So'm)</option>
-                                <option value="USD">USD (Dollar)</option>
+                            <label for="editPayMethod">To'lov turi</label>
+                            <select id="editPayMethod" class="form-control" onchange="toggleEditPaymentMethod()">
+                                <option value="cash">💵 Naqd pul (Kassa)</option>
+                                <option value="card">💳 Karta / Bank</option>
+                                <option value="usd">💲 Dollar (USD)</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div id="editPayAccountGroup" style="display:none; margin-bottom:14px;">
+                        <label for="editPayAccountSelect" style="font-size:12px; font-weight:600; color:#1d4ed8;">Karta / Bank hisobi</label>
+                        <select id="editPayAccountSelect" class="form-control" style="font-size:13px; font-weight:600;">
+                        </select>
                     </div>
 
                     <div id="editPayUsdGroup" style="display:none; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:10px 14px; margin-bottom:14px;">
@@ -1149,6 +1357,267 @@
 
     <!-- Chop etish uchun konteyner -->
     <div id="genericPrintArea"></div>
+
+    <!-- ===== BIRLASHGAN TEZKOR TO'LOV PANELI (UNIFIED QUICK-PAY DRAWER) ===== -->
+    <div id="quickPayDrawerBackdrop" class="drawer-backdrop" onclick="closeQuickPayDrawer()"></div>
+    <div id="quickPayDrawer" class="quick-pay-drawer">
+        <!-- Drawer Header -->
+        <div class="drawer-header">
+            <div class="drawer-tabs">
+                <button type="button" class="drawer-tab-btn active" id="tabBtnIncome" onclick="switchDrawerTab('income')">
+                    <span>📥</span> Yangi Kirim (Mijozdan)
+                </button>
+                <button type="button" class="drawer-tab-btn" id="tabBtnExpense" onclick="switchDrawerTab('expense')">
+                    <span>💸</span> Yangi Xarajat (Chiqim)
+                </button>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span class="drawer-kbd-badge hide-mobile" title="Tezkor klaviatura: Ctrl+Enter saqlash, Esc yopish">Ctrl+Enter 💾</span>
+                <button type="button" class="drawer-close-btn" onclick="closeQuickPayDrawer()">&times;</button>
+            </div>
+        </div>
+
+        <!-- Drawer Body -->
+        <div class="drawer-body">
+            
+            <!-- ===== TAB 1: KIRIM (INCOME) ===== -->
+            <div id="drawerIncomeSection" class="drawer-section active">
+                <form id="drawerIncomeForm" onsubmit="handleDrawerIncomeSubmit(event)">
+                    
+                    <div class="drawer-2col-grid">
+                        
+                        <!-- CHAP USTUN: MIJOZ VA TO'LOV SUMMALARI -->
+                        <div style="display:flex; flex-direction:column; gap:12px;">
+                            
+                            <!-- Mijoz qidirish / tanlash -->
+                            <div class="form-group" style="margin:0;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <label for="drawerIncomeCustomerSearch" style="font-weight:700; font-size:12.5px;">👤 Mijoz (Kontragent) <span style="color:red;">*</span></label>
+                                    <button type="button" onclick="openNewCustomerModal()" style="background:none; border:none; color:var(--primary); font-size:11.5px; font-weight:700; cursor:pointer;">➕ Yangi mijoz</button>
+                                </div>
+                                
+                                <div style="position:relative;">
+                                    <input type="text" id="drawerIncomeCustomerSearch" class="form-control" 
+                                        placeholder="🔍 Mijoz ismini yoki telefonini yozing..." 
+                                        autocomplete="off" 
+                                        style="font-size:13.5px; font-weight:700; padding:8px 12px; border-radius:8px; border:1.5px solid #0284c7; width:100%;"
+                                        onfocus="showDrawerCustList()"
+                                        oninput="filterDrawerCustList(this.value)"
+                                    />
+                                    <input type="hidden" id="drawerIncomeCustomerId" required>
+
+                                    <!-- Autocomplete Suggestions List -->
+                                    <div id="drawerCustSuggestionsList" class="drawer-suggest-box" style="display:none;"></div>
+                                </div>
+
+                                <!-- Mijoz balansi & qarzi info banner -->
+                                <div id="drawerCustDebtBanner" class="payment-debt-summary-card" style="display:none; margin-top:8px;">
+                                    <div>
+                                        <div style="font-size:11px; color:#64748b; text-transform:uppercase; font-weight:700;">Mijozning joriy qarzi:</div>
+                                        <strong id="drawerCustDebtValue" style="font-size:16px; font-weight:800;">—</strong>
+                                    </div>
+                                    <button type="button" id="drawerBtnFillAllDebt" class="btn-fill-all-debt" onclick="drawerFillTotalDebtAmount()" title="Barcha qarzni to'lov summasiga kiritish">
+                                        ⚡ Barcha qarzni yopish
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- To'lov summalari kartasi -->
+                            <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:10px;">
+                                <div style="font-size:12px; font-weight:700; color:#334155; display:flex; justify-content:space-between;">
+                                    <span>💵 To'lov taqsimoti:</span>
+                                    <span style="font-size:11px; color:#64748b;">(Aralash to'lov kiritish mumkin)</span>
+                                </div>
+
+                                <!-- Naqd (so'm) -->
+                                <div class="form-group" style="margin:0;">
+                                    <label style="font-size:12px; font-weight:700; color:#047857;">💵 Naqd pul (so'm)</label>
+                                    <input type="text" inputmode="numeric" id="drawerPayCash" class="form-control format-number" placeholder="0" style="font-size:15px; font-weight:700; border:1.5px solid #86efac;" oninput="updateDrawerTotals()">
+                                </div>
+
+                                <!-- Karta (so'm) + Karta hisob raqami -->
+                                <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:10px;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label style="font-size:12px; font-weight:700; color:#1d4ed8;">💳 Karta / Bank (so'm)</label>
+                                        <input type="text" inputmode="numeric" id="drawerPayCard" class="form-control format-number" placeholder="0" style="font-size:15px; font-weight:700; border:1.5px solid #93c5fd;" oninput="updateDrawerTotals()">
+                                    </div>
+                                    <div class="form-group" id="drawerPayCardAccGroup" style="margin:0;">
+                                        <label style="font-size:11px; font-weight:700; color:#1d4ed8;">Karta hisobi</label>
+                                        <select id="drawerPayCardAccount" class="form-control" style="font-size:12px; font-weight:600; padding:7px 8px; border:1.5px solid #3b82f6;">
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Dollar (USD) to'lov -->
+                                <div class="payment-usd-box">
+                                    <div class="usd-header">💲 Dollar (USD) to'lov</div>
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr 1.2fr; gap:8px; align-items:flex-end;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label style="font-size:11px; font-weight:700; color:#047857;">$ Miqdor:</label>
+                                            <input type="text" inputmode="decimal" id="drawerPayUsd" class="form-control format-number" placeholder="0.00" style="font-size:14px; font-weight:700;" oninput="updateDrawerTotals()">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label style="font-size:11px; font-weight:700; color:#047857;">📊 Kurs (so'm):</label>
+                                            <input type="text" inputmode="numeric" id="drawerPayUsdRate" class="form-control format-number" value="12 800" style="font-size:13px; font-weight:700;" oninput="updateDrawerTotals()">
+                                        </div>
+                                        <div style="padding-bottom:6px;">
+                                            <label style="font-size:11px; font-weight:700; color:#047857;">🧮 Qiymati:</label>
+                                            <div id="drawerPayUsdEquiv" style="font-size:12.5px; font-weight:800; color:#166534; white-space:nowrap;">~ 0 so'm</div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" id="drawerPayUsdAccount" value="">
+                                </div>
+                            </div>
+
+                            <!-- Sana & Izoh -->
+                            <div style="display:grid; grid-template-columns: 1.1fr 1.9fr; gap:10px;">
+                                <div class="form-group" style="margin:0;">
+                                    <label for="drawerIncomeMoment" style="font-size:11.5px; font-weight:600;">Sana va vaqt</label>
+                                    <input type="datetime-local" id="drawerIncomeMoment" class="form-control" style="font-size:12px; padding:7px 8px;">
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label for="drawerIncomeDesc" style="font-size:11.5px; font-weight:600;">Izoh / Maqsad</label>
+                                    <input type="text" id="drawerIncomeDesc" class="form-control" placeholder="To'lov izohi..." style="font-size:12px; padding:7px 10px;">
+                                </div>
+                            </div>
+
+                            <!-- Jami hisoblangan summa preview -->
+                            <div style="background:linear-gradient(135deg, #f0fdf4, #dcfce7); border:1.5px solid #86efac; border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-size:11px; font-weight:700; color:#15803d; text-transform:uppercase;">Jami Kirim Summasi:</div>
+                                    <strong id="drawerIncomeTotalUzs" style="font-size:17px; color:#166534;">0 so'm</strong>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-size:11px; color:#15803d;">Ekvivalent:</div>
+                                    <strong id="drawerIncomeTotalUsd" style="font-size:13.5px; color:#047857;">$0.00 USD</strong>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- O'NG USTUN: SOTUVLARGA BOG'LASH (FIFO) -->
+                        <div id="drawerFifoSection" style="padding:12px 14px; border-radius:10px; border:1.5px solid #cbd5e1; background:#f8fafc; display:flex; flex-direction:column; min-height:430px;">
+                            
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span style="font-size:16px;">🔗</span>
+                                    <strong style="font-size:12.5px; color:var(--primary);">Sotuvlarga bog'lash (FIFO)</strong>
+                                    <span id="drawerFifoModeBadge" class="fifo-mode-badge auto">⚡ Avto-taqsimlash</span>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <button type="button" id="drawerBtnResetFifo" onclick="drawerResetToAutoFifo()" style="border:1px solid #cbd5e1; background:#fff; padding:4px 9px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700; transition:all 0.15s ease;" title="Qayta avtomatik FIFO taqsimlash">
+                                        🔄 Qayta taqsimlash
+                                    </button>
+                                    <label style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:#64748b; cursor:pointer; font-weight:600;">
+                                        <input type="checkbox" id="drawerLinkDemandsToggle" checked onchange="drawerHandleLinkDemandsToggle()">
+                                        Bog'lash faol
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Yuklanish indikatori -->
+                            <div id="drawerUnpaidDemandsLoading" style="display:none; text-align:center; padding:20px; color:#64748b; font-size:12.5px;">
+                                ⏳ Ochiq sotuvlar qidirilmoqda...
+                            </div>
+
+                            <!-- Sotuvlar ro'yxati -->
+                            <div id="drawerUnpaidDemandsContainer" style="flex:1; max-height:360px; overflow-y:auto; background:var(--card, #fff); border:1px solid #e2e8f0; border-radius:8px; padding:8px;">
+                                <div id="drawerUnpaidDemandsList" style="font-size:12px; display:flex; flex-direction:column; gap:8px;">
+                                    <div style="color:#64748b; padding:20px 10px; text-align:center;">
+                                        Mijoz tanlanganda uning to'lanmagan sotuvlari shu yerda chiqadi
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- FIFO Xulosa paneli -->
+                            <div id="drawerFifoSummaryBar" class="fifo-summary-bar" style="display:none;">
+                                <div>Taqsimlandi: <strong id="drawerFifoTotalAllocatedText" style="color:#16a34a;">0 so'm</strong></div>
+                                <div>Qolgan qarz: <strong id="drawerFifoRemainingDebtText" style="color:#dc2626;">0 so'm</strong></div>
+                                <div id="drawerFifoExcessText" style="display:none; color:#2563eb; font-weight:700;"></div>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <!-- Saqlash tugmasi -->
+                    <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; margin-top:14px; border-top:1px solid #e2e8f0;">
+                        <button type="button" class="btn-print" onclick="closeQuickPayDrawer()" style="padding:9px 18px; border-radius:8px;">Bekor qilish</button>
+                        <button type="submit" id="saveDrawerIncomeBtn" class="btn-primary-action" style="background:linear-gradient(135deg, #16a34a, #15803d); font-size:13.5px; font-weight:700; padding:9px 24px; border-radius:8px; box-shadow:0 2px 8px rgba(22,163,74,0.35);">
+                            💾 Kirimni Saqlash (Ctrl+Enter)
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ===== TAB 2: XARAJAT (EXPENSE) ===== -->
+            <div id="drawerExpenseSection" class="drawer-section">
+                <form id="drawerExpenseForm" onsubmit="handleDrawerExpenseSubmit(event)">
+                    
+                    <!-- To'lov usuli tabs -->
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label style="font-size:12px; font-weight:700;">To'lov usuli / Kassa turi:</label>
+                        <div class="type-selector-tabs" style="margin-top:4px;">
+                            <button type="button" class="type-tab-btn active" id="drawerExpTypeCash" onclick="setDrawerExpenseType('cash')">💵 Naqd pul</button>
+                            <button type="button" class="type-tab-btn" id="drawerExpTypeCard" onclick="setDrawerExpenseType('card')">💳 Karta / Bank</button>
+                            <button type="button" class="type-tab-btn" id="drawerExpTypeUsd" onclick="setDrawerExpenseType('usd')">💲 Dollar</button>
+                        </div>
+                    </div>
+
+                    <!-- Chiqim hisobi (Faqat Karta/Bank uchun ko'rinadi) -->
+                    <div class="form-group" id="drawerExpAccountGroup" style="margin-bottom:12px; display:none;">
+                        <label for="drawerExpAccountSelect" style="font-size:12px; font-weight:700; color:#1d4ed8;">Chiqim hisobi / Bank kartasi <span style="color:red;">*</span></label>
+                        <select id="drawerExpAccountSelect" class="form-control" style="font-size:13px; font-weight:600; padding:8px 10px; border:1.5px solid #3b82f6;">
+                        </select>
+                    </div>
+
+                    <!-- Xarajat summasi -->
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label for="drawerExpAmount" style="font-size:12px; font-weight:700;">Xarajat summasi <span style="color:red;">*</span></label>
+                        <input type="text" inputmode="numeric" id="drawerExpAmount" class="form-control format-number" placeholder="0" required style="font-size:18px; font-weight:800; padding:8px 12px; border:1.5px solid #dc2626;" oninput="updateDrawerExpUsdPreview()">
+                        <small id="drawerExpUsdPreview" style="color:var(--success); font-weight:700; margin-top:3px; display:block;">~ $0.00 USD</small>
+                    </div>
+
+                    <!-- Xarajat toifasi (Tezkor tugmalar + Dropdown) -->
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <label for="drawerExpItemSelect" style="font-size:12px; font-weight:700;">Xarajat toifasi (Moddasi) <span style="color:red;">*</span></label>
+                            <button type="button" onclick="openNewExpenseItemModal()" style="background:none; border:none; color:var(--primary); font-size:11.5px; font-weight:700; cursor:pointer;">➕ Yangi toifa</button>
+                        </div>
+
+                        <!-- Tezkor toifa chip-tugmalari (Bazadagi moddalar bilan) -->
+                        <div class="drawer-chips-grid" id="drawerExpenseChipsContainer">
+                        </div>
+
+                        <select id="drawerExpItemSelect" class="form-control" required style="font-size:13px; font-weight:600; padding:8px 10px; margin-top:6px;">
+                            <option value="">Toifani tanlang...</option>
+                        </select>
+                    </div>
+
+                    <!-- Sana & Izoh -->
+                    <div style="display:grid; grid-template-columns: 1.2fr 1.8fr; gap:10px; margin-bottom:16px;">
+                        <div class="form-group" style="margin:0;">
+                            <label for="drawerExpMoment" style="font-size:11.5px; font-weight:600;">Sana va vaqt</label>
+                            <input type="datetime-local" id="drawerExpMoment" class="form-control" style="font-size:12px; padding:7px 8px;">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label for="drawerExpDesc" style="font-size:11.5px; font-weight:600;">Izoh / Tafsilot</label>
+                            <input type="text" id="drawerExpDesc" class="form-control" placeholder="Xarajat sababi..." style="font-size:12.5px; padding:7px 10px;">
+                        </div>
+                    </div>
+
+                    <!-- Saqlash tugmasi -->
+                    <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:10px; border-top:1px solid #e2e8f0;">
+                        <button type="button" class="btn-print" onclick="closeQuickPayDrawer()">Bekor qilish</button>
+                        <button type="submit" id="saveDrawerExpBtn" class="btn-primary-action" style="background:linear-gradient(135deg, #dc2626, #b91c1c); font-size:13.5px; font-weight:700; padding:9px 20px; border-radius:8px;">
+                            💾 Xarajatni Saqlash (Ctrl+Enter)
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
 
     <script src="/static/js/api.js"></script>
     <script src="/static/js/payments.js"></script>

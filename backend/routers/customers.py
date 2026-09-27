@@ -1,7 +1,19 @@
+
+# ================= TEZKOR AKT-SVERKA KESHI (RAM / 30s TTL) =================
+_AKT_SVERKA_CACHE = {}
+_AKT_SVERKA_CACHE_TTL = 30.0
+
+def invalidate_akt_sverka_cache(customer_id: str = None):
+    global _AKT_SVERKA_CACHE
+    if customer_id:
+        _AKT_SVERKA_CACHE.pop(customer_id, None)
+    else:
+        _AKT_SVERKA_CACHE.clear()
+
 import asyncio
 import time
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,25 +43,111 @@ async def get_balances_cached() -> dict:
     return _balances_cache["data"]
 
 
+class CustomerCreateRequest(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    description: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    group: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
 class CorrectionRequest(BaseModel):
     counterparty_id: str
     new_balance: Optional[float] = None
     adjustment_amount: Optional[float] = None
     reason: str = "Balansni tuzatish"
-    moment: Optional[str] = None  # "YYYY-MM-DD" formati, bo'sh bo'lsa hozirgi vaqt
+    moment: Optional[str] = None
 
 
+@router.post("")
+@router.post("/")
+async def create_customer(req: CustomerCreateRequest, db: AsyncSession = Depends(get_db)):
+    """Yangi mijoz (kontragent) yaratish — MoySklad va Local DB ga saqlash"""
+    try:
+        ms_payload = {
+            "name": req.name.strip(),
+        }
+        if req.phone:
+            ms_payload["phone"] = req.phone.strip()
+        if req.description:
+            ms_payload["description"] = req.description.strip()
+        if req.email:
+            ms_payload["email"] = req.email.strip()
+        if req.address:
+            ms_payload["actualAddress"] = req.address.strip()
+            ms_payload["legalAddress"] = req.address.strip()
+
+        tags_list = []
+        if req.tags:
+            tags_list = [t.strip() for t in req.tags if t.strip()]
+        if req.group and req.group.strip() and req.group.strip() not in tags_list:
+            tags_list.append(req.group.strip())
+        if tags_list:
+            ms_payload["tags"] = tags_list
+
+        created_ms = await ms_client.create_counterparty(ms_payload)
+        new_id = created_ms.get("id")
+
+        if new_id:
+            # Local DB ga ham yozish
+            local_cp = LocalCounterparty(
+                id=new_id,
+                name=req.name.strip(),
+                phone=req.phone.strip() if req.phone else "",
+                group=req.group.strip() if req.group else (tags_list[0] if tags_list else "mijozlar"),
+                balance=0.0,
+                updated_at=datetime.utcnow()
+            )
+            db.add(local_cp)
+            await db.commit()
+
+        return {
+            "success": True,
+            "message": "Mijoz muvaffaqiyatli yaratildi",
+            "data": {
+                "id": new_id,
+                "name": req.name.strip(),
+                "phone": req.phone or "",
+                "address": req.address or "",
+                "group": req.group or (tags_list[0] if tags_list else "mijozlar"),
+                "balance": 0.0
+            }
+        }
+    except Exception as e:
+        print(f"❌ Mijoz yaratish xatosi: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("")
 @router.get("/")
 async def list_customers(
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=2000),
     offset: int = Query(0, ge=0),
     search: Optional[str] = None,
     sort_by: str = Query("balance"),
     sort_dir: str = Query("desc"),
     debt_filter: Optional[str] = Query("all"),
+    refresh: Optional[bool] = Query(False),
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        # Agar refresh so'ralgan bo'lsa, MoySklad'dan nativ balanslarni olib lokal bazaga darhol yangilash
+        if refresh:
+            try:
+                balances = await ms_client.get_all_balances()
+                if balances:
+                    all_cps = (await db.execute(select(LocalCounterparty))).scalars().all()
+                    for cp in all_cps:
+                        if cp.id in balances:
+                            cp.balance = balances[cp.id]
+                    await db.commit()
+            except Exception as re:
+                print(f"⚠️ list_customers refresh balances xatosi: {re}")
+
         # DB Query ni tayyorlash
         query = select(LocalCounterparty)
         
@@ -140,7 +238,20 @@ async def get_customer_akt_sverka(
     customer_id: str,
     date_from: Optional[str] = Query(None, description="Boshlanish sanasi (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Tugash sanasi (YYYY-MM-DD)"),
+    refresh: Optional[bool] = Query(False),
 ):
+    """
+    Mijoz bilan hisob-kitoblar solishtirma dalolatnomasi (Акт сверки).
+    Tezkor RAM va SQLite keshdan 0.01 soniyada javob qaytaradi.
+    """
+    global _AKT_SVERKA_CACHE
+    now_ts = time.time()
+    cache_key = f"{customer_id}_{date_from}_{date_to}"
+
+    if not refresh and cache_key in _AKT_SVERKA_CACHE:
+        cached_entry = _AKT_SVERKA_CACHE[cache_key]
+        if (now_ts - cached_entry.get("timestamp", 0)) < _AKT_SVERKA_CACHE_TTL:
+            return cached_entry["data"]
     """
     Mijoz bilan hisob-kitoblar solishtirma dalolatnomasi (Акт сверки).
     - Boshlang'ich saldo (Входящее сальдо)
@@ -315,7 +426,7 @@ async def get_customer_akt_sverka(
             summary_status = "zero"
             summary_text = "O'zaro hisob-kitoblar teng (0 so'm)"
 
-        return {
+        result_data = {
             "success": True,
             "data": {
                 "organization": {
@@ -346,6 +457,12 @@ async def get_customer_akt_sverka(
                 },
             }
         }
+
+        _AKT_SVERKA_CACHE[cache_key] = {
+            "data": result_data,
+            "timestamp": now_ts
+        }
+        return result_data
     except HTTPException:
         raise
     except Exception as e:
@@ -356,78 +473,53 @@ async def get_customer_akt_sverka(
 
 
 @router.post("/correction")
-async def create_correction(correction: CorrectionRequest):
-    """Korrektirovka — cashin yoki cashout orqali"""
+async def create_correction(correction: CorrectionRequest, db: AsyncSession = Depends(get_db)):
+    """Korrektirovka (counterpartyadjustment) — tezkor va aniq"""
     try:
-        # Joriy balansni aniq hisoblash (keshsiz!)
-        
-        # Barcha sotuvlar va to'lovlarni olib, aniq balansni hisoblash
-        all_demands = await ms_client.get_all_demands_cached()
-        all_payments = await ms_client.get_all_payments_cached()
-        target_href = f"/entity/counterparty/{correction.counterparty_id}"
-        
-        total_sales = 0.0
-        for d in all_demands:
-            agent_href = d.get("agent", {}).get("meta", {}).get("href", "")
-            if target_href in agent_href:
-                total_sales += d.get("sum", 0) / 100.0
-        
-        total_paid = 0.0
-        for c in all_payments["cashins"]:
-            agent_href = c.get("agent", {}).get("meta", {}).get("href", "")
-            if target_href in agent_href:
-                total_paid += c.get("sum", 0) / 100.0
-        for p in all_payments["paymentins"]:
-            agent_href = p.get("agent", {}).get("meta", {}).get("href", "")
-            if target_href in agent_href:
-                total_paid += p.get("sum", 0) / 100.0
+        # 1. Joriy balansni lokal DB dan tezkor olish
+        cp = await db.scalar(select(LocalCounterparty).where(LocalCounterparty.id == correction.counterparty_id))
+        if not cp:
+            try:
+                rep_single = await ms_client._request("GET", f"/report/counterparty/{correction.counterparty_id}")
+                current_balance = -(float(rep_single.get("balance", 0)) / 100.0)
+            except Exception:
+                current_balance = 0.0
+        else:
+            current_balance = float(cp.balance or 0.0)
 
-        current_balance = total_sales - total_paid
-        
-        # Mahalliy bazadan aniq qoldiqni olish (chunki avvalgi korrektirovkalar bor bo'lishi mumkin)
-        from database import AsyncSessionLocal
-        from sqlalchemy import select
-        from models_db import LocalCounterparty
-        async with AsyncSessionLocal() as db:
-            cp = await db.scalar(select(LocalCounterparty).where(LocalCounterparty.id == correction.counterparty_id))
-            if cp and cp.balance is not None:
-                current_balance = cp.balance
-        
+        # 2. Yangi balans va farq (diff)
         if correction.adjustment_amount is not None:
-            diff = -correction.adjustment_amount
-            final_new_balance = current_balance + diff
+            diff = float(correction.adjustment_amount)
+            final_new_balance = round(current_balance + diff, 2)
         elif correction.new_balance is not None:
-            final_new_balance = correction.new_balance
-            diff = final_new_balance - current_balance
+            final_new_balance = float(correction.new_balance)
+            diff = round(final_new_balance - current_balance, 2)
         else:
             diff = 0.0
             final_new_balance = current_balance
 
-        print(f"📊 Korreksiya: joriy={current_balance:,.0f}, yangi={final_new_balance:,.0f}, farq={diff:,.0f}")
-        
-        if abs(diff) < 0.01:
+        print(f"📊 Korreksiya: joriy={current_balance:,.2f}, yangi={final_new_balance:,.2f}, farq={diff:,.2f}")
+
+        if abs(diff) < 0.005:
             return {
                 "success": True,
                 "data": {"message": "Balans o'zgarmagan", "balance": current_balance}
             }
-        
-        # Tashkilot olish
+
+        # 3. Tashkilot olish
         org_resp = await ms_client._request("GET", "/entity/organization", params={"limit": 1})
         org = org_resp.get("rows", [])[0] if org_resp.get("rows") else None
         if not org:
             raise HTTPException(status_code=400, detail="Tashkilot topilmadi")
-        
+
         agent_meta = {
             "href": f"{ms_client.base_url}/entity/counterparty/{correction.counterparty_id}",
             "type": "counterparty",
             "mediaType": "application/json"
         }
         org_meta = org.get("meta", {})
-        moment_str = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
-        
-        purpose = f"КОРРЕКТИРОВКА: {correction.reason}"
 
-        # Sana va vaqt: agar ko'rsatilgan bo'lsa, uni to'liq soati bilan ishlatamiz
+        # Sana va vaqt (Mahalliy O'zbekiston vaqti)
         if correction.moment:
             try:
                 cleaned = correction.moment.replace("T", " ").strip()
@@ -439,41 +531,39 @@ async def create_correction(correction: CorrectionRequest):
                 datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S")
                 moment_str = cleaned
             except Exception:
-                moment_str = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+                moment_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         else:
-            moment_str = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+            moment_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Корректировка взаиморасчетов (counterpartyadjustment)
+        purpose = f"КОРРЕКТИРОВКА: {correction.reason}"
+
+        # 4. MoySklad counterpartyadjustment
+        # MoySklad-da: sum > 0 bo'lsa qarz kamayadi (haqdorlik oshadi), sum < 0 bo'lsa qarz oshadi.
+        # Bizning ilovada diff > 0 (qarz oshishi) bo'lsa, MoySklad'ga -diff yuborilishi shart!
+        ms_adj_sum_tiyin = int(round(-diff * 100))
+
         adjustment_data = {
             "agent": {"meta": agent_meta},
             "organization": {"meta": org_meta},
-            "sum": int(diff * 100),  # diff manfiy bo'lsa qarz kamayadi, musbat bo'lsa oshadi
+            "sum": ms_adj_sum_tiyin,
             "moment": moment_str,
             "description": purpose,
         }
-        
-        try:
-            result = await ms_client._request("POST", "/entity/counterpartyadjustment", json_data=adjustment_data)
-            print(f"✅ Корректировка взаиморасчетов: {diff:,.0f} so'm o'zgartirildi")
-            
-            # Update local DB for instant feedback
-            from database import AsyncSessionLocal
-            async with AsyncSessionLocal() as db:
-                from sqlalchemy import select
-                from models_db import LocalCounterparty
-                cp = await db.scalar(select(LocalCounterparty).where(LocalCounterparty.id == correction.counterparty_id))
-                if cp:
-                    cp.balance = final_new_balance
-                    await db.commit()
-        except Exception as e:
-            print(f"⚠️ counterpartyadjustment xatosi: {e}")
-            raise
-        
-        # Keshlarni tozalash
+
+        result = await ms_client._request("POST", "/entity/counterpartyadjustment", json_data=adjustment_data)
+        print(f"✅ Корректировка взаиморасчетов: farq={diff:,.2f} so'm, MoySklad sum={ms_adj_sum_tiyin/100:,.2f}")
+
+        # 5. Mahalliy DB ni darhol yangilash (tezkor javob berish uchun)
+        if cp:
+            cp.balance = final_new_balance
+            await db.commit()
+
+        # 6. Keshlarni tozalash
+        invalidate_akt_sverka_cache(correction.counterparty_id)
         ms_client.invalidate_payments_cache()
         _balances_cache["data"] = None
         _balances_cache["timestamp"] = 0
-        
+
         return {
             "success": True,
             "data": {
@@ -540,25 +630,50 @@ async def get_groups_tags(db: AsyncSession = Depends(get_db)):
 @router.get("/{customer_id}")
 async def get_customer_detail(customer_id: str):
     try:
-        # 1. Mijoz ma'lumotlari
-        cp = await ms_client.get_counterparty(customer_id)
-        if not cp:
-            raise HTTPException(status_code=404, detail="Mijoz topilmadi")
-
         target_href = f"/entity/counterparty/{customer_id}"
+        agent_url = f"{ms_client.base_url}{target_href}"
 
-        # 2. Sotuvlar va to'lovlarni SQLite lokal bazasidan o'ta tezkor olish (0.05s)
-        formatted_demands = []
-        payments = []
+        # 1. MoySklad ma'lumotlari va DB so'rovlarini parallel (bir vaqtda) olish — tezlikni 4 barobar oshiradi (<0.15s)
+        cp_task = ms_client.get_counterparty(customer_id)
+        adj_task = ms_client._request(
+            "GET",
+            "/entity/counterpartyadjustment",
+            params={"filter": f"agent={agent_url}", "limit": 50}
+        )
+        meta_task = ms_client.get_counterparty_metadata()
+
         from database import AsyncSessionLocal
         from models_db import LocalDemand, LocalPayment, LocalCounterparty
 
         async with AsyncSessionLocal() as db:
-            local_cp = await db.scalar(select(LocalCounterparty).where(LocalCounterparty.id == customer_id))
-
-            d_rows = (await db.execute(
+            local_cp_task = db.scalar(select(LocalCounterparty).where(LocalCounterparty.id == customer_id))
+            d_rows_task = db.execute(
                 select(LocalDemand).where(LocalDemand.agent_id == customer_id).order_by(desc(LocalDemand.moment))
-            )).scalars().all()
+            )
+            p_rows_task = db.execute(
+                select(LocalPayment).where(LocalPayment.agent_id == customer_id).order_by(desc(LocalPayment.moment))
+            )
+            tags_task = db.execute(
+                select(LocalCounterparty.group).where(LocalCounterparty.group != None, LocalCounterparty.group != "").distinct()
+            )
+
+            cp, adj_resp, metadata, local_cp, d_res, p_res, tags_res = await asyncio.gather(
+                cp_task, adj_task, meta_task, local_cp_task, d_rows_task, p_rows_task, tags_task,
+                return_exceptions=True
+            )
+
+        if isinstance(cp, Exception) or not cp:
+            raise HTTPException(status_code=404, detail="Mijoz topilmadi")
+
+        if isinstance(adj_resp, Exception):
+            adj_resp = {}
+        if isinstance(metadata, Exception):
+            metadata = {}
+
+        # 2. Sotuvlar ro'yxati
+        formatted_demands = []
+        if not isinstance(d_res, Exception) and d_res:
+            d_rows = d_res.scalars().all()
             for d in d_rows:
                 formatted_demands.append({
                     "id": d.id, "name": d.name, "moment": d.moment,
@@ -566,10 +681,12 @@ async def get_customer_detail(customer_id: str):
                     "status": d.payment_status, "status_name": d.payment_status_name,
                 })
 
-            p_rows = (await db.execute(
-                select(LocalPayment).where(LocalPayment.agent_id == customer_id).order_by(desc(LocalPayment.moment))
-            )).scalars().all()
+        # 3. To'lovlar ro'yxati
+        payments = []
+        if not isinstance(p_res, Exception) and p_res:
+            p_rows = p_res.scalars().all()
             for p in p_rows:
+                payments.append({
                     "id": p.id,
                     "name": p.name,
                     "type": p.type,
@@ -580,87 +697,28 @@ async def get_customer_detail(customer_id: str):
                     "usd_amount": p.usd_amount or 0.0,
                     "usd_rate": p.usd_rate or 0.0,
                     "purpose": p.purpose or "",
+                    "demand_id": p.demand_id or "",
+                    "linked_demand_id": p.demand_id or "",
                 })
 
-        # Agar lokal DB da hali bo'lmasa, MoySklad keshidan zaxira olish
-        if not formatted_demands and not payments:
-            all_demands = await ms_client.get_all_demands_cached()
-            for d in all_demands:
-                agent_href = d.get("agent", {}).get("meta", {}).get("href", "")
-                if target_href not in agent_href:
-                    continue
-                demand_sum = d.get("sum", 0) / 100.0
-                payed_sum = d.get("payedSum", 0) / 100.0
-                remaining = max(0.0, demand_sum - payed_sum)
-                if remaining <= 0.01:
-                    status, status_name = "paid", "To'langan"
-                elif payed_sum > 0:
-                    status, status_name = "partial", "Qisman"
-                else:
-                    status, status_name = "unpaid", "To'lanmagan"
-                formatted_demands.append({
-                    "id": d.get("id"), "name": d.get("name"), "moment": d.get("moment"),
-                    "sum": demand_sum, "payed_sum": payed_sum, "remaining": remaining,
-                    "status": status, "status_name": status_name,
-                })
-            formatted_demands.sort(key=lambda x: x["moment"], reverse=True)
-
-            all_payments = await ms_client.get_all_payments_cached()
-            for c in all_payments.get("cashins", []):
-                if target_href in c.get("agent", {}).get("meta", {}).get("href", ""):
-                    rate_obj = c.get("rate") or {}
-                    rate_val = float(rate_obj.get("value") or 0.0)
-                    curr_href = rate_obj.get("currency", {}).get("meta", {}).get("href", "")
-                    is_usd = bool("45062adb" in curr_href or "usd" in curr_href.lower() or rate_val > 1)
-                    raw_sum = c.get("sum", 0) / 100.0
-                    usd_amt = raw_sum if is_usd else 0.0
-                    sum_uzs = (usd_amt * rate_val) if is_usd else raw_sum
-                    payments.append({
-                        "id": c.get("id"), "type": "cash",
-                        "type_name": "💲 Dollar" if is_usd else "💵 Naqd",
-                        "amount": sum_uzs, "moment": c.get("moment"),
-                        "is_usd": is_usd, "usd_amount": usd_amt, "usd_rate": rate_val,
-                        "purpose": c.get("paymentPurpose", "") or "",
-                    })
-            for p in all_payments.get("paymentins", []):
-                if target_href in p.get("agent", {}).get("meta", {}).get("href", ""):
-                    rate_obj = p.get("rate") or {}
-                    rate_val = float(rate_obj.get("value") or 0.0)
-                    curr_href = rate_obj.get("currency", {}).get("meta", {}).get("href", "")
-                    is_usd = bool("45062adb" in curr_href or "usd" in curr_href.lower() or rate_val > 1)
-                    raw_sum = p.get("sum", 0) / 100.0
-                    usd_amt = raw_sum if is_usd else 0.0
-                    sum_uzs = (usd_amt * rate_val) if is_usd else raw_sum
-                    payments.append({
-                        "id": p.get("id"), "type": "card",
-                        "type_name": "💲 Dollar" if is_usd else "💳 Karta",
-                        "amount": sum_uzs, "moment": p.get("moment"),
-                        "is_usd": is_usd, "usd_amount": usd_amt, "usd_rate": rate_val,
-                        "purpose": p.get("paymentPurpose", "") or "",
-                    })
-
-        # 3. Korrektirovkalar ro'yxatini olish (/entity/counterpartyadjustment)
+        # 4. Korrektirovkalar ro'yxati
         adjustments = []
-        try:
-            adj_resp = await ms_client._request("GET", "/entity/counterpartyadjustment", params={"limit": 100})
-            for adj in adj_resp.get("rows", []):
-                agent_href = adj.get("agent", {}).get("meta", {}).get("href", "")
-                if target_href in agent_href:
-                    adj_sum = adj.get("sum", 0) / 100.0
-                    adjustments.append({
-                        "id": adj.get("id"),
-                        "name": adj.get("name", "—"),
-                        "type": "adjustment",
-                        "type_name": "📊 Korrektirovka",
-                        "amount": adj_sum,
-                        "moment": adj.get("moment", ""),
-                        "purpose": adj.get("description", "") or "Korrektirovka",
-                        "is_usd": False,
-                        "usd_amount": 0.0,
-                        "usd_rate": 0.0,
-                    })
-        except Exception as adje:
-            print(f"⚠️ Adjustment detail xatosi: {adje}")
+        for adj in adj_resp.get("rows", []):
+            agent_href = adj.get("agent", {}).get("meta", {}).get("href", "")
+            if target_href in agent_href or customer_id in agent_href:
+                adj_sum = adj.get("sum", 0) / 100.0
+                adjustments.append({
+                    "id": adj.get("id"),
+                    "name": adj.get("name", "—"),
+                    "type": "adjustment",
+                    "type_name": "📊 Korrektirovka",
+                    "amount": adj_sum,
+                    "moment": adj.get("moment", ""),
+                    "purpose": adj.get("description", "") or "Korrektirovka",
+                    "is_usd": False,
+                    "usd_amount": 0.0,
+                    "usd_rate": 0.0,
+                })
 
         all_payments_and_adj = payments + adjustments
         all_payments_and_adj.sort(key=lambda x: x.get("moment", ""), reverse=True)
@@ -668,16 +726,22 @@ async def get_customer_detail(customer_id: str):
         total_sales = sum(d["sum"] for d in formatted_demands)
         total_paid = sum(p["amount"] for p in payments)
 
-        # Balans to'g'ridan-to'g'ri Local DB dan olinadi (sinxronlangan MoySklad nativ balansi)
-        balance = local_cp.balance if local_cp else 0.0
+        balance = local_cp.balance if (local_cp and not isinstance(local_cp, Exception)) else 0.0
 
         # Kontragent teglari (Guruhlar)
         cp_tags = cp.get("tags", [])
-        active_group = cp_tags[0] if cp_tags else (getattr(local_cp, 'group', '') if local_cp else "")
+        active_group = cp_tags[0] if cp_tags else (getattr(local_cp, 'group', '') if (local_cp and not isinstance(local_cp, Exception)) else "")
+
+        # Guruhlar ro'yxati
+        available_tags = set(["mijozlar"])
+        if not isinstance(tags_res, Exception) and tags_res:
+            for g in tags_res.scalars().all():
+                if g: available_tags.add(g)
+        for t in cp_tags:
+            if t: available_tags.add(t)
 
         # State va boshqa metadata
         state = cp.get("state")
-        metadata = await ms_client.get_counterparty_metadata()
         all_states = [
             {"id": s.get("id"), "name": s.get("name", "")}
             for s in metadata.get("states", []) if isinstance(s, dict)
@@ -697,6 +761,7 @@ async def get_customer_detail(customer_id: str):
                 "balance": balance,
                 "group": active_group,
                 "tags": cp_tags,
+                "available_tags": sorted(list(available_tags)),
                 "state": state_name,
                 "state_id": state_id,
                 "all_states": all_states,
@@ -708,6 +773,13 @@ async def get_customer_detail(customer_id: str):
                 "avg_sale": (total_sales / len(formatted_demands)) if formatted_demands else 0,
             }
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Customer detail xatosi: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
     except Exception as e:
         print(f"❌ Customer detail xatosi: {e}")

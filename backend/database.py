@@ -42,6 +42,9 @@ async def init_db():
         async with engine.begin() as conn:
             await conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             await conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
+            await conn.exec_driver_sql("PRAGMA cache_size=-64000;")
+            await conn.exec_driver_sql("PRAGMA temp_store=MEMORY;")
+            await conn.exec_driver_sql("PRAGMA mmap_size=268435456;")
             await conn.run_sync(Base.metadata.create_all)
             try:
                 await conn.exec_driver_sql("ALTER TABLE local_counterparties ADD COLUMN \"group\" VARCHAR(100) DEFAULT '';")
