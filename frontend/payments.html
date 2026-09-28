@@ -554,16 +554,16 @@
         .quick-pay-drawer {
             position: fixed;
             top: 0;
-            right: -600px;
+            right: -1150px;
             bottom: 0;
-            width: 540px;
-            max-width: 95vw;
+            width: 1080px;
+            max-width: 96vw;
             background: var(--card, #ffffff);
-            box-shadow: -10px 0 35px rgba(0, 0, 0, 0.2);
+            box-shadow: -16px 0 50px rgba(0, 0, 0, 0.28);
             z-index: 9999;
             display: flex;
             flex-direction: column;
-            transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: right 0.32s cubic-bezier(0.16, 1, 0.3, 1);
             overflow: hidden;
         }
         .quick-pay-drawer.active {
@@ -649,13 +649,16 @@
         .drawer-section {
             display: none;
         }
-        .drawer-section.active {
-            display: block;
-            animation: drawerFade 0.2s ease;
+        .drawer-2col-grid {
+            display: grid;
+            grid-template-columns: 460px 1fr;
+            gap: 22px;
+            align-items: start;
         }
-        @keyframes drawerFade {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
+        @media (max-width: 980px) {
+            .drawer-2col-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .drawer-suggest-box {

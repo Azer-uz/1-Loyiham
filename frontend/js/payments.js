@@ -1549,6 +1549,54 @@ function highlightActiveExpenseChip(itemId) {
     });
 }
 
+function setDrawerExpenseType(type) {
+    currentDrawerExpenseType = type;
+    const btnCash = document.getElementById('drawerExpTypeCash');
+    const btnCard = document.getElementById('drawerExpTypeCard');
+    const btnUsd = document.getElementById('drawerExpTypeUsd');
+    if (btnCash) btnCash.classList.toggle('active', type === 'cash');
+    if (btnCard) btnCard.classList.toggle('active', type === 'card');
+    if (btnUsd) btnUsd.classList.toggle('active', type === 'usd');
+
+    const accGroup = document.getElementById('drawerExpAccountGroup');
+    const accSelect = document.getElementById('drawerExpAccountSelect');
+    if (!accSelect) return;
+
+    if (type === 'cash') {
+        if (accGroup) accGroup.style.display = 'none';
+        const cashAccs = orgAccounts.filter(a => a.type === 'cash' || (!a.is_dollar && a.currency === 'UZS' && (a.name || '').toLowerCase().includes('naqd')));
+        const displayAccs = cashAccs.length > 0 ? cashAccs : [{ id: 'cash_default', name: '💵 Asosiy Naqd Kassa (UZS)' }];
+        accSelect.innerHTML = displayAccs.map(a => `<option value="${a.id}">💵 ${a.name}</option>`).join('');
+        accSelect.value = displayAccs[0].id;
+    } else if (type === 'card') {
+        if (accGroup) accGroup.style.display = 'block';
+        const cardAccs = getCardAccountsList();
+        const displayAccs = cardAccs.length > 0 ? cardAccs : orgAccounts.filter(a => a.type !== 'cash' && !a.is_dollar);
+        accSelect.innerHTML = displayAccs.map(a => `<option value="${a.id}">💳 ${a.name}</option>`).join('');
+        if (displayAccs.length > 0) accSelect.value = displayAccs[0].id;
+    } else if (type === 'usd') {
+        if (accGroup) accGroup.style.display = 'block';
+        const usdAccs = getDollarAccountsList();
+        const displayAccs = usdAccs.length > 0 ? usdAccs : orgAccounts.filter(a => a.is_dollar || a.currency === 'USD');
+        accSelect.innerHTML = displayAccs.map(a => `<option value="${a.id}">💲 ${a.name}</option>`).join('');
+        if (displayAccs.length > 0) accSelect.value = displayAccs[0].id;
+    }
+    updateDrawerExpUsdPreview();
+}
+
+function updateDrawerExpUsdPreview() {
+    const amt = parseAmount(document.getElementById('drawerExpAmount')?.value);
+    const rate = window.currentUSDRate || 12800;
+    const previewEl = document.getElementById('drawerExpUsdPreview');
+    if (!previewEl) return;
+
+    if (currentDrawerExpenseType === 'usd') {
+        previewEl.textContent = `~ ${formatMoney(amt * rate)} so'm (kurs: ${formatNumber(rate)})`;
+    } else {
+        previewEl.textContent = `~ $${(amt / rate).toFixed(2)} USD (kurs: ${formatNumber(rate)})`;
+    }
+}
+
 // --- Customer Search in Drawer ---
 function showDrawerCustList() {
     const box = document.getElementById('drawerCustSuggestionsList');

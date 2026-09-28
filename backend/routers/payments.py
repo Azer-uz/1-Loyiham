@@ -994,6 +994,34 @@ async def create_expense(expense: ExpenseCreateRequest):
             }
             res = await ms_client.create_cashout(cashout_data)
             print(f"💸 Naqd xarajat yaratildi: {expense.amount:,.0f} so'm ({purpose})")
+        elif expense.payment_type == "usd":
+            usd_curr_meta = await ms_client.get_usd_currency_meta()
+            rate_val = await ms_client.get_usd_rate() or 12800.0
+            paymentout_data = {
+                "organization": {"meta": org_meta},
+                "sum": int(round(expense.amount * 100)),
+                "moment": moment_str,
+                "paymentPurpose": f"{purpose} (${expense.amount:,.2f} USD)",
+                "expenseItem": {"meta": expense_item_meta},
+            }
+            if usd_curr_meta:
+                paymentout_data["rate"] = {
+                    "currency": {"meta": usd_curr_meta},
+                    "value": float(rate_val)
+                }
+            if expense.account_id and expense.account_id not in ["cash_default", ""] and org.get("id"):
+                account_href = f"{ms_client.base_url}/entity/organization/{org.get('id')}/accounts/{expense.account_id}"
+                acc_meta_obj = {
+                    "meta": {
+                        "href": account_href,
+                        "type": "account",
+                        "mediaType": "application/json",
+                    }
+                }
+                paymentout_data["account"] = acc_meta_obj
+                paymentout_data["organizationAccount"] = acc_meta_obj
+            res = await ms_client.create_paymentout(paymentout_data)
+            print(f"💲 Dollar xarajati: ${expense.amount:,.2f} USD ({purpose})")
         else:
             paymentout_data = {
                 "organization": {"meta": org_meta},
@@ -1002,7 +1030,7 @@ async def create_expense(expense: ExpenseCreateRequest):
                 "paymentPurpose": purpose,
                 "expenseItem": {"meta": expense_item_meta},
             }
-            if expense.account_id and expense.account_id != "cash_default" and org.get("id"):
+            if expense.account_id and expense.account_id not in ["cash_default", ""] and org.get("id"):
                 account_href = f"{ms_client.base_url}/entity/organization/{org.get('id')}/accounts/{expense.account_id}"
                 acc_meta_obj = {
                     "meta": {
