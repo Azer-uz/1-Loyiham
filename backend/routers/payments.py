@@ -1444,6 +1444,7 @@ async def get_cashflow(
         total_uzs_balance = acc_data.get("total_uzs_balance", 0.0)
         total_usd_balance = acc_data.get("total_usd_balance", 0.0)
         consolidated_uzs = acc_data.get("consolidated_uzs_equivalent", 0.0)
+        ref_rate = acc_data.get("reference_rate", 12800.0)
 
         _CASHFLOW_RAW_CACHE = {
             "all_tx": all_tx,
