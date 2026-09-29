@@ -1437,81 +1437,13 @@ async def get_cashflow(
         except Exception as e:
             print(f"[Accounts fetch in cashflow error] {e}")
 
-        from routers.settings import load_settings
-        settings_data = load_settings()
-        corrections = settings_data.get("corrections", {})
-        ref_rate = settings_data.get("reference_usd_rate", 12800.0)
-
-        account_balances = []
-
-        # 1. Asosiy naqd kassa
-        c_in = sum(t["amount"] for t in all_tx if t["account_id"] == "cash_default" and t["direction"] == "in")
-        c_out = sum(t["amount"] for t in all_tx if t["account_id"] == "cash_default" and t["direction"] == "out")
-        c_bal_raw = c_in - c_out
-        c_corr = corrections.get("cash_default")
-        c_bal = float(c_corr["adjusted_balance"]) if (c_corr and "adjusted_balance" in c_corr) else c_bal_raw
-
-        account_balances.append({
-            "id": "cash_default",
-            "name": "💵 Asosiy Naqd Kassa (UZS)",
-            "raw_name": "Asosiy Naqd Kassa",
-            "accountnumber": "KASSA-UZS",
-            "type": "cash",
-            "currency": "UZS",
-            "is_dollar": False,
-            "inflow": c_in,
-            "outflow": c_out,
-            "balance": c_bal,
-            "raw_balance": c_bal_raw,
-            "has_correction": bool(c_corr and "adjusted_balance" in c_corr),
-            "correction": c_corr,
-        })
-
-        total_uzs_balance = c_bal
-        total_usd_balance = 0.0
-
-        # 2. Har bir bank va valyuta hisob raqami
-        for a in org_accs:
-            a_id = a.get("id")
-            a_name = a.get("name") or a.get("accountnumber") or "Bank hisobi"
-            a_num = a.get("accountnumber", "")
-            is_dol = "dollar" in (a_name + " " + a_num).lower()
-
-            a_in = sum(t["amount"] for t in all_tx if t.get("account_id") == a_id and t["direction"] == "in")
-            a_out = sum(t["amount"] for t in all_tx if t.get("account_id") == a_id and t["direction"] == "out")
-            a_bal_raw = a_in - a_out
-
-            a_corr = corrections.get(a_id)
-            if a_corr and "adjusted_balance" in a_corr:
-                final_bal = float(a_corr["adjusted_balance"])
-                has_corr = True
-            else:
-                final_bal = a_bal_raw
-                has_corr = False
-
-            if is_dol:
-                total_usd_balance += final_bal
-            else:
-                total_uzs_balance += final_bal
-
-            account_balances.append({
-                "id": a_id,
-                "name": f"{'💵' if is_dol else '🏦'} {a_name}",
-                "raw_name": a_name,
-                "accountnumber": a_num,
-                "type": "dollar" if is_dol else "bank",
-                "currency": "USD" if is_dol else "UZS",
-                "is_dollar": is_dol,
-                "is_default": a.get("isDefault", False),
-                "inflow": a_in,
-                "outflow": a_out,
-                "balance": final_bal,
-                "raw_balance": a_bal_raw,
-                "has_correction": has_corr,
-                "correction": a_corr,
-            })
-
-        consolidated_uzs = total_uzs_balance + (total_usd_balance * ref_rate)
+        from routers.settings import load_settings, get_accounts_with_corrections
+        acc_resp = await get_accounts_with_corrections()
+        acc_data = acc_resp.get("data", {}) if isinstance(acc_resp, dict) else {}
+        account_balances = acc_data.get("accounts", [])
+        total_uzs_balance = acc_data.get("total_uzs_balance", 0.0)
+        total_usd_balance = acc_data.get("total_usd_balance", 0.0)
+        consolidated_uzs = acc_data.get("consolidated_uzs_equivalent", 0.0)
 
         _CASHFLOW_RAW_CACHE = {
             "all_tx": all_tx,

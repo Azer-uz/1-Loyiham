@@ -720,12 +720,32 @@ function formatDual(amountUzs, customRate) {
     return `${uzsStr} <span class="usd-badge" style="font-size:0.85em; opacity:0.85; font-weight:600; color:#16a34a; background:rgba(22,163,74,0.08); padding:2px 6px; border-radius:4px; margin-left:4px;">(${usdStr})</span>`;
 }
 
+// ================= SANA VA VAQTNI FORMATLASH (MOYSKLAD UTC+3 -> TOSHKENT UTC+5 SINXRON) =================
+function parseMoySkladDate(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date) return dateStr;
+    try {
+        let clean = String(dateStr).trim().replace(' ', 'T');
+        // MoySklad serveri vaqti Moskva (UTC+3) da beriladi. Timezone bo'lmasa +03:00 qo'shamiz
+        if (!clean.includes('+') && !clean.endsWith('Z')) {
+            clean += '+03:00';
+        }
+        const d = new Date(clean);
+        return isNaN(d.getTime()) ? new Date(dateStr) : d;
+    } catch {
+        return new Date(dateStr);
+    }
+}
+
 function formatDate(dateStr) {
     if (!dateStr) return "—";
     try {
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr;
-        return d.toLocaleDateString('uz-UZ') + " " + d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+        const d = parseMoySkladDate(dateStr);
+        if (!d || isNaN(d.getTime())) return dateStr;
+        // O'zbekiston (Toshkent) vaqtida 24 soatlik aniq format
+        const datePart = d.toLocaleDateString('uz-UZ', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tashkent' });
+        const timePart = d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tashkent' });
+        return `${datePart} ${timePart}`;
     } catch {
         return dateStr;
     }

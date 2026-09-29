@@ -204,17 +204,10 @@ async function loadDashboardAccountsSummary() {
         const heroCons = document.getElementById('heroConsolidatedBalance');
         if (heroCons) heroCons.textContent = formatMoney(totalUzsEq);
 
-        const heroUzs = document.getElementById('heroUzsBalance');
-        if (heroUzs) heroUzs.textContent = formatMoney(totalUzs);
-
-        const heroUsd = document.getElementById('heroUsdBalance');
-        if (heroUsd) heroUsd.textContent = `$${formatNumber(totalUsd)}`;
-
         const heroRef = document.getElementById('heroRefRateText');
         if (heroRef) heroRef.textContent = `(@ ${formatNumber(refRate)})`;
 
         // 2. Naqd, Karta, Dollar alohida ko'rsatish
-        // Naqd = cash tipidagi hisoblar
         const cashAccs = accounts.filter(a => a.type === 'cash' || (!a.is_dollar && (a.id || '').includes('cash')));
         const bankAccs = accounts.filter(a => !a.is_dollar && a.type !== 'cash' && !(a.id || '').includes('cash'));
         const usdAccs = accounts.filter(a => a.is_dollar);
@@ -230,30 +223,6 @@ async function loadDashboardAccountsSummary() {
 
         const heroUsd = document.getElementById('heroUsdBalance');
         if (heroUsd) heroUsd.textContent = `$${formatNumber(totalUsd)}`;
-
-        // 2. Kartochkaning o'z ichida ochiladigan 6 ta hisob ro'yxati (Dinamik moslashuvchan)
-        const cardListEl = document.getElementById('cardAccountsList');
-        if (cardListEl) {
-            if (accounts.length === 0) {
-                cardListEl.innerHTML = '<div style="text-align:center; padding:10px; color:#94a3b8; font-size:12px;">Hisoblar topilmadi</div>';
-            } else {
-                cardListEl.innerHTML = accounts.map(acc => {
-                    const isDollar = acc.is_dollar;
-                    const icon = isDollar ? '💲' : (acc.type === 'cash' || acc.id.includes('cash') ? '💵' : '💳');
-                    const balanceText = isDollar ? `$${formatNumber(acc.current_balance)}` : formatMoney(acc.current_balance);
-                    const name = acc.name || acc.raw_name || 'Hisob';
-                    return `
-                        <div class="va-card-acc-row">
-                            <span class="va-card-acc-name">
-                                <span>${icon}</span>
-                                <span>${name}</span>
-                            </span>
-                            <span class="va-card-acc-val ${isDollar ? 'usd' : ''}">${balanceText}</span>
-                        </div>
-                    `;
-                }).join('');
-            }
-        }
 
         // 3. Drawer Total Box
         const drawerTotal = document.getElementById('drawerTotalUzsEq');

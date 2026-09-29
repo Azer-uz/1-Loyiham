@@ -279,7 +279,7 @@ def invalidate_accounts_cache():
 # ===== HISOBLAR BALANSI VA KORREKTIROVKA API =====
 @router.get("/accounts")
 async def get_accounts_with_corrections():
-    """Barcha hisoblarning asl valyutasidagi qoldiqlari va korrektirovkalari — cashflow dan to'g'ridan-to'g'ri oladi"""
+    """Barcha hisoblarning asl valyutasidagi qoldiqlari va korrektirovkalari — MoySklad /report/money/byaccount orqali 100% to'g'ri oladi"""
     global _ACCOUNTS_CACHE, _ACCOUNTS_CACHE_TIME
     now = time.time()
     if _ACCOUNTS_CACHE is not None and (now - _ACCOUNTS_CACHE_TIME) < _ACCOUNTS_CACHE_TTL:
@@ -287,44 +287,76 @@ async def get_accounts_with_corrections():
 
     settings = load_settings()
     ref_rate = settings.get("reference_usd_rate", 12800.0)
+    corrections = settings.get("corrections", {})
 
-    # Cashflow dan to'liq hisoblar balansini olish
-    from routers.payments import get_cashflow
-    try:
-        cf_resp = await asyncio.wait_for(get_cashflow(), timeout=5.0)
-        summary = cf_resp.get("data", {}).get("summary", {})
-        account_balances = summary.get("account_balances", [])
-        total_uzs_balance = summary.get("total_uzs_balance", 0.0)
-        total_usd_balance = summary.get("total_usd_balance", 0.0)
-        consolidated_uzs = summary.get("consolidated_uzs_equivalent", 0.0)
-    except Exception as e:
-        print(f"[Accounts from cashflow error] {e}")
-        account_balances = []
-        total_uzs_balance = 0.0
-        total_usd_balance = 0.0
-        consolidated_uzs = 0.0
+    from moysklad_client import ms_client
 
-    # Cashflow dan kelgan balanslarni to'g'ridan-to'g'ri qaytarish
     adjusted_accounts = []
-    for acc in account_balances:
-        adjusted_accounts.append({
-            "id": acc.get("id"),
-            "name": acc.get("name"),
-            "raw_name": acc.get("raw_name"),
-            "accountnumber": acc.get("accountnumber"),
-            "type": acc.get("type"),
-            "currency": acc.get("currency", "UZS"),
-            "is_dollar": acc.get("is_dollar", False),
-            "current_balance": acc.get("balance", 0.0),
-            "raw_balance": acc.get("raw_balance", 0.0),
-            "has_correction": acc.get("has_correction", False),
-            "correction": acc.get("correction"),
-        })
+    total_uzs_balance = 0.0
+    total_usd_balance = 0.0
 
-    if not adjusted_accounts:
+    try:
+        report_data = await ms_client._request("GET", "/report/money/byaccount")
+        rows = report_data.get("rows", []) if isinstance(report_data, dict) else []
+
+        for row in rows:
+            acc = row.get("account")
+            # MoySklad da balans tiyinda/kopiykada keladi -> / 100.0
+            raw_bal = float(row.get("balance", 0.0)) / 100.0
+
+            if not acc:
+                # Asosiy Tashkilot Naqd Kassasi
+                acc_id = "cash_default"
+                acc_name = "💵 Asosiy Naqd Kassa"
+                raw_name = "Касса организации"
+                is_dol = False
+                currency = "UZS"
+                acc_type = "cash"
+            else:
+                href = acc.get("meta", {}).get("href", "")
+                acc_id = href.split("/")[-1] if href else "bank_account"
+                raw_name = acc.get("name", "Bank hisobi")
+                is_dol = bool("dollar" in raw_name.lower() or "usd" in raw_name.lower())
+                currency = "USD" if is_dol else "UZS"
+                acc_type = "dollar" if is_dol else "bank"
+                acc_name = f"{'💲' if is_dol else '💳'} {raw_name}"
+
+            # Korrektirovka tekshirish
+            corr = corrections.get(acc_id)
+            if corr and "adjusted_balance" in corr:
+                final_bal = float(corr["adjusted_balance"])
+                has_corr = True
+            else:
+                final_bal = raw_bal
+                has_corr = False
+
+            if is_dol:
+                total_usd_balance += final_bal
+            else:
+                total_uzs_balance += final_bal
+
+            adjusted_accounts.append({
+                "id": acc_id,
+                "name": acc_name,
+                "raw_name": raw_name,
+                "accountnumber": acc.get("accountnumber", "") if acc else "KASSA-UZS",
+                "type": acc_type,
+                "currency": currency,
+                "is_dollar": is_dol,
+                "current_balance": final_bal,
+                "raw_balance": raw_bal,
+                "has_correction": has_corr,
+                "correction": corr,
+            })
+
+    except Exception as e:
+        print(f"[Accounts /report/money/byaccount error] {e}")
+        # Fallback agar MoySklad javob bermasa
         adjusted_accounts = [
             {"id": "cash_default", "name": "💵 Asosiy Naqd Kassa (UZS)", "currency": "UZS", "current_balance": 0.0, "is_dollar": False, "has_correction": False},
         ]
+
+    consolidated_uzs = total_uzs_balance + (total_usd_balance * ref_rate)
 
     res = {
         "success": True,

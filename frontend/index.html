@@ -138,7 +138,7 @@
 
         <!-- VARIANT A: HERO ROW (Hashamatli Kassa Karti + 6 ta Metrika) -->
         <div class="va-hero-container">
-            <!-- 1-Rasmga 100% Mos Hashamatli Ixcham Kassa Karti (Ichki Moslashuvchan Taqsimot Bilan) -->
+            <!-- Variant 1: Hashamatli Ultra-Ixcham Kassa Karti -->
             <div class="va-cash-card" id="vaCashCard">
                 <div class="va-cash-top">
                     <div class="va-cash-title-wrap">
@@ -150,42 +150,35 @@
                     </div>
                     <div class="va-active-badge">
                         <span class="va-pulse-dot"></span>
-                        <span>Active Balance</span>
+                        <span>Active</span>
                     </div>
                 </div>
 
                 <div class="va-cash-middle">
-                    <div class="va-cash-big-num" id="heroConsolidatedBalance" style="font-size:28px;">Yuklanmoqda...</div>
-                    <span style="font-size:11px; color:#94a3b8;" id="heroRefRateText">(@ 12 800)</span>
+                    <div class="va-cash-big-num" id="heroConsolidatedBalance">0 so'm</div>
+                    <span id="heroRefRateText" style="font-size:11.5px; color:#94a3b8; font-weight:600;"></span>
                 </div>
 
-                <div class="va-cash-bottom" style="flex-wrap:wrap; gap:6px;">
-                    <div class="va-cash-subpill" style="padding:4px 10px; font-size:11px;">
+                <div class="va-cash-bottom">
+                    <div class="va-cash-subpill">
                         <span>💵 Naqd:</span>
                         <strong id="heroCashBalance">0</strong>
                     </div>
-                    <div class="va-cash-subpill" style="padding:4px 10px; font-size:11px;">
+                    <div class="va-cash-subpill">
                         <span>💳 Karta:</span>
                         <strong id="heroCardBalance">0</strong>
                     </div>
-                    <div class="va-cash-subpill usd" style="padding:4px 10px; font-size:11px;">
+                    <div class="va-cash-subpill usd">
                         <span>💲 Dollar:</span>
                         <strong id="heroUsdBalance">$0</strong>
                     </div>
                 </div>
 
-                <div style="padding:0 16px 10px 16px;">
-                    <button class="va-btn-breakdown" id="btnToggleAccounts" onclick="toggleCardAccountsBreakdown(event)" style="width:100%; margin-top:6px;">
-                        <span>HISOB TAQSIMOTI</span>
-                        <span id="btnBreakdownChevron" style="font-size:14px; transition: transform 0.25s ease;">▾</span>
+                <div style="margin-top:10px;">
+                    <button class="va-btn-breakdown" id="btnToggleAccounts" onclick="openAccountsDrawer(event)" style="width:100%; padding:8px 12px; font-size:12px; font-weight:700; border-radius:8px; display:flex; justify-content:space-between; align-items:center; background:rgba(0,242,254,0.1); border:1px solid rgba(0,242,254,0.3); color:#00f2fe; cursor:pointer;">
+                        <span>📊 Barcha hisoblar taqsimoti</span>
+                        <span>➔</span>
                     </button>
-                </div>
-
-                <!-- Kartochka ichida ochiladigan barcha hisoblar (scroll bilan, kengaytirmaydi) -->
-                <div class="va-card-accounts-dropdown" id="cardAccountsDropdown" style="max-height:200px; overflow-y:auto;">
-                    <div class="va-card-accounts-list" id="cardAccountsList">
-                        <div style="text-align:center; padding:12px; color:#94a3b8; font-size:12px;">Yuklanmoqda...</div>
-                    </div>
                 </div>
             </div>
 
