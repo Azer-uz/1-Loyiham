@@ -1859,9 +1859,9 @@ function copyReceiptForTelegram() {
         const color = p.color ? ` (${p.color})` : '';
         text += `${idx + 1}. ${code}${p.name}${color}\n`;
         if (hasItemDiscount) {
-            text += `   ${formatNumber(qty)} dona × ~${formatMoney(origUnitPrice)}~ ➔ ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)} so'm (-${pctFormatted})\n`;
+            text += `   ${formatNumber(qty)} dona × ~${formatMoney(origUnitPrice)}~ ➔ ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)} (-${pctFormatted})\n`;
         } else {
-            text += `   ${formatNumber(qty)} dona × ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)} so'm\n`;
+            text += `   ${formatNumber(qty)} dona × ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)}\n`;
         }
     });
 
@@ -1879,19 +1879,19 @@ function copyReceiptForTelegram() {
     }
 
     if (discountAmount > 0 || discountPercent > 0) {
-        text += `💰 Jami summasi: ${formatMoney(sumWithoutDiscount)} so'm\n`;
-        text += `📉 Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}): - ${formatMoney(discountAmount)} so'm\n`;
+        text += `💰 Jami summasi: ${formatMoney(sumWithoutDiscount)}\n`;
+        text += `📉 Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}): - ${formatMoney(discountAmount)}\n`;
     }
     
-    text += `💰 *TO'LOV: ${formatMoney(totalSum)} so'm*\n`;
-    text += `✅ To'landi: ${formatMoney(paidSum)} so'm\n`;
+    text += `💰 *TO'LOV: ${formatMoney(totalSum)}*\n`;
+    text += `✅ To'landi: ${formatMoney(paidSum)}\n`;
     if (remainingSum > 0) {
-        text += `⏳ Qoldiq qarz: ${formatMoney(remainingSum)} so'm\n`;
+        text += `⏳ Qoldiq qarz: ${formatMoney(remainingSum)}\n`;
     }
     if (d.customerBalance !== undefined && d.customerBalance !== null && d.customerBalance !== 0) {
         const debt = Number(d.customerBalance);
-        if (debt > 0) text += `📌 Umumiy hisobdagi qarzi: ${formatMoney(debt)} so'm\n`;
-        else if (debt < 0) text += `📌 Haqdorlik: ${formatMoney(Math.abs(debt))} so'm\n`;
+        if (debt > 0) text += `📌 Umumiy hisobdagi qarzi: ${formatMoney(debt)}\n`;
+        else if (debt < 0) text += `📌 Haqdorlik: ${formatMoney(Math.abs(debt))}\n`;
     }
     text += `━━━━━━━━━━━━━━━━━━━━\n`;
     if (s.phones) text += `📞 ${s.phones}\n`;
@@ -1999,48 +1999,50 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
             }
 
             const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
-            const colorHtml = p.color ? `<br><small style="color:#64748b;">Rang: ${p.color}</small>` : '';
+            const colorHtml = p.color ? p.color : '—';
             
             let priceHtml = `${formatMoney(origUnitPrice)}`;
             if (hasItemDiscount) {
-                priceHtml = `<strike style="color:#94a3b8;font-size:0.9em;">${formatMoney(origUnitPrice)}</strike><br><strong style="color:#b91c1c;">${formatMoney(finalUnitPrice)}</strong><br><small style="color:#b91c1c;">(-${pctFormatted})</small>`;
+                priceHtml = `<strike style="color:#94a3b8;font-size:0.9em;">${formatMoney(origUnitPrice)}</strike><br><strong style="color:#b91c1c;">${formatMoney(finalUnitPrice)} <span style="font-size:0.85em;">(-${pctFormatted})</span></strong>`;
             } else {
                 priceHtml = formatMoney(finalUnitPrice);
             }
 
             return `
                 <tr>
-                    <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${idx + 1}</td>
-                    <td style="padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong>${colorHtml}</td>
-                    <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${formatNumber(qty)}</td>
-                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};">${priceHtml}</td>
-                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${formatMoney(finalItemSum)}</strong></td>
+                    <td style="text-align:center;padding:${isA5 ? '6px 8px' : '8px 10px'};">${idx + 1}</td>
+                    <td style="padding:${isA5 ? '6px 8px' : '8px 10px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong></td>
+                    <td style="text-align:center;padding:${isA5 ? '6px 8px' : '8px 10px'};">${colorHtml}</td>
+                    <td style="text-align:center;padding:${isA5 ? '6px 8px' : '8px 10px'};">${formatNumber(qty)}</td>
+                    <td style="text-align:right;padding:${isA5 ? '6px 8px' : '8px 10px'};">${priceHtml}</td>
+                    <td style="text-align:right;padding:${isA5 ? '6px 8px' : '8px 10px'};"><strong>${formatMoney(finalItemSum)}</strong></td>
                 </tr>
             `;
         }).join('');
 
         printArea.innerHTML = `
-            <div class="print-report-header" style="${isA5 ? 'padding:8px 12px;margin-bottom:10px;' : 'padding:15px;margin-bottom:15px;'}">
+            <div class="print-report-header" style="${isA5 ? 'padding:10px 15px;margin-bottom:12px;' : 'padding:18px 20px;margin-bottom:18px;'}">
                 <div>
-                    <div class="print-report-title" style="${isA5 ? 'font-size:16px;' : 'font-size:22px;'}">🧾 Sotuv Hujjati (Yuk Xati) #${d.name}</div>
-                    <div class="print-report-subtitle" style="${isA5 ? 'font-size:11px;' : 'font-size:13px;'}">
+                    <div class="print-report-title" style="${isA5 ? 'font-size:17px;' : 'font-size:24px;'}">🧾 Sotuv Hujjati (Yuk Xati) #${d.name}</div>
+                    <div class="print-report-subtitle" style="${isA5 ? 'font-size:12px;' : 'font-size:14px;'}">
                         Tashkilot: <strong>${settings.storeName || currentOrgName}</strong> | Sana: ${formatDate(d.moment || new Date())}
                     </div>
                 </div>
                 <div style="text-align:right;">
-                    <div style="font-size:${isA5 ? '12px' : '14px'};font-weight:700;color:#1e3a8a;">Mijoz: ${d.agent_name || 'Noma\'lum'}</div>
-                    <div style="font-size:11px;color:#64748b;">${settings.phones ? `Tel: ${settings.phones}` : ''}</div>
+                    <div style="font-size:${isA5 ? '13px' : '15px'};font-weight:700;color:#1e3a8a;">Mijoz: ${d.agent_name || 'Noma\'lum'}</div>
+                    <div style="font-size:12px;color:#64748b;">${settings.phones ? `Tel: ${settings.phones}` : ''}</div>
                 </div>
             </div>
 
-            <table class="print-table" style="${isA5 ? 'font-size:11px;' : 'font-size:13px;'} width:100%; border-collapse:collapse; margin-bottom:15px;">
+            <table class="print-table" style="${isA5 ? 'font-size:12px;' : 'font-size:14px;'} width:100%; border-collapse:collapse; margin-bottom:15px;">
                 <thead>
                     <tr style="background:#f1f5f9;">
-                        <th style="border:1px solid #cbd5e1;padding:6px;width:30px;text-align:center;">№</th>
-                        <th style="border:1px solid #cbd5e1;padding:6px;text-align:left;">Tovar nomi / Kodi</th>
-                        <th style="border:1px solid #cbd5e1;padding:6px;width:60px;text-align:center;">Soni</th>
-                        <th style="border:1px solid #cbd5e1;padding:6px;width:100px;text-align:right;">Narxi</th>
-                        <th style="border:1px solid #cbd5e1;padding:6px;width:120px;text-align:right;">Jami summa</th>
+                        <th style="border:1px solid #cbd5e1;padding:8px;width:30px;text-align:center;">№</th>
+                        <th style="border:1px solid #cbd5e1;padding:8px;text-align:left;">Tovar nomi / Kodi</th>
+                        <th style="border:1px solid #cbd5e1;padding:8px;width:70px;text-align:center;">Rang</th>
+                        <th style="border:1px solid #cbd5e1;padding:8px;width:60px;text-align:center;">Soni</th>
+                        <th style="border:1px solid #cbd5e1;padding:8px;width:110px;text-align:right;">Narxi</th>
+                        <th style="border:1px solid #cbd5e1;padding:8px;width:130px;text-align:right;">Jami summa</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2048,12 +2050,12 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                 </tbody>
             </table>
 
-            <div style="margin-bottom:10px; font-size:${isA5 ? '11px' : '13px'}; color:#475569;">
+            <div style="margin-bottom:12px; font-size:${isA5 ? '12px' : '14px'}; color:#475569;">
                 Jami tovar: <strong>${formatNumber(totalQuantity)} ta</strong>, Pozitsiya: <strong>${positionsCount} ta</strong>
             </div>
 
             <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
-                <div style="width:${isA5 ? '260px' : '320px'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:10px 14px; font-size:${isA5 ? '11.5px' : '13px'};">
+                <div style="width:${isA5 ? '280px' : '340px'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:12px 16px; font-size:${isA5 ? '12.5px' : '14px'};">
                     ${(() => {
                         let sumWithoutDiscount = totalSum;
                         let discountAmount = 0;
@@ -2065,32 +2067,32 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                             sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
                         }
                         return (discountAmount > 0 || discountPercent > 0) ? `
-                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#475569;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#475569;">
                                 <span>Jami summasi:</span>
                                 <span>${formatMoney(sumWithoutDiscount)}</span>
                             </div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#b91c1c;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#b91c1c;">
                                 <span>Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}):</span>
                                 <span>- ${formatMoney(discountAmount)}</span>
                             </div>
                         ` : '';
                     })()}
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:${isA5 ? '12.5px' : '14px'}; font-weight:bold;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:${isA5 ? '13.5px' : '15px'}; font-weight:bold;">
                         <span>TO'LOV (JAMI):</span>
-                        <span>${formatMoney(totalSum)} so'm</span>
+                        <span>${formatMoney(totalSum)}</span>
                     </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#15803d;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#15803d;">
                         <span>To'langan:</span>
-                        <strong>${formatMoney(paidSum)} so'm</strong>
+                        <strong>${formatMoney(paidSum)}</strong>
                     </div>
-                    <div style="display:flex; justify-content:space-between; padding-top:4px; border-top:1px solid #cbd5e1; color:#b91c1c; font-weight:700;">
+                    <div style="display:flex; justify-content:space-between; padding-top:6px; border-top:1px solid #cbd5e1; color:#b91c1c; font-weight:700;">
                         <span>Qolgan qarz:</span>
-                        <span>${formatMoney(remainingSum)} so'm</span>
+                        <span>${formatMoney(remainingSum)}</span>
                     </div>
                     ${customerBalance !== 0 ? `
-                    <div style="display:flex; justify-content:space-between; margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:11px; color:#475569;">
+                    <div style="display:flex; justify-content:space-between; margin-top:6px; padding-top:6px; border-top:1px dashed #cbd5e1; font-size:12px; color:#475569;">
                         <span>Umumiy qarz:</span>
-                        <strong>${formatMoney(customerBalance)} so'm</strong>
+                        <strong>${formatMoney(customerBalance)}</strong>
                     </div>
                     ` : ''}
                 </div>
@@ -2108,7 +2110,9 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
             </div>
         `;
 
-        window.print();
+        setTimeout(() => {
+            window.print();
+        }, 150);
     } catch (e) {
         alert(`❌ Chop etishda xatolik: ${e.message}`);
     }
