@@ -1817,24 +1817,73 @@ function copyReceiptForTelegram() {
     text += `👤 Mijoz: ${d.agent_name || 'Noma\'lum'}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
+    let totalQuantity = 0;
+    let totalOriginalSum = 0;
+    let totalPositionsDiscountSum = 0;
+    const discountPercent = d.discount || 0;
+    const positionsCount = (d.positions || []).length;
+
     (d.positions || []).forEach((p, idx) => {
         const qty = parseFloat(p.quantity) || 0;
-        const origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
-        const price = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
-        const pSum = parseFloat(p.sum) || (qty * price);
-        const discountPct = parseFloat(p.discount) || 0;
+        totalQuantity += qty;
+        
+        let origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
+        const currentSum = parseFloat(p.sum) || (qty * origUnitPrice);
+        let itemDiscountPct = parseFloat(p.discount) || 0;
+        let itemDiscountAmt = parseFloat(p.discount_amount) || 0;
+
+        if (itemDiscountPct === 0 && discountPercent > 0) itemDiscountPct = discountPercent;
+
+        let finalUnitPrice = parseFloat(p.discounted_price) || 0;
+        if (finalUnitPrice <= 0 || finalUnitPrice === origUnitPrice) {
+            if (itemDiscountPct > 0 && itemDiscountPct < 100) finalUnitPrice = origUnitPrice * (1 - itemDiscountPct / 100.0);
+            else if (qty > 0 && currentSum < (origUnitPrice * qty)) finalUnitPrice = currentSum / qty;
+            else finalUnitPrice = origUnitPrice;
+        }
+
+        const origTotalSum = origUnitPrice * qty;
+        const hasItemDiscount = (origUnitPrice - finalUnitPrice) > 0.5;
+        const finalItemSum = hasItemDiscount ? Math.round(finalUnitPrice * qty) : currentSum;
+
+        if (hasItemDiscount) {
+            if (itemDiscountAmt <= 0) itemDiscountAmt = Math.max(0, origTotalSum - finalItemSum);
+            if (itemDiscountPct <= 0 && origTotalSum > 0) itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+            totalPositionsDiscountSum += itemDiscountAmt;
+            totalOriginalSum += origTotalSum;
+        } else {
+            totalOriginalSum += currentSum;
+        }
+
+        const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
         const code = p.code && p.code !== '—' ? `[${p.code}] ` : '';
         const color = p.color ? ` (${p.color})` : '';
         text += `${idx + 1}. ${code}${p.name}${color}\n`;
-        if (origUnitPrice > price) {
-            text += `   ${formatNumber(qty)} dona × ~${formatMoney(origUnitPrice)}~ ➔ ${formatMoney(price)} = ${formatMoney(pSum)} so'm (-${discountPct}%)\n`;
+        if (hasItemDiscount) {
+            text += `   ${formatNumber(qty)} dona × ~${formatMoney(origUnitPrice)}~ ➔ ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)} so'm (-${pctFormatted})\n`;
         } else {
-            text += `   ${formatNumber(qty)} dona × ${formatMoney(price)} = ${formatMoney(pSum)} so'm\n`;
+            text += `   ${formatNumber(qty)} dona × ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)} so'm\n`;
         }
     });
 
     text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `💰 *JAMI: ${formatMoney(totalSum)} so'm*\n`;
+    text += `📦 Jami tovar: ${formatNumber(totalQuantity)} ta (${positionsCount} pozitsiya)\n`;
+    
+    let sumWithoutDiscount = totalSum;
+    let discountAmount = 0;
+    if (discountPercent > 0 && discountPercent < 100) {
+        sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
+        discountAmount = sumWithoutDiscount - totalSum;
+    } else if (totalPositionsDiscountSum > 0) {
+        discountAmount = totalPositionsDiscountSum;
+        sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
+    }
+
+    if (discountAmount > 0 || discountPercent > 0) {
+        text += `💰 Jami summasi: ${formatMoney(sumWithoutDiscount)} so'm\n`;
+        text += `📉 Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}): - ${formatMoney(discountAmount)} so'm\n`;
+    }
+    
+    text += `💰 *TO'LOV: ${formatMoney(totalSum)} so'm*\n`;
     text += `✅ To'landi: ${formatMoney(paidSum)} so'm\n`;
     if (remainingSum > 0) {
         text += `⏳ Qoldiq qarz: ${formatMoney(remainingSum)} so'm\n`;
@@ -1912,20 +1961,51 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
         const paidSum = d.total_paid || 0;
         const remainingSum = Math.max(0, totalSum - paidSum);
 
+        let totalQuantity = 0;
+        let totalOriginalSum = 0;
+        let totalPositionsDiscountSum = 0;
+        const discountPercent = d.discount || 0;
+        const positionsCount = (d.positions || []).length;
+
         const rowsHtml = (d.positions || []).map((p, idx) => {
             const qty = parseFloat(p.quantity) || 0;
-            const origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
-            const price = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
-            const pSum = parseFloat(p.sum) || (qty * price);
-            const discountPct = parseFloat(p.discount) || 0;
+            totalQuantity += qty;
             
+            let origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
+            const currentSum = parseFloat(p.sum) || (qty * origUnitPrice);
+            let itemDiscountPct = parseFloat(p.discount) || 0;
+            let itemDiscountAmt = parseFloat(p.discount_amount) || 0;
+
+            if (itemDiscountPct === 0 && discountPercent > 0) itemDiscountPct = discountPercent;
+
+            let finalUnitPrice = parseFloat(p.discounted_price) || 0;
+            if (finalUnitPrice <= 0 || finalUnitPrice === origUnitPrice) {
+                if (itemDiscountPct > 0 && itemDiscountPct < 100) finalUnitPrice = origUnitPrice * (1 - itemDiscountPct / 100.0);
+                else if (qty > 0 && currentSum < (origUnitPrice * qty)) finalUnitPrice = currentSum / qty;
+                else finalUnitPrice = origUnitPrice;
+            }
+
+            const origTotalSum = origUnitPrice * qty;
+            const hasItemDiscount = (origUnitPrice - finalUnitPrice) > 0.5;
+            const finalItemSum = hasItemDiscount ? Math.round(finalUnitPrice * qty) : currentSum;
+
+            if (hasItemDiscount) {
+                if (itemDiscountAmt <= 0) itemDiscountAmt = Math.max(0, origTotalSum - finalItemSum);
+                if (itemDiscountPct <= 0 && origTotalSum > 0) itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+                totalPositionsDiscountSum += itemDiscountAmt;
+                totalOriginalSum += origTotalSum;
+            } else {
+                totalOriginalSum += currentSum;
+            }
+
+            const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
             const colorHtml = p.color ? `<br><small style="color:#64748b;">Rang: ${p.color}</small>` : '';
             
             let priceHtml = `${formatMoney(origUnitPrice)}`;
-            if (origUnitPrice > price) {
-                priceHtml = `<strike style="color:#94a3b8;font-size:0.9em;">${formatMoney(origUnitPrice)}</strike><br><strong style="color:#b91c1c;">${formatMoney(price)}</strong><br><small style="color:#b91c1c;">(-${discountPct}%)</small>`;
+            if (hasItemDiscount) {
+                priceHtml = `<strike style="color:#94a3b8;font-size:0.9em;">${formatMoney(origUnitPrice)}</strike><br><strong style="color:#b91c1c;">${formatMoney(finalUnitPrice)}</strong><br><small style="color:#b91c1c;">(-${pctFormatted})</small>`;
             } else {
-                priceHtml = formatMoney(price);
+                priceHtml = formatMoney(finalUnitPrice);
             }
 
             return `
@@ -1934,7 +2014,7 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                     <td style="padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong>${colorHtml}</td>
                     <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${formatNumber(qty)}</td>
                     <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};">${priceHtml}</td>
-                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${formatMoney(pSum)}</strong></td>
+                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${formatMoney(finalItemSum)}</strong></td>
                 </tr>
             `;
         }).join('');
@@ -1968,11 +2048,36 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                 </tbody>
             </table>
 
+            <div style="margin-bottom:10px; font-size:${isA5 ? '11px' : '13px'}; color:#475569;">
+                Jami tovar: <strong>${formatNumber(totalQuantity)} ta</strong>, Pozitsiya: <strong>${positionsCount} ta</strong>
+            </div>
+
             <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
                 <div style="width:${isA5 ? '260px' : '320px'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:10px 14px; font-size:${isA5 ? '11.5px' : '13px'};">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                        <span>Jami summa:</span>
-                        <strong>${formatMoney(totalSum)} so'm</strong>
+                    ${(() => {
+                        let sumWithoutDiscount = totalSum;
+                        let discountAmount = 0;
+                        if (discountPercent > 0 && discountPercent < 100) {
+                            sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
+                            discountAmount = sumWithoutDiscount - totalSum;
+                        } else if (totalPositionsDiscountSum > 0) {
+                            discountAmount = totalPositionsDiscountSum;
+                            sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
+                        }
+                        return (discountAmount > 0 || discountPercent > 0) ? `
+                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#475569;">
+                                <span>Jami summasi:</span>
+                                <span>${formatMoney(sumWithoutDiscount)}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#b91c1c;">
+                                <span>Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}):</span>
+                                <span>- ${formatMoney(discountAmount)}</span>
+                            </div>
+                        ` : '';
+                    })()}
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:${isA5 ? '12.5px' : '14px'}; font-weight:bold;">
+                        <span>TO'LOV (JAMI):</span>
+                        <span>${formatMoney(totalSum)} so'm</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#15803d;">
                         <span>To'langan:</span>
