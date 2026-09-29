@@ -176,6 +176,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (e) {}
 
+        // Chek sozlamalarini serverdan yuklash
+        loadReceiptSettingsFromServer().catch(() => {});
+
         // sessionStorage orqali tashqaridan o'tish (customers.html → demands.html)
         const openDemandId = sessionStorage.getItem('openDemand');
         if (openDemandId) {
@@ -352,7 +355,7 @@ function renderDemands(demands) {
                     <button class="action-btn" onclick="showDetail('${d.id}')" title="Ko'rish">👁️</button>
                     <button class="action-btn edit-btn" onclick="showEdit('${d.id}')" title="Tahrirlash va To'lov">✏️</button>
                     <button class="action-btn action-btn-quick-status" onclick="openQuickStatus('${d.id}', '${d.name}', '${(d.state_name || '').replace(/'/g, "\\'")}')" title="Statusni tez o'zgartirish">🔄</button>
-                    <button class="action-btn action-btn-print" onclick="printReceipt80mm('${d.id}')" title="80mm Kassa Cheki">🖨️</button>
+                    <button class="action-btn action-btn-print" onclick="openPrintFormatModal('${d.id}')" title="Chop etish (80mm / A5 / A4)">🖨️</button>
                 </div>
             </td>
         </tr>
@@ -568,7 +571,7 @@ async function showDetail(demandId) {
                 ${linkedPaymentsHtml}
                 
                 <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
-                    <button class="action-btn" style="background:#15803d;color:#fff;padding:8px 16px;font-size:14px;border-radius:6px;" onclick="closeModal();printReceipt80mm('${d.id}')">🖨️ 80mm Chek</button>
+                    <button class="action-btn" style="background:#15803d;color:#fff;padding:8px 16px;font-size:14px;border-radius:6px;" onclick="closeModal();openPrintFormatModal('${d.id}')">🖨️ Chop etish</button>
                     <button class="action-btn edit-btn" style="padding:8px 16px;font-size:14px;" onclick="closeModal();showEdit('${d.id}')">✏️ Tahrirlash / To'lov</button>
                     <button class="btn-cancel" onclick="closeModal()">Yopish</button>
                 </div>
@@ -1693,10 +1696,32 @@ const DEFAULT_RECEIPT_SETTINGS = {
     fontSize: "large"
 };
 
+let cachedReceiptSettings = null;
+let currentReceiptData = null;
+let currentPrintDemandId = null;
+
+async function loadReceiptSettingsFromServer() {
+    try {
+        const resp = await apiFetch('/settings/receipt');
+        if (resp && resp.success && resp.data) {
+            cachedReceiptSettings = resp.data;
+            localStorage.setItem('moysklad_receipt_settings', JSON.stringify(resp.data));
+            return cachedReceiptSettings;
+        }
+    } catch (e) {
+        console.warn("Serverdan chek sozlamalarini yuklab bo'lmadi, fallback ishlatiladi:", e);
+    }
+    return getReceiptSettings();
+}
+
 function getReceiptSettings() {
+    if (cachedReceiptSettings) return cachedReceiptSettings;
     try {
         const saved = localStorage.getItem('moysklad_receipt_settings');
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+            cachedReceiptSettings = JSON.parse(saved);
+            return cachedReceiptSettings;
+        }
     } catch (e) {}
     return { ...DEFAULT_RECEIPT_SETTINGS };
 }
@@ -1716,7 +1741,7 @@ function closeReceiptSettingsModal() {
     document.getElementById('receiptSettingsModal').classList.remove('active');
 }
 
-function saveReceiptSettings() {
+async function saveReceiptSettings() {
     const s = {
         storeName: document.getElementById('rcpt_store_name').value.trim() || DEFAULT_RECEIPT_SETTINGS.storeName,
         slogan: document.getElementById('rcpt_slogan').value.trim(),
@@ -1725,9 +1750,236 @@ function saveReceiptSettings() {
         footerNote: document.getElementById('rcpt_footer_note').value.trim(),
         fontSize: document.getElementById('rcpt_font_size').value || 'large',
     };
+
+    cachedReceiptSettings = s;
     localStorage.setItem('moysklad_receipt_settings', JSON.stringify(s));
+
+    try {
+        await apiFetch('/settings/receipt', {
+            method: 'POST',
+            body: JSON.stringify(s)
+        });
+    } catch (e) {
+        console.warn("Serverga chek sozlamalarini saqlashda xatolik:", e);
+    }
+
     alert('✅ Chek sozlamalari muvaffaqiyatli saqlandi!');
     closeReceiptSettingsModal();
+}
+
+// --- Format Selector Modal ---
+function openPrintFormatModal(demandId) {
+    currentPrintDemandId = demandId;
+    const modal = document.getElementById('printFormatModal');
+    if (modal) {
+        modal.classList.add('active');
+    } else {
+        printReceipt80mm(demandId);
+    }
+}
+
+function closePrintFormatModal() {
+    const modal = document.getElementById('printFormatModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function selectPrintFormat(format) {
+    closePrintFormatModal();
+    const id = currentPrintDemandId;
+    if (!id) return;
+
+    if (format === '80mm') {
+        printReceipt80mm(id);
+    } else if (format === 'a5') {
+        printSingleDemandDoc(id, 'a5');
+    } else if (format === 'a4') {
+        printSingleDemandDoc(id, 'a4');
+    }
+}
+
+// --- Telegramga Chek Matnini Nusxalash ---
+function copyReceiptForTelegram() {
+    if (!currentReceiptData) {
+        alert("Nusxalash uchun chek ma'lumoti topilmadi!");
+        return;
+    }
+    const d = currentReceiptData;
+    const s = getReceiptSettings();
+    const totalSum = d.sum || 0;
+    const paidSum = d.total_paid || 0;
+    const remainingSum = Math.max(0, totalSum - paidSum);
+
+    let text = `🏪 *${s.storeName || "MODERN MEN'S WEAR"}*\n`;
+    if (s.slogan) text += `_${s.slogan}_\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📅 Sana: ${formatDate(d.moment || new Date())}\n`;
+    text += `🧾 Sotuv: #${d.name}\n`;
+    text += `👤 Mijoz: ${d.agent_name || 'Noma\'lum'}\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    (d.positions || []).forEach((p, idx) => {
+        const qty = parseFloat(p.quantity) || 0;
+        const price = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
+        const pSum = parseFloat(p.sum) || (qty * price);
+        const code = p.code && p.code !== '—' ? `[${p.code}] ` : '';
+        text += `${idx + 1}. ${code}${p.name}\n`;
+        text += `   ${formatNumber(qty)} dona × ${formatMoney(price)} = ${formatMoney(pSum)} so'm\n`;
+    });
+
+    text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `💰 *JAMI: ${formatMoney(totalSum)} so'm*\n`;
+    text += `✅ To'landi: ${formatMoney(paidSum)} so'm\n`;
+    if (remainingSum > 0) {
+        text += `⏳ Qoldiq qarz: ${formatMoney(remainingSum)} so'm\n`;
+    }
+    if (d.customerBalance !== undefined && d.customerBalance !== null && d.customerBalance !== 0) {
+        const debt = Number(d.customerBalance);
+        if (debt > 0) text += `📌 Umumiy hisobdagi qarzi: ${formatMoney(debt)} so'm\n`;
+        else if (debt < 0) text += `📌 Haqdorlik: ${formatMoney(Math.abs(debt))} so'm\n`;
+    }
+    text += `━━━━━━━━━━━━━━━━━━━━\n`;
+    if (s.phones) text += `📞 ${s.phones}\n`;
+    if (s.address) text += `📍 ${s.address}\n`;
+    if (s.footerNote) text += `\n_${s.footerNote}_\n`;
+
+    const copySuccess = () => {
+        alert("✅ Chek matni nusxalandi!\nTelegram orqali mijozga jo'natishingiz mumkin.");
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(copySuccess).catch(() => {
+            fallbackCopy(text, copySuccess);
+        });
+    } else {
+        fallbackCopy(text, copySuccess);
+    }
+}
+
+function fallbackCopy(text, cb) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        if (cb) cb();
+    } catch (err) {
+        prompt("Chek matnini nusxalab oling:", text);
+    }
+    document.body.removeChild(ta);
+}
+
+// --- Single Demand A4 / A5 Document Print ---
+async function printSingleDemandDoc(demandId, format = 'a4') {
+    try {
+        const resp = await apiFetch(`/demands/${demandId}`);
+        if (!resp.success || !resp.data) throw new Error('Sotuv ma\'lumotlarini olib bo\'lmadi');
+        const d = resp.data;
+
+        let customerBalance = (d.agent_balance !== undefined && d.agent_balance !== null) ? d.agent_balance : 0;
+        if (customerBalance === 0 && d.agent_id && d.agent_balance === undefined) {
+            try {
+                const balResp = await apiFetch(`/payments/balance/${d.agent_id}`);
+                if (balResp && balResp.success && balResp.data) {
+                    customerBalance = parseFloat(balResp.data.balance) || 0;
+                }
+            } catch (e) {}
+        }
+
+        const isA5 = format === 'a5';
+        const settings = getReceiptSettings();
+        const printArea = document.getElementById('reportPrintArea') || document.getElementById('receiptPrintArea');
+        if (!printArea) return;
+
+        const totalSum = d.sum || 0;
+        const paidSum = d.total_paid || 0;
+        const remainingSum = Math.max(0, totalSum - paidSum);
+
+        const rowsHtml = (d.positions || []).map((p, idx) => {
+            const qty = parseFloat(p.quantity) || 0;
+            const price = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
+            const pSum = parseFloat(p.sum) || (qty * price);
+            return `
+                <tr>
+                    <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${idx + 1}</td>
+                    <td style="padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong></td>
+                    <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${formatNumber(qty)}</td>
+                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};">${formatMoney(price)}</td>
+                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${formatMoney(pSum)}</strong></td>
+                </tr>
+            `;
+        }).join('');
+
+        printArea.innerHTML = `
+            <div class="print-report-header" style="${isA5 ? 'padding:8px 12px;margin-bottom:10px;' : 'padding:15px;margin-bottom:15px;'}">
+                <div>
+                    <div class="print-report-title" style="${isA5 ? 'font-size:16px;' : 'font-size:22px;'}">🧾 Sotuv Hujjati (Yuk Xati) #${d.name}</div>
+                    <div class="print-report-subtitle" style="${isA5 ? 'font-size:11px;' : 'font-size:13px;'}">
+                        Tashkilot: <strong>${settings.storeName || currentOrgName}</strong> | Sana: ${formatDate(d.moment || new Date())}
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:${isA5 ? '12px' : '14px'};font-weight:700;color:#1e3a8a;">Mijoz: ${d.agent_name || 'Noma\'lum'}</div>
+                    <div style="font-size:11px;color:#64748b;">${settings.phones ? `Tel: ${settings.phones}` : ''}</div>
+                </div>
+            </div>
+
+            <table class="print-table" style="${isA5 ? 'font-size:11px;' : 'font-size:13px;'} width:100%; border-collapse:collapse; margin-bottom:15px;">
+                <thead>
+                    <tr style="background:#f1f5f9;">
+                        <th style="border:1px solid #cbd5e1;padding:6px;width:30px;text-align:center;">№</th>
+                        <th style="border:1px solid #cbd5e1;padding:6px;text-align:left;">Tovar nomi / Kodi</th>
+                        <th style="border:1px solid #cbd5e1;padding:6px;width:60px;text-align:center;">Soni</th>
+                        <th style="border:1px solid #cbd5e1;padding:6px;width:100px;text-align:right;">Narxi</th>
+                        <th style="border:1px solid #cbd5e1;padding:6px;width:120px;text-align:right;">Jami summa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml}
+                </tbody>
+            </table>
+
+            <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
+                <div style="width:${isA5 ? '260px' : '320px'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:10px 14px; font-size:${isA5 ? '11.5px' : '13px'};">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span>Jami summa:</span>
+                        <strong>${formatMoney(totalSum)} so'm</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#15803d;">
+                        <span>To'langan:</span>
+                        <strong>${formatMoney(paidSum)} so'm</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding-top:4px; border-top:1px solid #cbd5e1; color:#b91c1c; font-weight:700;">
+                        <span>Qolgan qarz:</span>
+                        <span>${formatMoney(remainingSum)} so'm</span>
+                    </div>
+                    ${customerBalance !== 0 ? `
+                    <div style="display:flex; justify-content:space-between; margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:11px; color:#475569;">
+                        <span>Umumiy qarz:</span>
+                        <strong>${formatMoney(customerBalance)} so'm</strong>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+
+            <div class="print-signatures" style="display:flex; justify-content:space-between; margin-top:${isA5 ? '15px' : '30px'}; font-size:${isA5 ? '11px' : '12px'};">
+                <div>
+                    <div>Topshirdi (Sotuvchi): ____________________</div>
+                    <div style="font-size:10px;color:#64748b;margin-top:2px;">(imzo)</div>
+                </div>
+                <div>
+                    <div>Qabul qildi (Xaridor): ____________________</div>
+                    <div style="font-size:10px;color:#64748b;margin-top:2px;">(imzo)</div>
+                </div>
+            </div>
+        `;
+
+        window.print();
+    } catch (e) {
+        alert(`❌ Chop etishda xatolik: ${e.message}`);
+    }
 }
 
 async function printReceipt80mm(demandId) {
@@ -1750,6 +2002,9 @@ async function printReceipt80mm(demandId) {
                 }
             } catch (e) {}
         }
+
+        d.customerBalance = customerBalance;
+        currentReceiptData = d;
 
         const settings = getReceiptSettings();
         const receiptHtml = buildReceiptHtml(d, customerBalance, settings);

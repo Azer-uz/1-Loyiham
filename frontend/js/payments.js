@@ -1560,6 +1560,17 @@ function setDrawerExpenseType(type) {
 
     const accGroup = document.getElementById('drawerExpAccountGroup');
     const accSelect = document.getElementById('drawerExpAccountSelect');
+    const usdDetails = document.getElementById('drawerExpUsdDetails');
+    const usdPreview = document.getElementById('drawerExpUsdPreview');
+
+    if (type === 'usd') {
+        if (usdDetails) usdDetails.style.display = 'block';
+        if (usdPreview) usdPreview.style.display = 'none';
+    } else {
+        if (usdDetails) usdDetails.style.display = 'none';
+        if (usdPreview) usdPreview.style.display = 'block';
+    }
+
     if (!accSelect) return;
 
     if (type === 'cash') {
@@ -1585,17 +1596,115 @@ function setDrawerExpenseType(type) {
 }
 
 function updateDrawerExpUsdPreview() {
-    const amt = parseAmount(document.getElementById('drawerExpAmount')?.value);
-    const rate = window.currentUSDRate || 12800;
+    const amt = parseAmount(document.getElementById('drawerExpAmount')?.value) || 0;
+    const rateInput = document.getElementById('drawerExpUsdRate');
+    const rate = parseAmount(rateInput?.value) || (window.currentUSDRate || 12800);
     const previewEl = document.getElementById('drawerExpUsdPreview');
-    if (!previewEl) return;
+    const usdAmountEl = document.getElementById('drawerExpUsdAmount');
+    const usdEquivEl = document.getElementById('drawerExpUsdEquiv');
 
     if (currentDrawerExpenseType === 'usd') {
-        previewEl.textContent = `~ ${formatMoney(amt * rate)} so'm (kurs: ${formatNumber(rate)})`;
+        if (usdAmountEl) usdAmountEl.textContent = `$${formatNumber(amt)}`;
+        if (usdEquivEl) usdEquivEl.textContent = `~ ${formatMoney(Math.round(amt * rate))} so'm`;
+        if (previewEl) previewEl.style.display = 'none';
     } else {
-        previewEl.textContent = `~ $${(amt / rate).toFixed(2)} USD (kurs: ${formatNumber(rate)})`;
+        if (previewEl) {
+            previewEl.style.display = 'block';
+            previewEl.textContent = `~ $${(amt / rate).toFixed(2)} USD (kurs: ${formatNumber(rate)})`;
+        }
     }
 }
+
+// --- Expense Counterparty (Kontragent) Search & Group Filter ---
+let currentExpAgentGroup = 'all';
+
+function filterExpAgentGroup(group, btn) {
+    currentExpAgentGroup = group;
+    const buttons = document.querySelectorAll('.exp-agent-group-btn');
+    buttons.forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    
+    showExpAgentSuggestions();
+}
+
+function showExpAgentSuggestions() {
+    const input = document.getElementById('drawerExpAgentSearch');
+    filterExpAgentSuggestions(input?.value || '');
+}
+
+function filterExpAgentSuggestions(query) {
+    const box = document.getElementById('drawerExpAgentSuggestions');
+    if (!box) return;
+    const q = (query || '').toLowerCase().trim();
+    const list = customersList || [];
+
+    let filtered = list;
+    if (currentExpAgentGroup === 'xodim') {
+        filtered = list.filter(c => {
+            const grp = ((c.group || '') + ' ' + (c.tags || '') + ' ' + (c.name || '')).toLowerCase();
+            return grp.includes('xodim') || grp.includes('ishchi') || grp.includes('usta') || grp.includes('сотрудник');
+        });
+    } else if (currentExpAgentGroup === 'taminotchi') {
+        filtered = list.filter(c => {
+            const grp = ((c.group || '') + ' ' + (c.tags || '') + ' ' + (c.name || '')).toLowerCase();
+            return grp.includes('taminot') || grp.includes('ta\'minot') || grp.includes('supplier') || grp.includes('поставщик');
+        });
+    } else if (currentExpAgentGroup === 'mijoz') {
+        filtered = list.filter(c => {
+            const grp = ((c.group || '') + ' ' + (c.tags || '') + ' ' + (c.name || '')).toLowerCase();
+            return !grp.includes('xodim') && !grp.includes('ishchi') && !grp.includes('сотрудник') && !grp.includes('taminot') && !grp.includes('поставщик');
+        });
+    }
+
+    if (q) {
+        filtered = filtered.filter(c =>
+            (c.name && c.name.toLowerCase().includes(q)) ||
+            (c.phone && c.phone.toLowerCase().includes(q))
+        );
+    }
+
+    filtered = filtered.slice(0, 40);
+
+    if (filtered.length === 0) {
+        box.innerHTML = `
+            <div style="padding:10px 12px; font-size:12px; color:#64748b; text-align:center;">
+                Kontragent topilmadi.
+            </div>
+        `;
+    } else {
+        box.innerHTML = filtered.map(c => {
+            const cleanName = (c.name || '').replace(/'/g, "\\'");
+            return `
+                <div onclick="selectExpAgent('${c.id}', '${cleanName}')" style="padding:7px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                    <div>
+                        <strong style="color:var(--text-color);">👤 ${c.name}</strong>
+                        ${c.phone ? `<span style="color:#64748b;font-size:11px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
+                    </div>
+                    ${c.group ? `<span style="font-size:10.5px; padding:2px 6px; background:#e2e8f0; border-radius:4px; color:#475569;">${c.group}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+    box.style.display = 'block';
+}
+
+function selectExpAgent(id, name) {
+    const input = document.getElementById('drawerExpAgentSearch');
+    const hidden = document.getElementById('drawerExpAgentId');
+    const box = document.getElementById('drawerExpAgentSuggestions');
+    if (input) input.value = name;
+    if (hidden) hidden.value = id;
+    if (box) box.style.display = 'none';
+}
+
+// Global click to close expense agent suggestions
+document.addEventListener('click', (e) => {
+    const box = document.getElementById('drawerExpAgentSuggestions');
+    const searchInput = document.getElementById('drawerExpAgentSearch');
+    if (box && searchInput && !box.contains(e.target) && e.target !== searchInput && !e.target.closest('.exp-agent-group-btn')) {
+        box.style.display = 'none';
+    }
+});
 
 // --- Customer Search in Drawer ---
 function showDrawerCustList() {
@@ -2196,13 +2305,20 @@ async function handleDrawerExpenseSubmit(e) {
     }
 
     try {
+        const agentId = document.getElementById('drawerExpAgentId')?.value || null;
+        const agentName = document.getElementById('drawerExpAgentSearch')?.value?.trim() || null;
+        const usdRate = parseAmount(document.getElementById('drawerExpUsdRate')?.value) || (window.currentUSDRate || 12800);
+
         const payload = {
             payment_type: type,
             account_id: accId,
             amount: amount,
             expense_item_id: itemId || null,
             description: desc || "Xarajat",
-            moment: moment ? (moment.replace('T', ' ') + ':00') : undefined
+            moment: moment ? (moment.replace('T', ' ') + ':00') : undefined,
+            agent_id: agentId || undefined,
+            agent_name: agentName || undefined,
+            usd_rate: type === 'usd' ? usdRate : undefined
         };
 
         const resp = await apiFetch('/payments/expense', {

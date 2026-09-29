@@ -279,102 +279,52 @@ def invalidate_accounts_cache():
 # ===== HISOBLAR BALANSI VA KORREKTIROVKA API =====
 @router.get("/accounts")
 async def get_accounts_with_corrections():
-    """Barcha hisoblarning asl valyutasidagi qoldiqlari va korrektirovkalari (0.01s tezkor kesh)"""
+    """Barcha hisoblarning asl valyutasidagi qoldiqlari va korrektirovkalari — cashflow dan to'g'ridan-to'g'ri oladi"""
     global _ACCOUNTS_CACHE, _ACCOUNTS_CACHE_TIME
     now = time.time()
     if _ACCOUNTS_CACHE is not None and (now - _ACCOUNTS_CACHE_TIME) < _ACCOUNTS_CACHE_TTL:
         return _ACCOUNTS_CACHE
 
     settings = load_settings()
-    corrections = settings.get("corrections", {})
     ref_rate = settings.get("reference_usd_rate", 12800.0)
 
-    # Kassa operatsiyalari orqali xom balansni olish (Tezkor 1.5s timeout bilan)
+    # Cashflow dan to'liq hisoblar balansini olish
     from routers.payments import get_cashflow
-    raw_balances = []
     try:
-        cf_resp = await asyncio.wait_for(get_cashflow(), timeout=2.5)
+        cf_resp = await asyncio.wait_for(get_cashflow(), timeout=5.0)
         summary = cf_resp.get("data", {}).get("summary", {})
+        account_balances = summary.get("account_balances", [])
+        total_uzs_balance = summary.get("total_uzs_balance", 0.0)
+        total_usd_balance = summary.get("total_usd_balance", 0.0)
+        consolidated_uzs = summary.get("consolidated_uzs_equivalent", 0.0)
     except Exception as e:
-        raw_balances = []
+        print(f"[Accounts from cashflow error] {e}")
+        account_balances = []
+        total_uzs_balance = 0.0
+        total_usd_balance = 0.0
+        consolidated_uzs = 0.0
 
-    # Tashkilot hisoblarini olish va raw_balances ga qo'shish
-    try:
-        org = await ms_client.get_organization()
-        if org.get("id") and org.get("id") != "default":
-            org_accs = await asyncio.wait_for(ms_client.get_organization_accounts(org.get("id")), timeout=2.0)
-            existing_ids = {a.get("id") for a in raw_balances}
-            for oa in org_accs:
-                oa_id = oa.get("id")
-                if oa_id and oa_id not in existing_ids:
-                    oa_name = oa.get("name") or oa.get("accountnumber") or "Bank hisobi"
-                    is_dol = "dollar" in (oa_name + " " + oa.get("accountnumber", "")).lower()
-                    raw_balances.append({
-                        "id": oa_id,
-                        "name": f"{'💵' if is_dol else '🏦'} {oa_name}",
-                        "raw_name": oa_name,
-                        "accountnumber": oa.get("accountnumber"),
-                        "type": "dollar" if is_dol else "bank",
-                        "currency": "USD" if is_dol else "UZS",
-                        "is_dollar": is_dol,
-                        "balance": 0.0,
-                        "usd_balance": 0.0
-                    })
-    except Exception as e:
-        pass
-
-    if not raw_balances:
-        raw_balances = [
-            {"id": "cash_default", "name": "💵 Asosiy Naqd Kassa (UZS)", "currency": "UZS", "current_balance": 0.0, "is_dollar": False},
-            {"id": "card_default", "name": "💳 Bank Hisobi (UZS)", "currency": "UZS", "current_balance": 0.0, "is_dollar": False},
-            {"id": "usd_default", "name": "💵 Dollar Kassa (USD)", "currency": "USD", "current_balance": 0.0, "is_dollar": True},
-        ]
-
+    # Cashflow dan kelgan balanslarni to'g'ridan-to'g'ri qaytarish
     adjusted_accounts = []
-    total_uzs_balance = 0.0
-    total_usd_balance = 0.0
-
-    for acc in raw_balances:
-        a_id = acc.get("id")
-        is_dollar = acc.get("is_dollar", False)
-        currency = "USD" if is_dollar else "UZS"
-
-        # Korrektirovka bormi?
-        corr = corrections.get(a_id)
-        if corr and "adjusted_balance" in corr:
-            final_balance = float(corr["adjusted_balance"])
-            has_correction = True
-            corr_info = corr
-        else:
-            # Agar Dollar hisob bo'lsa, xom summasini o'ziga xos hisoblash
-            # MoySklad operatsiyalarida UZS bo'lsa, usd_balance olamiz
-            if is_dollar:
-                final_balance = acc.get("usd_balance", 0.0)
-            else:
-                final_balance = acc.get("balance", 0.0)
-            has_correction = False
-            corr_info = None
-
-        if is_dollar:
-            total_usd_balance += final_balance
-        else:
-            total_uzs_balance += final_balance
-
+    for acc in account_balances:
         adjusted_accounts.append({
-            "id": a_id,
+            "id": acc.get("id"),
             "name": acc.get("name"),
             "raw_name": acc.get("raw_name"),
             "accountnumber": acc.get("accountnumber"),
             "type": acc.get("type"),
-            "currency": currency,
-            "is_dollar": is_dollar,
-            "current_balance": final_balance,
-            "raw_balance": acc.get("usd_balance" if is_dollar else "balance", 0.0),
-            "has_correction": has_correction,
-            "correction": corr_info,
+            "currency": acc.get("currency", "UZS"),
+            "is_dollar": acc.get("is_dollar", False),
+            "current_balance": acc.get("balance", 0.0),
+            "raw_balance": acc.get("raw_balance", 0.0),
+            "has_correction": acc.get("has_correction", False),
+            "correction": acc.get("correction"),
         })
 
-    consolidated_uzs = total_uzs_balance + (total_usd_balance * ref_rate)
+    if not adjusted_accounts:
+        adjusted_accounts = [
+            {"id": "cash_default", "name": "💵 Asosiy Naqd Kassa (UZS)", "currency": "UZS", "current_balance": 0.0, "is_dollar": False, "has_correction": False},
+        ]
 
     res = {
         "success": True,
@@ -414,6 +364,38 @@ async def adjust_account_balance(req: BalanceAdjustmentRequest):
         "message": f"Hisob qoldig'i {target_val:,.2f} ga muvaffaqiyatli korrektirovka qilindi",
         "data": corrections[req.account_id]
     }
+
+
+# ===== CHEK SOZLAMALARI API (Serverda saqlash — barcha qurilmalarda bir xil) =====
+@router.get("/receipt")
+async def get_receipt_settings():
+    """Chek shablon sozlamalarini olish (serverda saqlanadi)"""
+    settings = load_settings()
+    receipt = settings.get("receipt_settings", {
+        "storeName": "MODERN MEN'S WEAR",
+        "slogan": "Erkaklar kiyimlarining ulgurji savdosi",
+        "phones": "+998 90 123-45-67",
+        "address": "Toshkent sh., Abu Saxiy bozori",
+        "footerNote": "Xaridingiz uchun rahmat! Sotilgan tovarlar 3 kun ichida chek bilan almashtiriladi.",
+        "fontSize": "large"
+    })
+    return {"success": True, "data": receipt}
+
+
+@router.post("/receipt")
+async def save_receipt_settings(req: Dict[str, Any]):
+    """Chek shablon sozlamalarini saqlash (serverda doimiy)"""
+    settings = load_settings()
+    settings["receipt_settings"] = {
+        "storeName": (req.get("storeName") or "").strip() or "MODERN MEN'S WEAR",
+        "slogan": (req.get("slogan") or "").strip(),
+        "phones": (req.get("phones") or "").strip(),
+        "address": (req.get("address") or "").strip(),
+        "footerNote": (req.get("footerNote") or "").strip(),
+        "fontSize": req.get("fontSize") or "large",
+    }
+    save_settings(settings)
+    return {"success": True, "message": "Chek sozlamalari muvaffaqiyatli saqlandi!"}
 
 
 @router.get("/reference-rate")

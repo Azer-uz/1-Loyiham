@@ -343,58 +343,85 @@ async def sales_trend(
     date_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Sotuvlar tendensiyasi grafigi: Haftalik (7D), Oylik (30D), Yillik (1Y) va maxsus sana oralig'i"""
+    """Sotuvlar tendensiyasi grafigi: Joriy davr vs Oldingi davr solishtiruvi"""
     try:
         now = datetime.now()
         labels = []
         revenue_vals = []
-        collection_vals = []
+        prev_revenue_vals = []
+
+        async def get_period_sum(start_str: str, end_str: str):
+            """Berilgan sana oralig'idagi sotuv va to'lov summasini olish"""
+            stmt = select(
+                func.coalesce(func.sum(LocalDemand.sum), 0.0),
+                func.coalesce(func.sum(LocalDemand.payed_sum), 0.0)
+            ).where(LocalDemand.moment >= start_str, LocalDemand.moment <= end_str)
+            row = (await db.execute(stmt)).first()
+            return round(float(row[0] or 0.0), 2), round(float(row[1] or 0.0), 2)
+
+        async def get_hourly_data(date_str: str):
+            """Berilgan kun uchun soatlik ma'lumotlar"""
+            hour_labels = ["09:00", "11:00", "13:00", "15:00", "17:00", "19:00", "21:00"]
+            stmt = select(LocalDemand.moment, LocalDemand.sum).where(LocalDemand.moment.like(f"{date_str}%"))
+            rows = (await db.execute(stmt)).all()
+            hourly = {lbl: 0.0 for lbl in hour_labels}
+            for m, s in rows:
+                hour = int(m[11:13]) if len(m) >= 13 else 12
+                matched = "09:00" if hour <= 10 else ("11:00" if hour <= 12 else ("13:00" if hour <= 14 else ("15:00" if hour <= 16 else ("17:00" if hour <= 18 else ("19:00" if hour <= 20 else "21:00")))))
+                hourly[matched] += float(s or 0.0)
+            return hour_labels, [round(hourly[l], 2) for l in hour_labels]
 
         if timeframe == "today":
-            labels = ["09:00", "11:00", "13:00", "15:00", "17:00", "19:00", "21:00"]
+            # Bugun vs Kecha (soatlik)
             today_str = now.strftime("%Y-%m-%d")
-            stmt = select(LocalDemand.moment, LocalDemand.sum, LocalDemand.payed_sum).where(LocalDemand.moment.like(f"{today_str}%"))
-            rows = (await db.execute(stmt)).all()
+            yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+            labels, revenue_vals = await get_hourly_data(today_str)
+            _, prev_revenue_vals = await get_hourly_data(yesterday_str)
 
-            hourly_rev = {lbl: 0.0 for lbl in labels}
-            hourly_col = {lbl: 0.0 for lbl in labels}
-            for m, s, p in rows:
-                hour = int(m[11:13]) if len(m) >= 13 else 12
-                matched_lbl = "09:00" if hour <= 10 else ("11:00" if hour <= 12 else ("13:00" if hour <= 14 else ("15:00" if hour <= 16 else ("17:00" if hour <= 18 else ("19:00" if hour <= 20 else "21:00")))))
-                hourly_rev[matched_lbl] += float(s or 0.0)
-                hourly_col[matched_lbl] += float(p or 0.0)
-
-            revenue_vals = [round(hourly_rev[l], 2) for l in labels]
-            collection_vals = [round(hourly_col[l], 2) for l in labels]
+        elif timeframe == "7d":
+            # Shu hafta vs O'tgan hafta (kunlik)
+            uz_day_names = ["Dush", "Sesh", "Chor", "Pay", "Jum", "Shan", "Yak"]
+            for i in range(6, -1, -1):
+                day_curr = now - timedelta(days=i)
+                day_prev = now - timedelta(days=i + 7)
+                d_str = day_curr.strftime("%Y-%m-%d")
+                p_str = day_prev.strftime("%Y-%m-%d")
+                labels.append(uz_day_names[day_curr.weekday()])
+                rev, _ = await get_period_sum(f"{d_str} 00:00:00", f"{d_str} 23:59:59")
+                prev_rev, _ = await get_period_sum(f"{p_str} 00:00:00", f"{p_str} 23:59:59")
+                revenue_vals.append(rev)
+                prev_revenue_vals.append(prev_rev)
 
         elif timeframe == "30d":
+            # Shu oy vs O'tgan oy (har 3 kunlik nuqtalar)
             for i in range(9, -1, -1):
-                day_point = now - timedelta(days=i * 3)
-                labels.append(day_point.strftime("%d-%b"))
-                p_start = (day_point - timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
-                p_end = day_point.strftime("%Y-%m-%d 23:59:59")
-                stmt = select(
-                    func.coalesce(func.sum(LocalDemand.sum), 0.0),
-                    func.coalesce(func.sum(LocalDemand.payed_sum), 0.0)
-                ).where(LocalDemand.moment >= p_start, LocalDemand.moment <= p_end)
-                row = (await db.execute(stmt)).first()
-                revenue_vals.append(round(float(row[0] or 0.0), 2))
-                collection_vals.append(round(float(row[1] or 0.0), 2))
+                day_curr = now - timedelta(days=i * 3)
+                day_prev = now - timedelta(days=i * 3 + 30)
+                labels.append(day_curr.strftime("%d-%b"))
+                p_start = (day_curr - timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
+                p_end = day_curr.strftime("%Y-%m-%d 23:59:59")
+                pp_start = (day_prev - timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
+                pp_end = day_prev.strftime("%Y-%m-%d 23:59:59")
+                rev, _ = await get_period_sum(p_start, p_end)
+                prev_rev, _ = await get_period_sum(pp_start, pp_end)
+                revenue_vals.append(rev)
+                prev_revenue_vals.append(prev_rev)
 
         elif timeframe == "1y":
+            # Shu yil vs O'tgan yil (oylik)
             month_names = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"]
             for m_idx in range(1, 13):
-                m_str = f"{now.year}-{m_idx:02d}"
+                m_str_curr = f"{now.year}-{m_idx:02d}"
+                m_str_prev = f"{now.year - 1}-{m_idx:02d}"
                 labels.append(month_names[m_idx - 1])
-                stmt = select(
-                    func.coalesce(func.sum(LocalDemand.sum), 0.0),
-                    func.coalesce(func.sum(LocalDemand.payed_sum), 0.0)
-                ).where(LocalDemand.moment.like(f"{m_str}%"))
-                row = (await db.execute(stmt)).first()
-                revenue_vals.append(round(float(row[0] or 0.0), 2))
-                collection_vals.append(round(float(row[1] or 0.0), 2))
+                stmt_c = select(func.coalesce(func.sum(LocalDemand.sum), 0.0)).where(LocalDemand.moment.like(f"{m_str_curr}%"))
+                stmt_p = select(func.coalesce(func.sum(LocalDemand.sum), 0.0)).where(LocalDemand.moment.like(f"{m_str_prev}%"))
+                rev_c = float((await db.scalar(stmt_c)) or 0.0)
+                rev_p = float((await db.scalar(stmt_p)) or 0.0)
+                revenue_vals.append(round(rev_c, 2))
+                prev_revenue_vals.append(round(rev_p, 2))
 
-        else:  # "7d" yoki custom
+        else:  # custom
             days_count = 7
             if date_from and date_to:
                 try:
@@ -408,33 +435,28 @@ async def sales_trend(
 
             uz_day_names = ["Dush", "Sesh", "Chor", "Pay", "Jum", "Shan", "Yak"]
             for i in range(days_count - 1, -1, -1):
-                day_point = now - timedelta(days=i)
-                d_str = day_point.strftime("%Y-%m-%d")
-                weekday_name = uz_day_names[day_point.weekday()] if days_count <= 7 else day_point.strftime("%d-%b")
+                day_curr = now - timedelta(days=i)
+                day_prev = now - timedelta(days=i + days_count)
+                d_str = day_curr.strftime("%Y-%m-%d")
+                p_str = day_prev.strftime("%Y-%m-%d")
+                weekday_name = uz_day_names[day_curr.weekday()] if days_count <= 7 else day_curr.strftime("%d-%b")
                 labels.append(weekday_name)
-                stmt = select(
-                    func.coalesce(func.sum(LocalDemand.sum), 0.0),
-                    func.coalesce(func.sum(LocalDemand.payed_sum), 0.0)
-                ).where(LocalDemand.moment.like(f"{d_str}%"))
-                row = (await db.execute(stmt)).first()
-                revenue_vals.append(round(float(row[0] or 0.0), 2))
-                collection_vals.append(round(float(row[1] or 0.0), 2))
+                rev, _ = await get_period_sum(f"{d_str} 00:00:00", f"{d_str} 23:59:59")
+                prev_rev, _ = await get_period_sum(f"{p_str} 00:00:00", f"{p_str} 23:59:59")
+                revenue_vals.append(rev)
+                prev_revenue_vals.append(prev_rev)
 
-        # Agar DB yangi bo'lsa yoki nol bo'lsa jonli demo-ma'lumot
-        tot_rev = sum(revenue_vals)
-        if tot_rev == 0:
-            base_rev = [34000000.0, 52000000.0, 41000000.0, 84500000.0, 68000000.0, 92000000.0, 58000000.0]
-            base_col = [28000000.0, 42000000.0, 35000000.0, 71000000.0, 56000000.0, 79000000.0, 49000000.0]
-            if len(labels) == len(base_rev):
-                revenue_vals = base_rev
-                collection_vals = base_col
-            else:
-                revenue_vals = [round(30000000.0 + (i * 8500000.0) % 55000000, 2) for i in range(len(labels))]
-                collection_vals = [round(r * 0.82, 2) for r in revenue_vals]
-
-        total_rev = round(sum(revenue_vals), 2)
-        total_col = round(sum(collection_vals), 2)
-        growth_rate = "+18.4%"
+        # Haqiqiy o'sish foizini hisoblash
+        total_rev = sum(revenue_vals)
+        total_prev = sum(prev_revenue_vals)
+        if total_prev > 0:
+            growth_pct = ((total_rev - total_prev) / total_prev) * 100
+            growth_sign = "↗ +" if growth_pct >= 0 else "↘ "
+            growth_rate = f"{growth_sign}{growth_pct:.1f}%"
+        elif total_rev > 0:
+            growth_rate = "↗ +100%"
+        else:
+            growth_rate = "— 0%"
 
         return {
             "success": True,
@@ -442,14 +464,16 @@ async def sales_trend(
                 "timeframe": timeframe,
                 "labels": labels,
                 "revenue": revenue_vals,
-                "collection": collection_vals,
-                "total_revenue": total_rev,
-                "total_collection": total_col,
+                "previous_revenue": prev_revenue_vals,
+                "total_revenue": round(total_rev, 2),
+                "total_previous": round(total_prev, 2),
                 "growth_rate": growth_rate,
             }
         }
     except Exception as e:
         print(f"Sales trend xato: {e}")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
 
 

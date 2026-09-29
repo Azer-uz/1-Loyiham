@@ -913,10 +913,12 @@ class ExpenseItemCreateRequest(BaseModel):
 
 class ExpenseCreateRequest(BaseModel):
     amount: float
-    payment_type: str = "cash"  # 'cash' yoki 'card'
+    payment_type: str = "cash"  # 'cash', 'card' yoki 'usd'
     expense_item_id: Optional[str] = None
     description: Optional[str] = ""
     account_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
 
 
 @router.get("/expense-items")
@@ -984,6 +986,17 @@ async def create_expense(expense: ExpenseCreateRequest):
 
         purpose = expense.description or "Xarajat"
 
+        # Kontragent meta'si (agar tanlangan bo'lsa)
+        agent_meta_obj = None
+        if expense.agent_id:
+            agent_meta_obj = {
+                "meta": {
+                    "href": f"{ms_client.base_url}/entity/counterparty/{expense.agent_id}",
+                    "type": "counterparty",
+                    "mediaType": "application/json",
+                }
+            }
+
         if expense.payment_type == "cash":
             cashout_data = {
                 "organization": {"meta": org_meta},
@@ -992,6 +1005,8 @@ async def create_expense(expense: ExpenseCreateRequest):
                 "paymentPurpose": purpose,
                 "expenseItem": {"meta": expense_item_meta},
             }
+            if agent_meta_obj:
+                cashout_data["agent"] = agent_meta_obj
             res = await ms_client.create_cashout(cashout_data)
             print(f"💸 Naqd xarajat yaratildi: {expense.amount:,.0f} so'm ({purpose})")
         elif expense.payment_type == "usd":
@@ -1004,6 +1019,8 @@ async def create_expense(expense: ExpenseCreateRequest):
                 "paymentPurpose": f"{purpose} (${expense.amount:,.2f} USD)",
                 "expenseItem": {"meta": expense_item_meta},
             }
+            if agent_meta_obj:
+                paymentout_data["agent"] = agent_meta_obj
             if usd_curr_meta:
                 paymentout_data["rate"] = {
                     "currency": {"meta": usd_curr_meta},
@@ -1030,6 +1047,8 @@ async def create_expense(expense: ExpenseCreateRequest):
                 "paymentPurpose": purpose,
                 "expenseItem": {"meta": expense_item_meta},
             }
+            if agent_meta_obj:
+                paymentout_data["agent"] = agent_meta_obj
             if expense.account_id and expense.account_id not in ["cash_default", ""] and org.get("id"):
                 account_href = f"{ms_client.base_url}/entity/organization/{org.get('id')}/accounts/{expense.account_id}"
                 acc_meta_obj = {

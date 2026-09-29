@@ -1,5 +1,12 @@
 // frontend/js/dashboard.js - Variant A: Executive Glassmorphism Dashboard with Sales Trend Analytics
 
+function formatCompact(val) {
+    if (val >= 1_000_000_000) return (val / 1_000_000_000).toFixed(1) + ' mlrd';
+    if (val >= 1_000_000) return (val / 1_000_000).toFixed(1) + ' mln';
+    if (val >= 1_000) return (val / 1_000).toFixed(0) + ' ming';
+    return val.toString();
+}
+
 const UZ_MONTHS = [
     "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
     "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"
@@ -205,6 +212,24 @@ async function loadDashboardAccountsSummary() {
 
         const heroRef = document.getElementById('heroRefRateText');
         if (heroRef) heroRef.textContent = `(@ ${formatNumber(refRate)})`;
+
+        // 2. Naqd, Karta, Dollar alohida ko'rsatish
+        // Naqd = cash tipidagi hisoblar
+        const cashAccs = accounts.filter(a => a.type === 'cash' || (!a.is_dollar && (a.id || '').includes('cash')));
+        const bankAccs = accounts.filter(a => !a.is_dollar && a.type !== 'cash' && !(a.id || '').includes('cash'));
+        const usdAccs = accounts.filter(a => a.is_dollar);
+
+        const totalCash = cashAccs.reduce((s, a) => s + (a.current_balance || 0), 0);
+        const totalCard = bankAccs.reduce((s, a) => s + (a.current_balance || 0), 0);
+
+        const heroCash = document.getElementById('heroCashBalance');
+        if (heroCash) heroCash.textContent = formatCompact(totalCash);
+
+        const heroCard = document.getElementById('heroCardBalance');
+        if (heroCard) heroCard.textContent = formatCompact(totalCard);
+
+        const heroUsd = document.getElementById('heroUsdBalance');
+        if (heroUsd) heroUsd.textContent = `$${formatNumber(totalUsd)}`;
 
         // 2. Kartochkaning o'z ichida ochiladigan 6 ta hisob ro'yxati (Dinamik moslashuvchan)
         const cardListEl = document.getElementById('cardAccountsList');
@@ -480,20 +505,28 @@ async function loadSalesTrend(timeframe = '7d') {
         const data = resp.data;
         const labels = data.labels || [];
         const rev = data.revenue || [];
-        const col = data.collection || [];
+        const prevRev = data.previous_revenue || [];
         const growthBadge = document.getElementById('trendGrowthBadge');
         if (growthBadge && data.growth_rate) {
-            growthBadge.textContent = `↗ ${data.growth_rate}`;
+            growthBadge.textContent = data.growth_rate;
+            // Rang berish: yashil yoki qizil
+            if (data.growth_rate.includes('+') || data.growth_rate.includes('↗')) {
+                growthBadge.style.background = 'rgba(16,185,129,0.15)';
+                growthBadge.style.color = '#10b981';
+            } else if (data.growth_rate.includes('↘') || data.growth_rate.includes('-')) {
+                growthBadge.style.background = 'rgba(239,68,68,0.15)';
+                growthBadge.style.color = '#ef4444';
+            }
         }
 
-        renderDualLineChartSvg(container, labels, rev, col);
+        renderDualLineChartSvg(container, labels, rev, prevRev);
 
     } catch (e) {
         console.error('Sales trend xato:', e);
     }
 }
 
-function renderDualLineChartSvg(container, labels, revenue, collection) {
+function renderDualLineChartSvg(container, labels, revenue, previousRevenue) {
     const width = 800;
     const height = 210;
     const padX = 50;
@@ -501,7 +534,7 @@ function renderDualLineChartSvg(container, labels, revenue, collection) {
     const chartW = width - padX * 2;
     const chartH = height - padY * 2;
 
-    const maxVal = Math.max(...revenue, ...collection, 10000000);
+    const maxVal = Math.max(...revenue, ...previousRevenue, 10000000);
     const count = labels.length;
     const stepX = count > 1 ? chartW / (count - 1) : chartW;
 
@@ -514,7 +547,7 @@ function renderDualLineChartSvg(container, labels, revenue, collection) {
     }
 
     const revPoints = getCoords(revenue);
-    const colPoints = getCoords(collection);
+    const prevPoints = getCoords(previousRevenue);
 
     function buildSplinePath(pts) {
         if (pts.length === 0) return '';
@@ -530,7 +563,7 @@ function renderDualLineChartSvg(container, labels, revenue, collection) {
     }
 
     const revPath = buildSplinePath(revPoints);
-    const colPath = buildSplinePath(colPoints);
+    const prevPath = buildSplinePath(prevPoints);
 
     const revArea = revPoints.length > 0 ? `${revPath} L ${revPoints[revPoints.length - 1].x} ${height - padY} L ${revPoints[0].x} ${height - padY} Z` : '';
 
@@ -559,8 +592,8 @@ function renderDualLineChartSvg(container, labels, revenue, collection) {
             <!-- Area Fill -->
             <path d="${revArea}" fill="url(#vaCyanArea)"/>
 
-            <!-- Undirish (Purple Curve) -->
-            <path d="${colPath}" fill="none" stroke="#a855f7" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- Oldingi davr (Purple Curve) -->
+            <path d="${prevPath}" fill="none" stroke="#a855f7" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 4"/>
 
             <!-- Tushum (Cyan Glowing Curve) -->
             <path d="${revPath}" fill="none" stroke="#00f2fe" stroke-width="3.5" stroke-linecap="round" filter="url(#glowCyan)"/>
@@ -571,9 +604,14 @@ function renderDualLineChartSvg(container, labels, revenue, collection) {
                 <circle cx="${p.x}" cy="${p.y}" r="8" fill="none" stroke="#00f2fe" stroke-width="1.5" opacity="0.4"/>
             `).join('')}
 
-            ${colPoints.map((p, i) => `
+            ${prevPoints.map((p, i) => `
                 <circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#a855f7" stroke="#fff" stroke-width="1.5"/>
             `).join('')}
+
+            <!-- Y-Axis Labels (mln format) -->
+            <text x="${padX - 5}" y="${padY + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">${formatCompact(maxVal)}</text>
+            <text x="${padX - 5}" y="${padY + chartH / 2 + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">${formatCompact(maxVal / 2)}</text>
+            <text x="${padX - 5}" y="${height - padY + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">0</text>
 
             <!-- X-Axis Labels -->
             ${labels.map((lbl, i) => {
