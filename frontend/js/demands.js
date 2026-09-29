@@ -1843,7 +1843,11 @@ function copyReceiptForTelegram() {
     if (s.footerNote) text += `\n_${s.footerNote}_\n`;
 
     const copySuccess = () => {
-        alert("✅ Chek matni nusxalandi!\nTelegram orqali mijozga jo'natishingiz mumkin.");
+        if (typeof showToast === 'function') {
+            showToast("✅ Chek matni nusxalandi!", "success");
+        } else {
+            alert("✅ Chek matni nusxalandi!");
+        }
     };
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1890,8 +1894,12 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
 
         const isA5 = format === 'a5';
         const settings = getReceiptSettings();
-        const printArea = document.getElementById('reportPrintArea') || document.getElementById('receiptPrintArea');
+        const printArea = document.getElementById('genericPrintArea');
         if (!printArea) return;
+
+        // Print format classini body ga qo'shish
+        document.body.classList.remove('print-a4', 'print-a5');
+        document.body.classList.add(`print-${format}`);
 
         const totalSum = d.sum || 0;
         const paidSum = d.total_paid || 0;
