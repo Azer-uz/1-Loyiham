@@ -1819,11 +1819,18 @@ function copyReceiptForTelegram() {
 
     (d.positions || []).forEach((p, idx) => {
         const qty = parseFloat(p.quantity) || 0;
+        const origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
         const price = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
         const pSum = parseFloat(p.sum) || (qty * price);
+        const discountPct = parseFloat(p.discount) || 0;
         const code = p.code && p.code !== '—' ? `[${p.code}] ` : '';
-        text += `${idx + 1}. ${code}${p.name}\n`;
-        text += `   ${formatNumber(qty)} dona × ${formatMoney(price)} = ${formatMoney(pSum)} so'm\n`;
+        const color = p.color ? ` (${p.color})` : '';
+        text += `${idx + 1}. ${code}${p.name}${color}\n`;
+        if (origUnitPrice > price) {
+            text += `   ${formatNumber(qty)} dona × ~${formatMoney(origUnitPrice)}~ ➔ ${formatMoney(price)} = ${formatMoney(pSum)} so'm (-${discountPct}%)\n`;
+        } else {
+            text += `   ${formatNumber(qty)} dona × ${formatMoney(price)} = ${formatMoney(pSum)} so'm\n`;
+        }
     });
 
     text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
@@ -1907,14 +1914,26 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
 
         const rowsHtml = (d.positions || []).map((p, idx) => {
             const qty = parseFloat(p.quantity) || 0;
+            const origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
             const price = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
             const pSum = parseFloat(p.sum) || (qty * price);
+            const discountPct = parseFloat(p.discount) || 0;
+            
+            const colorHtml = p.color ? `<br><small style="color:#64748b;">Rang: ${p.color}</small>` : '';
+            
+            let priceHtml = `${formatMoney(origUnitPrice)}`;
+            if (origUnitPrice > price) {
+                priceHtml = `<strike style="color:#94a3b8;font-size:0.9em;">${formatMoney(origUnitPrice)}</strike><br><strong style="color:#b91c1c;">${formatMoney(price)}</strong><br><small style="color:#b91c1c;">(-${discountPct}%)</small>`;
+            } else {
+                priceHtml = formatMoney(price);
+            }
+
             return `
                 <tr>
                     <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${idx + 1}</td>
-                    <td style="padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong></td>
+                    <td style="padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong>${colorHtml}</td>
                     <td style="text-align:center;padding:${isA5 ? '4px 6px' : '6px 8px'};">${formatNumber(qty)}</td>
-                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};">${formatMoney(price)}</td>
+                    <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};">${priceHtml}</td>
                     <td style="text-align:right;padding:${isA5 ? '4px 6px' : '6px 8px'};"><strong>${formatMoney(pSum)}</strong></td>
                 </tr>
             `;
@@ -2077,12 +2096,13 @@ function buildReceiptHtml(demand, currentCustomerDebt, settings) {
         }
 
         const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
+        const colorHtml = p.color ? ` <span style="font-size:0.9em;color:#64748b;">(Rang: ${p.color})</span>` : '';
 
         return `
         <tr class="receipt-item-row">
             <td colspan="2" class="receipt-item-cell">
                 <div class="receipt-item-title">
-                    <span class="receipt-item-idx">${idx + 1}.</span> ${p.code && p.code !== '—' ? `<span class="receipt-item-code">[${p.code}]</span> ` : ''}${p.name}
+                    <span class="receipt-item-idx">${idx + 1}.</span> ${p.code && p.code !== '—' ? `<span class="receipt-item-code">[${p.code}]</span> ` : ''}${p.name}${colorHtml}
                 </div>
                 <div class="receipt-item-calc-row">
                     <div class="receipt-item-math">

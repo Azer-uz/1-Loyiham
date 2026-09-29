@@ -689,6 +689,17 @@ async def get_demand_detail(demand_id: str):
             total_before_discount = original_price * quantity
             discount_amount = max(0.0, total_before_discount - final_sum) if position_discount > 0 else 0.0
 
+            item_color = ""
+            attributes = assortment.get("attributes", [])
+            for attr in attributes:
+                if attr.get("name") == "Цвет":
+                    val = attr.get("value", "")
+                    if isinstance(val, dict):
+                        item_color = val.get("name", "")
+                    else:
+                        item_color = str(val)
+                    break
+
             formatted_positions.append({
                 "position_id": pos.get("id"),
                 "code": code or "—",
@@ -700,6 +711,7 @@ async def get_demand_detail(demand_id: str):
                 "discount": position_discount,
                 "discount_amount": discount_amount,
                 "original_price": original_price,
+                "color": item_color,
             })
 
         demand_discount = demand.get("discount", 0)
