@@ -10,7 +10,12 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from database import get_db
 from models_db import User, AppSetting
+from auth_utils import verify_password, hash_password, create_access_token, get_current_user
+from moysklad_client import ms_client
+
+router = APIRouter()
 
 async def save_moysklad_token(new_token: str, db: Optional[AsyncSession] = None):
     """Yangi olingan MoySklad API tokenni .env fayllariga va SQLite bazaga doimiy saqlash"""
