@@ -51,13 +51,16 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     ms_employee_name = username  # default
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             # MoySklad token olish orqali parolni tekshirish
             auth_resp = await client.post(
                 "https://api.moysklad.ru/api/remap/1.2/security/token",
                 auth=(username, password),
                 headers={"Content-Type": "application/json"}
             )
+
+            print(f"[MoySklad auth] Status: {auth_resp.status_code}, User: {username}")
+
             if auth_resp.status_code == 200:
                 ms_auth_success = True
                 # MoySklad'dan foydalanuvchi ma'lumotlarini olish
@@ -74,17 +77,36 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
                         if emp_resp.status_code == 200:
                             emp_data = emp_resp.json()
                             ms_employee_name = emp_data.get("name", username) or username
-                except Exception:
-                    pass
+                except Exception as emp_err:
+                    print(f"[MoySklad auth] Employee olishda xato: {emp_err}")
             else:
+                # MoySklad xato javobini logga yozish
+                err_msg = ""
+                try:
+                    err_body = auth_resp.json()
+                    if isinstance(err_body, dict):
+                        errors = err_body.get("errors", [])
+                        if errors and len(errors) > 0:
+                            err_msg = errors[0].get("error", "")
+                except Exception:
+                    err_msg = auth_resp.text[:200]
+
+                print(f"[MoySklad auth] Rad etildi: {auth_resp.status_code} — {err_msg}")
+
+                detail_msg = "MoySklad login yoki parol noto'g'ri."
+                if "@" not in username:
+                    detail_msg = "MoySklad login yoki parol noto'g'ri. Diqqat: MoySklad logini odatda 'login@kompaniya_nomi' shaklida bo'ladi (masalan: admin@azer yoki emailingiz)."
+                elif err_msg:
+                    detail_msg = f"MoySklad rad etdi: {err_msg}"
+
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="MoySklad login yoki parol noto'g'ri. Iltimos, MoySklad hisobingiz bilan kiring.",
+                    detail=detail_msg,
                 )
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[MoySklad auth] Xatolik: {e}")
+        print(f"[MoySklad auth] Ulanish xatosi: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="MoySklad serveri bilan bog'lanishda xatolik. Iltimos, keyinroq urinib ko'ring.",

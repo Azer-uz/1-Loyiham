@@ -110,6 +110,50 @@
             color: #64748b;
         }
 
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .password-wrapper .form-input {
+            padding-right: 44px;
+        }
+
+        .toggle-password-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            padding: 6px;
+            color: #94a3b8;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .toggle-password-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .toggle-password-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .form-hint {
+            display: block;
+            margin-top: 5px;
+            font-size: 11px;
+            color: #64748b;
+        }
+
         .btn-submit {
             width: 100%;
             padding: 14px;
@@ -150,8 +194,9 @@
             color: #fca5a5;
             font-size: 13px;
             margin-bottom: 20px;
-            align-items: center;
-            gap: 8px;
+            align-items: flex-start;
+            gap: 10px;
+            line-height: 1.4;
         }
 
         .moysklad-info {
@@ -186,19 +231,33 @@
         </div>
 
         <div id="login-alert" class="login-alert">
-            <span>⚠️</span>
+            <span style="font-size: 16px;">⚠️</span>
             <span id="alert-text">Login yoki parol noto'g'ri</span>
         </div>
 
         <form id="login-form" onsubmit="handleLogin(event)">
             <div class="form-group">
                 <label class="form-label" for="username">MoySklad Login</label>
-                <input type="text" id="username" class="form-input" placeholder="MoySklad login yoki email" required autocomplete="username">
+                <input type="text" id="username" class="form-input" placeholder="admin@company" required autocomplete="username" spellcheck="false" autofocus>
+                <span class="form-hint">Format: <strong>login@kompaniya_nomi</strong> (masalan: admin@azer)</span>
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="password">MoySklad Parol</label>
-                <input type="password" id="password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+                <div class="password-wrapper">
+                    <input type="password" id="password" class="form-input" placeholder="Parolingizni kiriting" required autocomplete="current-password">
+                    <button type="button" id="toggle-pwd-btn" class="toggle-password-btn" onclick="togglePasswordVisibility()" title="Parolni ko'rsatish" aria-label="Parolni ko'rsatish" tabindex="-1">
+                        <!-- Eye Open Icon (Default) -->
+                        <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <!-- Eye Slash Icon (Hidden initially) -->
+                        <svg id="eye-slash-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <button type="submit" id="submit-btn" class="btn-submit">
@@ -208,8 +267,8 @@
 
         <div class="moysklad-info">
             <div class="ms-logo">🏢 MoySklad Autentifikatsiya</div>
-            Kirish uchun MoySklad tizimidagi login va parolingizni kiriting.<br>
-            Faqat ruxsat berilgan foydalanuvchilar tizimga kira oladi.
+            MoySklad tizimiga kirishda ishlatadigan <strong>login va parolingizni</strong> kiriting.<br>
+            Kirish formati: <strong>login@kompaniya_nomi</strong>
         </div>
     </div>
 
@@ -217,6 +276,27 @@
         // Agar allaqachon kirilgan bo'lsa, to'g'ridan-to'g'ri dashboard'ga o'tish
         if (localStorage.getItem('token')) {
             window.location.href = '/';
+        }
+
+        function togglePasswordVisibility() {
+            const pwdInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eye-icon');
+            const eyeSlashIcon = document.getElementById('eye-slash-icon');
+            const toggleBtn = document.getElementById('toggle-pwd-btn');
+
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                eyeIcon.style.display = 'none';
+                eyeSlashIcon.style.display = 'block';
+                toggleBtn.title = "Parolni yashirish";
+                toggleBtn.setAttribute('aria-label', "Parolni yashirish");
+            } else {
+                pwdInput.type = 'password';
+                eyeIcon.style.display = 'block';
+                eyeSlashIcon.style.display = 'none';
+                toggleBtn.title = "Parolni ko'rsatish";
+                toggleBtn.setAttribute('aria-label', "Parolni ko'rsatish");
+            }
         }
 
         async function handleLogin(e) {
@@ -228,7 +308,7 @@
             const p = document.getElementById('password').value;
 
             if (!u || !p) {
-                alertText.textContent = "Login va parolni kiriting";
+                alertText.textContent = "Login va parolni to'liq kiriting";
                 alertEl.style.display = 'flex';
                 return;
             }
