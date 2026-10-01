@@ -351,28 +351,42 @@ async def get_accounts_with_corrections():
                 "correction": corr,
             })
 
+        consolidated_uzs = total_uzs_balance + (total_usd_balance * ref_rate)
+
+        res = {
+            "success": True,
+            "data": {
+                "accounts": adjusted_accounts,
+                "total_uzs_balance": total_uzs_balance,
+                "total_usd_balance": total_usd_balance,
+                "reference_rate": ref_rate,
+                "consolidated_uzs_equivalent": consolidated_uzs,
+            }
+        }
+        if adjusted_accounts:
+            _ACCOUNTS_CACHE = res
+            _ACCOUNTS_CACHE_TIME = time.time()
+        return res
+
     except Exception as e:
         print(f"[Accounts /report/money/byaccount error] {e}")
-        # Fallback agar MoySklad javob bermasa
+        # Agar oldingi to'g'ri kesh bo'lsa, uni asrab qolamiz va qaytaramiz
+        if _ACCOUNTS_CACHE is not None:
+            return _ACCOUNTS_CACHE
+
         adjusted_accounts = [
             {"id": "cash_default", "name": "💵 Asosiy Naqd Kassa (UZS)", "currency": "UZS", "current_balance": 0.0, "is_dollar": False, "has_correction": False},
         ]
-
-    consolidated_uzs = total_uzs_balance + (total_usd_balance * ref_rate)
-
-    res = {
-        "success": True,
-        "data": {
-            "accounts": adjusted_accounts,
-            "total_uzs_balance": total_uzs_balance,
-            "total_usd_balance": total_usd_balance,
-            "reference_rate": ref_rate,
-            "consolidated_uzs_equivalent": consolidated_uzs,
+        return {
+            "success": True,
+            "data": {
+                "accounts": adjusted_accounts,
+                "total_uzs_balance": 0.0,
+                "total_usd_balance": 0.0,
+                "reference_rate": ref_rate,
+                "consolidated_uzs_equivalent": 0.0,
+            }
         }
-    }
-    _ACCOUNTS_CACHE = res
-    _ACCOUNTS_CACHE_TIME = time.time()
-    return res
 
 
 @router.post("/accounts/adjust-balance")

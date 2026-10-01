@@ -1407,6 +1407,52 @@ async def get_cashflow(
                     "linked_demand_id": None,
                 })
 
+        # Fallback: Agar MoySklad API bo'sh yoki xato qaytarsa, mavjud keshdan yoki SQLite bazadan yuklash
+        if not all_tx:
+            if _CASHFLOW_RAW_CACHE is not None and _CASHFLOW_RAW_CACHE.get("all_tx"):
+                all_tx = _CASHFLOW_RAW_CACHE["all_tx"]
+                usd_rate = _CASHFLOW_RAW_CACHE.get("usd_rate", usd_rate)
+                account_balances = _CASHFLOW_RAW_CACHE.get("acc_data", {}).get("account_balances", account_balances)
+                total_uzs_balance = _CASHFLOW_RAW_CACHE.get("acc_data", {}).get("total_uzs_balance", total_uzs_balance)
+                total_usd_balance = _CASHFLOW_RAW_CACHE.get("acc_data", {}).get("total_usd_balance", total_usd_balance)
+                consolidated_uzs = _CASHFLOW_RAW_CACHE.get("acc_data", {}).get("consolidated_uzs", consolidated_uzs)
+            else:
+                try:
+                    from database import AsyncSessionLocal
+                    from models_db import LocalPayment
+                    async with AsyncSessionLocal() as s:
+                        lp_stmt = select(LocalPayment).order_by(desc(LocalPayment.moment)).limit(1000)
+                        lps = (await s.execute(lp_stmt)).scalars().all()
+                        if lps:
+                            for p in lps:
+                                is_dol = bool(p.is_usd or (p.usd_amount and p.usd_amount > 0))
+                                amt = float(p.sum or 0.0)
+                                u_amt = float(p.usd_amount or 0.0)
+                                u_rate = float(p.usd_rate or 0.0)
+                                doc_t = "cashin" if p.type == "cash" else "paymentin"
+                                all_tx.append({
+                                    "id": p.id,
+                                    "doc_type": doc_t,
+                                    "direction": "in",
+                                    "type_name": "💲 Dollar to'lov" if is_dol else ("💵 Naqd to'lov" if p.type == "cash" else "💳 Karta to'lov"),
+                                    "doc_number": p.name or "—",
+                                    "moment": p.moment or "",
+                                    "amount": amt,
+                                    "usd_amount": u_amt,
+                                    "usd_rate": u_rate,
+                                    "is_usd": is_dol,
+                                    "account_id": "dollar" if is_dol else ("cash_default" if p.type == "cash" else "card"),
+                                    "account_name": "💵 Dollar Kassa" if is_dol else ("💵 Asosiy Naqd Kassa" if p.type == "cash" else "💳 Humo / Uzcard"),
+                                    "account_type": "dollar" if is_dol else ("cash" if p.type == "cash" else "bank"),
+                                    "target_name": p.purpose or "Mijozdan to'lov",
+                                    "expense_item": None,
+                                    "expense_item_id": None,
+                                    "purpose": p.purpose or "",
+                                    "linked_demand_id": p.demand_id or None,
+                                })
+                except Exception as lpe:
+                    print(f"LocalPayment fallback error: {lpe}")
+
         # Sanaga qarab saralash (eng yangisi tepada, xavfsiz)
         all_tx.sort(key=lambda x: str(x.get("moment") or ""), reverse=True)
 
@@ -1461,8 +1507,8 @@ async def get_cashflow(
         card_in = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "paymentin")
         card_out = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "paymentout")
 
-        # 4. Hisoblar bo'yicha keshni saqlash
-        if _CASHFLOW_RAW_CACHE is None or refresh or (now_ts - _CASHFLOW_RAW_CACHE.get("timestamp", 0)) >= _CASHFLOW_CACHE_TTL:
+        # 4. Hisoblar bo'yicha keshni saqlash (faqat haqiqiy ma'lumot bo'lsa)
+        if all_tx and (_CASHFLOW_RAW_CACHE is None or refresh or (now_ts - _CASHFLOW_RAW_CACHE.get("timestamp", 0)) >= _CASHFLOW_CACHE_TTL):
             _CASHFLOW_RAW_CACHE = {
                 "all_tx": all_tx,
                 "usd_rate": usd_rate,

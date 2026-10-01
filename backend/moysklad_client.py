@@ -46,7 +46,9 @@ class RateLimiter:
             wait_time = self.last_request + self.interval - now
             if wait_time > 0:
                 await asyncio.sleep(wait_time)
-            self.last_request = time.monotonic()
+                self.last_request = time.monotonic()
+            else:
+                self.last_request = now
 
 
 class MoySkladClient:
