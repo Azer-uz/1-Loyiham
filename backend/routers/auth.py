@@ -1,6 +1,9 @@
 # backend/routers/auth.py
 import base64
 import urllib.parse
+import asyncio
+import re
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List
@@ -10,8 +13,31 @@ from sqlalchemy import select
 from database import get_db
 from models_db import User
 from auth_utils import verify_password, hash_password, create_access_token, get_current_user
+from moysklad_client import ms_client
 
 router = APIRouter()
+
+
+def save_moysklad_token_to_env(new_token: str):
+    """Yangi olingan MoySklad API tokenni .env fayllariga yozish"""
+    env_paths = [
+        Path(__file__).parent.parent / ".env",
+        Path(__file__).parent / ".env",
+        Path("/var/www/moysklad-app/backend/.env"),
+        Path("/var/www/moysklad-app/.env"),
+    ]
+    for p in env_paths:
+        if p.exists():
+            try:
+                content = p.read_text(encoding="utf-8")
+                if "MOYSKLAD_TOKEN=" in content:
+                    content = re.sub(r"MOYSKLAD_TOKEN=.*", f"MOYSKLAD_TOKEN={new_token}", content)
+                else:
+                    content += f"\nMOYSKLAD_TOKEN={new_token}\n"
+                p.write_text(content, encoding="utf-8")
+                print(f"[Env] MOYSKLAD_TOKEN saqlandi: {p}")
+            except Exception as e:
+                print(f"[Env] {p} ga saqlashda xato: {e}")
 
 
 class LoginRequest(BaseModel):
@@ -36,8 +62,9 @@ class UserResponse(BaseModel):
 
 @router.post("/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """Tizimga kirish — FAQAT MoySklad API orqali autentifikatsiya"""
+    """Tizimga kirish — MoySklad orqali token olish va tizimni to'liq yangilash"""
     import httpx
+    from tasks import sync_all_data
 
     username = req.username.strip()
     password = req.password
@@ -48,18 +75,19 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Login va parol kiritilishi shart",
         )
 
-    # MoySklad API orqali autentifikatsiya (UTF-8 Basic Auth)
     ms_auth_success = False
     ms_employee_name = username
+    ms_token = ""
 
     try:
-        # Basic auth tokenni UTF-8 formatida yaratish (bo'sh joy va maxsus belgilar xavfsiz o'tishi uchun)
+        # UTF-8 Basic auth header
         raw_cred = f"{username}:{password}".encode("utf-8")
         basic_token = base64.b64encode(raw_cred).decode("ascii")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            auth_resp = await client.get(
-                "https://api.moysklad.ru/api/remap/1.2/context/employee",
+            # 1. MoySklad'dan yangi API token olish
+            auth_resp = await client.post(
+                "https://api.moysklad.ru/api/remap/1.2/security/token",
                 headers={
                     "Authorization": f"Basic {basic_token}",
                     "Content-Type": "application/json",
@@ -68,14 +96,36 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
 
             print(f"[MoySklad auth] Status: {auth_resp.status_code}, User: {username}")
 
-            if auth_resp.status_code == 200:
+            if auth_resp.status_code in (200, 201):
                 ms_auth_success = True
-                emp_data = auth_resp.json()
-                ms_employee_name = emp_data.get("name", username) or username
+                resp_json = auth_resp.json()
+                ms_token = resp_json.get("access_token", "")
+                
+                # Yangi tokenni tizimga faollashtirish
+                if ms_token:
+                    ms_client.update_token(ms_token)
+                    save_moysklad_token_to_env(ms_token)
+
+                    # Xodim ismini olish
+                    try:
+                        emp_resp = await client.get(
+                            "https://api.moysklad.ru/api/remap/1.2/context/employee",
+                            headers={
+                                "Authorization": f"Bearer {ms_token}",
+                                "Content-Type": "application/json"
+                            }
+                        )
+                        if emp_resp.status_code == 200:
+                            emp_data = emp_resp.json()
+                            ms_employee_name = emp_data.get("name", username) or username
+                    except Exception as emp_err:
+                        print(f"[MoySklad auth] Xodim ismini olishda xato: {emp_err}")
+
+                    # Orqa fonda barcha qoldiqlar, to'lovlar va ma'lumotlarni sinxronlash
+                    asyncio.create_task(sync_all_data())
             else:
-                # MoySklad xato javobini aniqlash
+                # MoySklad xato xabarini o'qish
                 err_msg = ""
-                # 1. Header'dagi xabarni tekshirish
                 auth_header_msg = auth_resp.headers.get("x-lognex-auth-message", "")
                 if auth_header_msg:
                     try:
@@ -83,7 +133,6 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
                     except Exception:
                         pass
 
-                # 2. Body'dagi xabarni tekshirish
                 if not err_msg:
                     try:
                         err_body = auth_resp.json()
@@ -117,18 +166,16 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="MoySklad login yoki parol noto'g'ri",
         )
 
-    # MoySklad muvaffaqiyatli — lokal userni yangilash yoki yaratish
+    # Foydalanuvchini lokal bazada saqlash/yangilash
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalars().first()
 
     if user:
-        # Parolni sinxronlash
         user.hashed_password = hash_password(password)
         user.full_name = ms_employee_name
         await db.commit()
         await db.refresh(user)
     else:
-        # Yangi lokal user yaratish (faqat MoySklad tasdiqlagan foydalanuvchilar)
         user = User(
             username=username,
             hashed_password=hash_password(password),

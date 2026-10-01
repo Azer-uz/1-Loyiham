@@ -76,6 +76,15 @@ class MoySkladClient:
         self._currencies_cache = {"data": None, "timestamp": 0}
         self.CURRENCIES_CACHE_TTL = 3600  # 1 soat
 
+    def update_token(self, new_token: str):
+        """Yangi MoySklad API tokenni o'rnatish va ulanishlarni yangilash"""
+        self.headers["Authorization"] = f"Bearer {new_token}"
+        if self._client and not self._client.is_closed:
+            self._client.headers["Authorization"] = f"Bearer {new_token}"
+        else:
+            self._client = None
+        print(f"[MoySkladClient] API token muvaffaqiyatli yangilandi: {new_token[:8]}...")
+
     def get_http_client(self):
         try:
             cur_loop = asyncio.get_running_loop()
