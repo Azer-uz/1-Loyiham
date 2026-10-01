@@ -10,16 +10,10 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from database import get_db
-from models_db import User
-from auth_utils import verify_password, hash_password, create_access_token, get_current_user
-from moysklad_client import ms_client
+from models_db import User, AppSetting
 
-router = APIRouter()
-
-
-def save_moysklad_token_to_env(new_token: str):
-    """Yangi olingan MoySklad API tokenni .env fayllariga yozish"""
+async def save_moysklad_token(new_token: str, db: Optional[AsyncSession] = None):
+    """Yangi olingan MoySklad API tokenni .env fayllariga va SQLite bazaga doimiy saqlash"""
     env_paths = [
         Path(__file__).parent.parent / ".env",
         Path(__file__).parent / ".env",
@@ -27,17 +21,49 @@ def save_moysklad_token_to_env(new_token: str):
         Path("/var/www/moysklad-app/.env"),
     ]
     for p in env_paths:
-        if p.exists():
-            try:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if p.exists():
                 content = p.read_text(encoding="utf-8")
                 if "MOYSKLAD_TOKEN=" in content:
                     content = re.sub(r"MOYSKLAD_TOKEN=.*", f"MOYSKLAD_TOKEN={new_token}", content)
                 else:
                     content += f"\nMOYSKLAD_TOKEN={new_token}\n"
                 p.write_text(content, encoding="utf-8")
-                print(f"[Env] MOYSKLAD_TOKEN saqlandi: {p}")
-            except Exception as e:
-                print(f"[Env] {p} ga saqlashda xato: {e}")
+            else:
+                default_env = (
+                    f"MOYSKLAD_TOKEN={new_token}\n"
+                    f"MOYSKLAD_API_URL=https://api.moysklad.ru/api/remap/1.2\n"
+                    f"APP_HOST=0.0.0.0\n"
+                    f"APP_PORT=8000\n"
+                    f"SECRET_KEY=moysklad_secret_2026\n"
+                )
+                p.write_text(default_env, encoding="utf-8")
+            print(f"[Env] MOYSKLAD_TOKEN saqlandi: {p}")
+        except Exception as e:
+            print(f"[Env] {p} ga saqlashda xato: {e}")
+
+    # SQLite bazada AppSetting ga saqlash
+    try:
+        from database import AsyncSessionLocal
+        target_session = db if db is not None else AsyncSessionLocal()
+        async with target_session if db is None else asyncio.nullcontext():
+            res = await target_session.execute(select(AppSetting).where(AppSetting.key == "moysklad_token"))
+            setting = res.scalar_one_or_none()
+            if setting:
+                setting.value = new_token
+            else:
+                setting = AppSetting(key="moysklad_token", value=new_token)
+                target_session.add(setting)
+            await target_session.commit()
+            print(f"[DB] MoySklad token SQLite bazaga doimiy saqlandi")
+    except Exception as db_err:
+        print(f"[DB] Tokenni DB ga saqlashda xato: {db_err}")
+
+
+def save_moysklad_token_to_env(new_token: str):
+    """Sinxron chaqiruvlar uchun wrapper"""
+    asyncio.create_task(save_moysklad_token(new_token))
 
 
 class LoginRequest(BaseModel):
@@ -338,4 +364,92 @@ async def create_user(
             "full_name": new_user.full_name,
             "role": new_user.role,
         }
+    }
+
+
+class UpdateMoySkladTokenRequest(BaseModel):
+    token: str
+
+
+@router.post("/update-moysklad-token")
+async def update_moysklad_token_endpoint(
+    req: UpdateMoySkladTokenRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MoySklad tokenni qo'lda kiritish va darhol faollashtirish"""
+    tok = req.token.strip()
+    if not tok:
+        raise HTTPException(status_code=400, detail="Token bo'sh bo'lishi mumkin emas")
+
+    from moysklad_client import ms_client
+    from tasks import sync_all_data
+
+    ms_client.update_token(tok)
+    await save_moysklad_token(tok, db=db)
+
+    # Tokenni MoySklad orqali tekshirish
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.moysklad.ru/api/remap/1.2/context/employee",
+                headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+            )
+            if resp.status_code == 200:
+                emp_name = resp.json().get("name", "MoySklad foydalanuvchisi")
+                asyncio.create_task(sync_all_data())
+                return {
+                    "success": True,
+                    "message": f"MoySklad token muvaffaqiyatli o'rnatildi va tasdiqlandi ({emp_name})",
+                    "employee": emp_name
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Token saqlandi, ammo MoySklad xatolik qaytardi [{resp.status_code}]"
+                }
+    except Exception as e:
+        return {
+            "success": True,
+            "message": f"Token saqlandi: {e}"
+        }
+
+
+@router.get("/moysklad-status")
+async def get_moysklad_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MoySklad ulanish holatini tekshirish"""
+    from moysklad_client import ms_client
+    curr_token = ms_client.headers.get("Authorization", "").replace("Bearer ", "")
+    is_set = bool(curr_token and len(curr_token) > 10)
+
+    is_valid = False
+    error_detail = ""
+    emp_name = ""
+
+    if is_set:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.get(
+                    "https://api.moysklad.ru/api/remap/1.2/context/employee",
+                    headers={"Authorization": f"Bearer {curr_token}", "Content-Type": "application/json"}
+                )
+                if resp.status_code == 200:
+                    is_valid = True
+                    emp_name = resp.json().get("name", "")
+                else:
+                    error_detail = f"MoySklad {resp.status_code}: {resp.text[:100]}"
+        except Exception as e:
+            error_detail = str(e)
+
+    return {
+        "is_configured": is_set,
+        "is_valid": is_valid,
+        "employee_name": emp_name,
+        "token_prefix": f"{curr_token[:6]}..." if is_set else "Mavjud emas",
+        "error": error_detail,
     }

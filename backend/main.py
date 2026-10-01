@@ -112,6 +112,19 @@ async def startup_event():
     await init_db()
     async with AsyncSessionLocal() as session:
         await ensure_default_admin(session)
+        
+        # SQLite dan doimiy saqlangan MoySklad tokenni tekshirish va faollashtirish
+        try:
+            from sqlalchemy import select
+            from models_db import AppSetting
+            from moysklad_client import ms_client
+            res = await session.execute(select(AppSetting).where(AppSetting.key == "moysklad_token"))
+            setting = res.scalar_one_or_none()
+            if setting and setting.value:
+                ms_client.update_token(setting.value)
+                print(f"🔑 MoySklad token DB dan yuklandi: {setting.value[:8]}...")
+        except Exception as e:
+            print(f"⚠️ Tokenni DB dan yuklashda xato: {e}")
     
     # Orqa fon schedulerini yoqish
     start_background_scheduler()
