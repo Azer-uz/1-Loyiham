@@ -1397,8 +1397,8 @@ async def get_cashflow(
                     "linked_demand_id": None,
                 })
 
-        # Sanaga qarab saralash (eng yangisi tepada)
-        all_tx.sort(key=lambda x: x["moment"], reverse=True)
+        # Sanaga qarab saralash (eng yangisi tepada, xavfsiz)
+        all_tx.sort(key=lambda x: str(x.get("moment") or ""), reverse=True)
 
         # 3. Filtrlash
         filtered_tx = all_tx
@@ -1406,10 +1406,10 @@ async def get_cashflow(
         # Sana filtrlash
         if date_from:
             start_bound = f"{date_from} 00:00:00"
-            filtered_tx = [t for t in filtered_tx if t["moment"] >= start_bound]
+            filtered_tx = [t for t in filtered_tx if str(t.get("moment") or "") >= start_bound]
         if date_to:
             end_bound = f"{date_to} 23:59:59"
-            filtered_tx = [t for t in filtered_tx if t["moment"] <= end_bound]
+            filtered_tx = [t for t in filtered_tx if str(t.get("moment") or "") <= end_bound]
 
         # Tur filtrlash
         if type_filter == "inflow":

@@ -31,7 +31,7 @@ async function loadEditAccountsSelect(selectedAccountId) {
 // frontend/js/payments.js - Said Baraka Kassa & Valyuta Moduli
 
 // ===== GLOBAL O'ZGARUVCHILAR =====
-let currentPeriod = 'today'; // Standart davr: 'today' (Bugun - tezkor ochiladi)
+let currentPeriod = 'month'; // Standart davr: 'month' (Joriy oy - barcha to'lovlarni darhol to'liq ochadi)
 let currentTypeFilter = 'all';
 let currentAccountId = 'all';
 let currentExpenseItemId = '';
