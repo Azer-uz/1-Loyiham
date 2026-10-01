@@ -41,13 +41,7 @@
       "description": "Kelishilgan kurs bo'yicha naqd yoki hisobdan dollar to'lovi"
     }
   ],
-  "corrections": {
-    "cash_default": {
-      "adjusted_balance": 585000000.0,
-      "reason": "Kassa sanash testi",
-      "updated_at": "2026-09-16 18:27:19"
-    }
-  },
+  "corrections": {},
   "reference_usd_rate": 11800.0,
   "organization_name": "Said_Baraka"
 }
