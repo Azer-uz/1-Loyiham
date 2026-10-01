@@ -375,9 +375,26 @@
             font-weight: 700;
             background: var(--card);
         }
+        /* 3 xil To'lov Turi Ranglari: Naqd - Yashil, Karta - Ko'k, Dollar - Oltin Orange */
+        .pay-input-field.cash-field label {
+            color: #15803d !important;
+            font-weight: 700;
+        }
+        .pay-input-field.cash-field input {
+            border-color: #86efac !important;
+            color: #15803d !important;
+        }
+        .pay-input-field.card-field label {
+            color: #0284c7 !important;
+            font-weight: 700;
+        }
+        .pay-input-field.card-field input {
+            border-color: #7dd3fc !important;
+            color: #0284c7 !important;
+        }
         .usd-pay-box {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
+            background: #fffbeb;
+            border: 1.5px solid #fde68a;
             border-radius: 6px;
             padding: 8px 10px;
             display: flex;
@@ -387,14 +404,15 @@
         .usd-pay-header {
             font-size: 11px;
             font-weight: 700;
-            color: #15803d;
+            color: #d97706;
         }
         .usd-pay-box label {
-            color: #15803d !important;
+            color: #d97706 !important;
+            font-weight: 600;
         }
         .usd-pay-box input {
-            border-color: #86efac !important;
-            color: #15803d !important;
+            border-color: #fcd34d !important;
+            color: #b45309 !important;
         }
         .usd-inputs-grid {
             display: grid;
@@ -404,11 +422,11 @@
         }
         .compact-usd-badge {
             padding: 5px 6px;
-            background: var(--card);
-            border: 1px solid #86efac;
+            background: #ffffff;
+            border: 1.5px solid #fcd34d;
             border-radius: 6px;
             font-weight: 700;
-            color: #15803d;
+            color: #d97706;
             font-size: 12px;
             text-align: center;
             white-space: nowrap;
@@ -586,22 +604,36 @@
             color: #f8fafc !important;
             border-color: #475569 !important;
         }
+        body.dark-mode .pay-input-field.cash-field label {
+            color: #34d399 !important;
+        }
+        body.dark-mode .pay-input-field.cash-field input {
+            color: #34d399 !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+        }
+        body.dark-mode .pay-input-field.card-field label {
+            color: #38bdf8 !important;
+        }
+        body.dark-mode .pay-input-field.card-field input {
+            color: #38bdf8 !important;
+            border-color: rgba(14, 165, 233, 0.4) !important;
+        }
         body.dark-mode .usd-pay-box {
-            background: rgba(16, 185, 129, 0.1) !important;
-            border-color: rgba(16, 185, 129, 0.3) !important;
+            background: rgba(245, 158, 11, 0.08) !important;
+            border-color: rgba(245, 158, 11, 0.35) !important;
         }
         body.dark-mode .usd-pay-header, body.dark-mode .usd-pay-box label {
-            color: #4ade80 !important;
+            color: #fbbf24 !important;
         }
         body.dark-mode .usd-pay-box input {
             background: #0f172a !important;
-            color: #4ade80 !important;
-            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #fbbf24 !important;
+            border-color: rgba(245, 158, 11, 0.45) !important;
         }
         body.dark-mode .compact-usd-badge {
             background: #0f172a !important;
-            border-color: rgba(16, 185, 129, 0.4) !important;
-            color: #4ade80 !important;
+            border-color: rgba(245, 158, 11, 0.45) !important;
+            color: #fbbf24 !important;
         }
         body.dark-mode .pay-calculation-bar {
             background: #0f172a !important;
@@ -881,7 +913,7 @@
                         <span>💰</span>
                         <span>To'lovlar</span>
                     </a>
-                    <a href="/supply" class="nav-tab-item">
+                    <a href="javascript:void(0)" onclick="handleSupplyComingSoon(event)" class="nav-tab-item">
                         <span>🏬</span>
                         <span>Asosiy ombor</span>
                     </a>
@@ -943,30 +975,15 @@
         </div>
     </header>
     <div class="app-layout">
-        <main class="main-content">
-            <div class="v7-greeting-bar">
-                <div class="v7-greeting-text-group"><span id="currentDate" style="display:none;"></span><span id="orgName" style="display:none;"></span>
-                    <h1 class="v7-greeting-title">Sotuvlar Ro'yxati</h1>
-                    <span class="v7-greeting-subtitle">Barcha sotuv hujjatlari va kassa cheklari</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <button type="button" class="v7-btn-new-order" onclick="openProductReturnFinderModal()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#ffffff; cursor:pointer; box-shadow:0 2px 6px rgba(217,119,6,0.3); display:inline-flex; align-items:center; gap:6px; font-weight:700;">
-                        ↩️ Qaytarish / Tovar qidirish
-                    </button>
-                    <button type="button" class="v7-btn-new-order" onclick="showCreateDemand()" style="background:var(--success,#16a34a); color:#ffffff; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.3); display:inline-flex; align-items:center; gap:6px;">
-                        ➕ Yangi Sotuv
-                    </button>
-                    <button class="v7-btn-new-order btn-receipt-settings-top" onclick="openReceiptSettingsModal()">
-                        ⚙️ Chek sozlamalari
-                    </button>
-                </div>
-            </div>
+        <main class="main-content" style="padding-top: 10px;">
+            <span id="currentDate" style="display:none;"></span>
+            <span id="orgName" style="display:none;"></span>
 
-            <!-- Filtr paneli (MoySklad Davr Navigatsiyasi) -->
-            <div class="filter-panel" style="padding: 12px 16px; margin-bottom: 14px;">
-                <!-- 1-qator: Davr tugmalari + MoySklad ◀ Oy ▶ navigatsiyasi + Aniq sanalar + Chop etish -->
-                <div class="date-navigator-strip">
-                    <div class="period-nav-group">
+            <!-- Filtr paneli (MoySklad Davr Navigatsiyasi + Birlashgan Tugmalar) -->
+            <div class="filter-panel" style="padding: 10px 14px; margin-bottom: 10px;">
+                <!-- 1-qator: Davr tugmalari + Sana navigatsiyasi + Amallar (Qaytarish, Yangi sotuv, Chop etish) -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <div class="period-nav-group" style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
                         <div class="quick-dates">
                             <button class="quick-btn active" data-period="today" onclick="selectPeriod('today')">Bugun</button>
                             <button class="quick-btn" data-period="yesterday" onclick="selectPeriod('yesterday')">Kecha</button>
@@ -982,7 +999,7 @@
                             <button class="nav-arrow-btn" onclick="navigatePeriod(1)" title="Keyingi davr">▶</button>
                         </div>
 
-                        <!-- Aniq sanalar (ko'rinib turadi) -->
+                        <!-- Aniq sanalar -->
                         <div class="date-inputs-compact">
                             <input type="date" id="dateFrom" title="Boshlanish sanasi">
                             <span style="color:var(--text-light);font-size:12px;">—</span>
@@ -990,9 +1007,16 @@
                         </div>
                     </div>
 
-                    <div style="display:flex; gap:8px;">
+                    <!-- Amallar tugmalari -->
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                        <button type="button" class="btn-top-action" onclick="openProductReturnFinderModal()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#ffffff; cursor:pointer; font-weight:700; padding:6px 14px; font-size:12.5px; border-radius:6px; border:none; box-shadow:0 2px 6px rgba(217,119,6,0.3); display:inline-flex; align-items:center; gap:5px;" title="Tovarni qaytarish va almashtirish">
+                            ↩️ Qaytarish
+                        </button>
+                        <button type="button" class="btn-top-action" onclick="showCreateDemand()" style="background:var(--success,#16a34a); color:#ffffff; cursor:pointer; font-weight:700; padding:6px 14px; font-size:12.5px; border-radius:6px; border:none; box-shadow:0 2px 6px rgba(22,163,74,0.3); display:inline-flex; align-items:center; gap:5px;">
+                            ➕ Yangi Sotuv
+                        </button>
                         <div class="print-dropdown-wrapper">
-                            <button class="btn-print" onclick="togglePrintDropdown(this)">
+                            <button class="btn-print" onclick="togglePrintDropdown(this)" style="padding:6px 12px; font-size:12px;">
                                 📝 Chop etish ▼
                             </button>
                             <div class="print-dropdown-menu" id="demandsPrintDropdown">
@@ -1003,8 +1027,8 @@
                     </div>
                 </div>
 
-                <!-- 2-qator: Status bo'yicha tezkor filtrlar + Qidiruv -->
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <!-- 2-qator: Status bo'yicha tezkor filtrlar + Jami + Qidiruv + Chek sozlamalari -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
                     <div class="status-filter-wrapper" style="flex: 1; min-width: 280px; padding: 0;">
                         <div class="status-filter-scroll">
                             <button class="status-filter-pill active" data-status="all" onclick="selectStateFilter('all')">
@@ -1028,14 +1052,18 @@
                         </div>
                     </div>
 
-                    <div style="width: 260px; min-width: 200px;">
-                        <input type="text" id="searchInput" class="filter-input" style="width: 100%; padding: 7px 12px; font-size: 13px;" placeholder="🔍 Mijoz yoki raqam bo'yicha qidirish...">
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                        <div style="font-size:12.5px; font-weight:700; color:var(--text); white-space:nowrap; background:rgba(255,255,255,0.05); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);" id="resultsCount">
+                            Yuklanmoqda...
+                        </div>
+                        <div style="width: 220px; min-width: 160px;">
+                            <input type="text" id="searchInput" class="filter-input" style="width: 100%; padding: 6px 10px; font-size: 12.5px;" placeholder="🔍 Mijoz yoki raqam bo'yicha qidirish...">
+                        </div>
+                        <button class="btn-top-action" onclick="openReceiptSettingsModal()" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; padding:6px 10px; font-size:12px; border-radius:6px; cursor:pointer; font-weight:600; white-space:nowrap;" title="Chek sozlamalari">
+                            ⚙️ Chek sozlamalari
+                        </button>
                     </div>
                 </div>
-            </div>
-
-            <div class="results-info">
-                <span id="resultsCount">Yuklanmoqda...</span>
             </div>
 
             <div class="table-wrapper">

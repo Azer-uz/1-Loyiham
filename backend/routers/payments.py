@@ -1,7 +1,7 @@
 
-# ================= TEZKOR KASSA KESHI (RAM / 30s TTL) =================
+# ================= TEZKOR KASSA KESHI (RAM / 300s TTL) =================
 _CASHFLOW_RAW_CACHE = None
-_CASHFLOW_CACHE_TTL = 30.0
+_CASHFLOW_CACHE_TTL = 300.0
 
 def invalidate_cashflow_cache():
     global _CASHFLOW_RAW_CACHE
@@ -1065,6 +1065,7 @@ async def create_expense(expense: ExpenseCreateRequest):
 
         # Keshni tozalash
         ms_client.invalidate_payments_cache()
+        invalidate_cashflow_cache()
 
         return {"success": True, "data": res, "message": "Xarajat muvaffaqiyatli saqlandi"}
     except HTTPException:
@@ -1096,33 +1097,35 @@ async def get_cashflow(
         global _CASHFLOW_RAW_CACHE
         now_ts = time.time()
         
-        # 🚀 Tezkor Keshdan olish (30 soniya TTL yoki majburiy refresh bo'lmasa)
-        if _CASHFLOW_RAW_CACHE is not None and not refresh and (now_ts - _CASHFLOW_RAW_CACHE.get("timestamp", 0)) < _CASHFLOW_CACHE_TTL:
+        # 🚀 Tezkor Keshdan olish (300 soniya TTL yoki majburiy refresh bo'lmasa)
+        org_accs = []
+        if _CASHFLOW_RAW_CACHE is not None and not refresh and (now_ts - _CASHFLOW_RAW_CACHE.get("timestamp", 0)) < _CASHFLOW_CACHE_TTL and "acc_data" in _CASHFLOW_RAW_CACHE:
             all_tx = _CASHFLOW_RAW_CACHE["all_tx"]
             usd_rate = _CASHFLOW_RAW_CACHE["usd_rate"]
             org_accs = _CASHFLOW_RAW_CACHE.get("org_accs", [])
+            cached_data = _CASHFLOW_RAW_CACHE["acc_data"]
+            account_balances = cached_data.get("account_balances", [])
+            total_uzs_balance = cached_data.get("total_uzs_balance", 0.0)
+            total_usd_balance = cached_data.get("total_usd_balance", 0.0)
+            consolidated_uzs = cached_data.get("consolidated_uzs", 0.0)
+            ref_rate = cached_data.get("ref_rate", 11800.0)
+            expense_map = {}
         else:
-            # 1. Joriy Dollar kursini olish
-            usd_rate = 12800.0
-            try:
-                raw_curr = await ms_client.get_currencies()
-                for c in (raw_curr or []):
-                    if isinstance(c, dict) and c.get("isoCode") == "USD":
-                        usd_rate = float(c.get("rate", 12800.0))
-                        break
-            except Exception as e:
-                print(f"[Cashflow currency rate error] {e}")
+            from routers.settings import get_accounts_with_corrections
 
-            # 2. Parallel so'rovlar bilan barcha operatsiyalar va kesh xaritalarni olish
-            cashins_task = ms_client._request("GET", "/entity/cashin", params={"limit": 1000, "expand": "agent,organization,operations"})
-            paymentins_task = ms_client._request("GET", "/entity/paymentin", params={"limit": 1000, "expand": "agent,organization,organizationAccount,operations"})
+            # 1. Parallel so'rovlar bilan barcha operatsiyalar, hisoblar va kesh xaritalarni bir vaqtda olish (Tezkor 0.8s)
+            cashins_task = ms_client._request("GET", "/entity/cashin", params={"limit": 1000})
+            paymentins_task = ms_client._request("GET", "/entity/paymentin", params={"limit": 1000})
             cashouts_task = ms_client.get_cashouts(limit=1000)
             paymentouts_task = ms_client.get_paymentouts(limit=1000)
             counterparties_task = ms_client.get_all_counterparties_cached()
-            org_task = ms_client.get_organization()
+            expense_items_task = ms_client.get_expense_items()
+            accounts_task = get_accounts_with_corrections()
+            currencies_task = ms_client.get_currencies()
 
             results = await asyncio.gather(
-                cashins_task, paymentins_task, cashouts_task, paymentouts_task, counterparties_task, org_task,
+                cashins_task, paymentins_task, cashouts_task, paymentouts_task,
+                counterparties_task, expense_items_task, accounts_task, currencies_task,
                 return_exceptions=True
             )
             cashins_resp = results[0] if isinstance(results[0], dict) else {}
@@ -1130,23 +1133,40 @@ async def get_cashflow(
             cashouts_rows = results[2] if isinstance(results[2], list) else []
             paymentouts_rows = results[3] if isinstance(results[3], list) else []
             counterparties_cached = results[4] if isinstance(results[4], list) else []
-            org_info = results[5] if isinstance(results[5], dict) else {}
+            expense_items_rows = results[5] if isinstance(results[5], list) else []
+            acc_resp = results[6] if isinstance(results[6], dict) else {}
+            currencies_resp = results[7] if isinstance(results[7], list) else []
 
-            # Kontragentlar va Hisoblar xaritasi (MoySklad expand cheklovi sababli ID bo'yicha aniqlash)
+            # Dollar kursi
+            usd_rate = 11800.0
+            for c in (currencies_resp or []):
+                if isinstance(c, dict) and c.get("isoCode") == "USD":
+                    usd_rate = float(c.get("rate", 11800.0))
+                    break
+
+            # Hisoblar balansi
+            acc_data = acc_resp.get("data", {}) if isinstance(acc_resp, dict) else {}
+            account_balances = acc_data.get("accounts", [])
+            total_uzs_balance = acc_data.get("total_uzs_balance", 0.0)
+            total_usd_balance = acc_data.get("total_usd_balance", 0.0)
+            consolidated_uzs = acc_data.get("consolidated_uzs_equivalent", 0.0)
+            ref_rate = acc_data.get("reference_rate", 11800.0)
+
+            # Kontragentlar va Hisoblar xaritasi
             agent_map = {}
             for cp in (counterparties_cached or []):
                 if isinstance(cp, dict) and cp.get("id") and cp.get("name"):
                     agent_map[cp["id"]] = cp["name"]
 
             account_map = {}
-            try:
-                if org_info and org_info.get("id"):
-                    org_accounts = await ms_client.get_organization_accounts(org_info["id"])
-                    for a in (org_accounts or []):
-                        if isinstance(a, dict) and a.get("id") and a.get("name"):
-                            account_map[a["id"]] = a["name"]
-            except Exception as e:
-                print(f"[Cashflow org_accounts error] {e}")
+            for a in (account_balances or []):
+                if isinstance(a, dict) and a.get("id"):
+                    account_map[a["id"]] = a.get("name") or a.get("raw_name") or "Bank hisobi"
+
+            expense_map = {}
+            for it in (expense_items_rows or []):
+                if isinstance(it, dict) and it.get("id"):
+                    expense_map[it["id"]] = it.get("name", "Xarajat")
 
             def get_agent_display_name(obj, fallback="Kirim"):
                 if not obj or not isinstance(obj, dict):
@@ -1284,8 +1304,10 @@ async def get_cashflow(
             # 3. Naqd xarajatlar / chiqimlar
             for co in cashouts_rows:
                 exp = co.get("expenseItem", {})
-                exp_name = exp.get("name", "Xarajat") if isinstance(exp, dict) else "Xarajat"
                 exp_id = exp.get("id", "") if isinstance(exp, dict) else ""
+                if not exp_id and isinstance(exp, dict) and exp.get("meta", {}).get("href"):
+                    exp_id = exp["meta"]["href"].split("/")[-1]
+                exp_name = (exp.get("name") if isinstance(exp, dict) else "") or expense_map.get(exp_id) or "Xarajat"
                 agent_name = get_agent_display_name(co.get("agent"), fallback="")
                 target = exp_name if not agent_name else f"{exp_name} ({agent_name})"
                 rate_obj = co.get("rate") or {}
@@ -1327,8 +1349,10 @@ async def get_cashflow(
             # 4. Bank xarajatlari / chiqimlari
             for po in paymentouts_rows:
                 exp = po.get("expenseItem", {})
-                exp_name = exp.get("name", "Bank xarajati") if isinstance(exp, dict) else "Bank xarajati"
                 exp_id = exp.get("id", "") if isinstance(exp, dict) else ""
+                if not exp_id and isinstance(exp, dict) and exp.get("meta", {}).get("href"):
+                    exp_id = exp["meta"]["href"].split("/")[-1]
+                exp_name = (exp.get("name") if isinstance(exp, dict) else "") or expense_map.get(exp_id) or "Bank xarajati"
                 agent_name = get_agent_display_name(po.get("agent"), fallback="")
                 target = exp_name if not agent_name else f"{exp_name} ({agent_name})"
                 acc_name = get_account_display_name(po, default_name="Bank hisobi")
@@ -1427,31 +1451,21 @@ async def get_cashflow(
         card_in = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "paymentin")
         card_out = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "paymentout")
 
-        # 4. Hisoblar bo'yicha to'liq balanslar (Account Balances breakdown)
-        # Barcha mavjud hisoblarni MoySklad'dan olish
-        org_accs = []
-        try:
-            org = await ms_client.get_organization()
-            if org.get("id"):
-                org_accs = await ms_client.get_organization_accounts(org.get("id"))
-        except Exception as e:
-            print(f"[Accounts fetch in cashflow error] {e}")
-
-        from routers.settings import load_settings, get_accounts_with_corrections
-        acc_resp = await get_accounts_with_corrections()
-        acc_data = acc_resp.get("data", {}) if isinstance(acc_resp, dict) else {}
-        account_balances = acc_data.get("accounts", [])
-        total_uzs_balance = acc_data.get("total_uzs_balance", 0.0)
-        total_usd_balance = acc_data.get("total_usd_balance", 0.0)
-        consolidated_uzs = acc_data.get("consolidated_uzs_equivalent", 0.0)
-        ref_rate = acc_data.get("reference_rate", 12800.0)
-
-        _CASHFLOW_RAW_CACHE = {
-            "all_tx": all_tx,
-            "usd_rate": usd_rate,
-            "org_accs": org_accs,
-            "timestamp": time.time()
-        }
+        # 4. Hisoblar bo'yicha keshni saqlash
+        if _CASHFLOW_RAW_CACHE is None or refresh or (now_ts - _CASHFLOW_RAW_CACHE.get("timestamp", 0)) >= _CASHFLOW_CACHE_TTL:
+            _CASHFLOW_RAW_CACHE = {
+                "all_tx": all_tx,
+                "usd_rate": usd_rate,
+                "org_accs": org_accs,
+                "acc_data": {
+                    "account_balances": account_balances,
+                    "total_uzs_balance": total_uzs_balance,
+                    "total_usd_balance": total_usd_balance,
+                    "consolidated_uzs": consolidated_uzs,
+                    "ref_rate": ref_rate,
+                },
+                "timestamp": time.time()
+            }
 
         return {
             "success": True,

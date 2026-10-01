@@ -594,32 +594,35 @@ class MoySkladClient:
 
         return MoySkladClient._org_cache or {"id": "default", "name": "MoySklad Korxonasi", "inn": ""}
 
+    _org_accounts_cache = {}
+    _org_accounts_cache_time = 0.0
+
     # ================= TASHKILOT HISOB RAQAMLARI =================
     async def get_organization_accounts(self, org_id: str) -> list:
-        """Tashkilotning barcha bank hisob raqamlari"""
+        """Tashkilotning barcha bank hisob raqamlari (Tezkor kesh bilan)"""
         if not org_id or org_id == "default":
             return []
+        import time
+        now = time.time()
+        if org_id in MoySkladClient._org_accounts_cache and (now - MoySkladClient._org_accounts_cache_time) < 600:
+            return MoySkladClient._org_accounts_cache[org_id]
+
         try:
-            # Tashkilotni to'liq olish
-            org = await asyncio.wait_for(
-                self._request(
-                    "GET",
-                    f"/entity/organization/{org_id}",
-                    params={"expand": "accounts"}
-                ),
-                timeout=2.5
-            )
+            # To'g'ridan-to'g'ri accounts sub-resursiga so'rov (yengil va tez)
+            try:
+                resp = await asyncio.wait_for(
+                    self._request("GET", f"/entity/organization/{org_id}/accounts"),
+                    timeout=3.0
+                )
+                accounts_list = resp.get("rows", []) if isinstance(resp, dict) else []
+            except Exception:
+                org = await asyncio.wait_for(
+                    self._request("GET", f"/entity/organization/{org_id}", params={"expand": "accounts"}),
+                    timeout=3.0
+                )
+                accounts_raw = org.get("accounts", {})
+                accounts_list = accounts_raw.get("rows", []) if isinstance(accounts_raw, dict) else (accounts_raw if isinstance(accounts_raw, list) else [])
 
-            accounts_raw = org.get("accounts", {})
-
-            # MoySklad accounts ni {"meta": {...}, "rows": [...]} formatida qaytaradi
-            if isinstance(accounts_raw, dict):
-                accounts_list = accounts_raw.get("rows", [])
-            elif isinstance(accounts_raw, list):
-                accounts_list = accounts_raw
-            else:
-                accounts_list = []
-            # Har bir accountni tozalash
             result_accounts = []
             for acc in accounts_list:
                 if not isinstance(acc, dict):
@@ -643,6 +646,13 @@ class MoySkladClient:
                         "bankName": acc.get("bankName") or acc.get("bankLocation", ""),
                         "isDefault": acc.get("isDefault", False),
                     })
+
+            MoySkladClient._org_accounts_cache[org_id] = result_accounts
+            MoySkladClient._org_accounts_cache_time = now
+            return result_accounts
+        except Exception as e:
+            safe_print(f"[get_organization_accounts warning] {e}")
+            return MoySkladClient._org_accounts_cache.get(org_id, [])
 
             # Default hisobni birinchi qo'yish
             result_accounts.sort(key=lambda x: not x.get("isDefault", False))
@@ -900,13 +910,13 @@ class MoySkladClient:
         return await self._request("POST", "/entity/paymentout", json_data=data)
 
     async def get_cashouts(self, limit: int = 1000) -> list:
-        """Barcha naqd chiqimlar"""
-        resp = await self._request("GET", "/entity/cashout", params={"limit": limit, "expand": "expenseItem,agent,organization"})
+        """Barcha naqd chiqimlar (tezkor so'rov)"""
+        resp = await self._request("GET", "/entity/cashout", params={"limit": limit})
         return resp.get("rows", [])
 
     async def get_paymentouts(self, limit: int = 1000) -> list:
-        """Barcha bank chiqimlari"""
-        resp = await self._request("GET", "/entity/paymentout", params={"limit": limit, "expand": "expenseItem,agent,organization,organizationAccount"})
+        """Barcha bank chiqimlari (tezkor so'rov)"""
+        resp = await self._request("GET", "/entity/paymentout", params={"limit": limit})
         return resp.get("rows", [])
 
     async def get_counterparty_metadata(self) -> Dict:

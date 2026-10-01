@@ -836,6 +836,18 @@ function renderEditForm(demand, paymentsData, currentBalance) {
                     </select>
                 </div>
 
+                <!-- Chop etish dropdown (Xuddi sotuvlar ro'yxatidagiday) -->
+                <div class="print-dropdown-wrapper" style="position:relative;">
+                    <button type="button" class="btn-print" onclick="togglePrintDropdown(this)" style="padding:7px 12px; font-size:12.5px; font-weight:700; background:#f0fdf4; color:#15803d; border:1px solid #86efac; border-radius:6px; cursor:pointer;" title="Ushbu sotuvni chop etish">
+                        🖨️ Chop etish ▼
+                    </button>
+                    <div class="print-dropdown-menu" style="right:0; left:auto;">
+                        <button type="button" onclick="printDemandReceipt('${demand.id}', '80mm')">🧾 80mm Kassa Cheki</button>
+                        <button type="button" onclick="printDemandReceipt('${demand.id}', 'a4')">📄 A4 Nakladnoy</button>
+                        <button type="button" onclick="printDemandReceipt('${demand.id}', 'a5')">📃 A5 Nakladnoy</button>
+                    </div>
+                </div>
+
                 <!-- Saqlash tugmasi -->
                 <button class="btn-save-demand" id="saveBtn" onclick="saveEdit()" title="Barcha o'zgarishlarni saqlash">
                     💾 Saqlash
@@ -935,13 +947,13 @@ function renderEditForm(demand, paymentsData, currentBalance) {
                     <!-- UZS qatori: Naqd & Karta -->
                     <div class="pay-inputs-row">
                         ${isCashActive ? `
-                        <div class="pay-input-field">
+                        <div class="pay-input-field cash-field">
                             <label>💵 Naqd (so'm):</label>
                             <input type="text" inputmode="numeric" id="cashAmount" class="ghost-zero format-number" value="0" placeholder="0" oninput="updateEditPayment()">
                         </div>
                         ` : ''}
                         ${isCardActive ? `
-                        <div class="pay-input-field">
+                        <div class="pay-input-field card-field">
                             <label>💳 Karta / Bank:</label>
                             <input type="text" inputmode="numeric" id="cardAmount" class="ghost-zero format-number" value="0" placeholder="0" oninput="updateEditPayment()">
                         </div>
@@ -1455,8 +1467,8 @@ async function saveEdit() {
         });
 
         if (response && response.success) {
-            alert('✅ Sotuv muvaffaqiyatli saqlandi!');
             closeEditModal();
+            showToast('✅ Sotuv muvaffaqiyatli saqlandi!', 'success');
             await loadDemands();
         } else {
             throw new Error((response && (response.detail || response.message)) || 'Saqlashda xatolik yuz berdi');
@@ -1797,6 +1809,21 @@ function selectPrintFormat(format) {
     }
 }
 
+window.printDemandReceipt = function(demandId, format = '80mm') {
+    document.querySelectorAll('.print-dropdown-menu.show').forEach(d => d.classList.remove('show'));
+    if (!demandId) return;
+    if (format === '80mm') {
+        printReceipt80mm(demandId);
+        if (typeof bringModalToFront === 'function') {
+            bringModalToFront('receiptPreviewModal');
+        }
+    } else if (format === 'a5') {
+        printSingleDemandDoc(demandId, 'a5');
+    } else if (format === 'a4') {
+        printSingleDemandDoc(demandId, 'a4');
+    }
+};
+
 // --- Telegramga Chek Matnini Nusxalash ---
 function copyReceiptForTelegram() {
     if (!currentReceiptData) {
@@ -1931,9 +1958,44 @@ function fallbackCopy(text, cb) {
     document.body.removeChild(ta);
 }
 
+// --- Dinamik @page qog'oz o'lchami va hoshiya sozlamalari ---
+function applyPrintPageSettings(format) {
+    let styleEl = document.getElementById('dynamicPrintPageStyle');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'dynamicPrintPageStyle';
+        document.head.appendChild(styleEl);
+    }
+
+    if (format === '80mm') {
+        styleEl.textContent = `
+            @page {
+                size: 80mm auto !important;
+                margin: 0 !important;
+            }
+        `;
+    } else if (format === 'a5') {
+        styleEl.textContent = `
+            @page {
+                size: A5 portrait !important;
+                margin: 10mm 8mm 8mm 8mm !important;
+            }
+        `;
+    } else { // a4
+        styleEl.textContent = `
+            @page {
+                size: A4 portrait !important;
+                margin: 12mm 10mm 10mm 10mm !important;
+            }
+        `;
+    }
+}
+
 // --- Single Demand A4 / A5 Document Print ---
 async function printSingleDemandDoc(demandId, format = 'a4') {
     try {
+        applyPrintPageSettings(format);
+
         const resp = await apiFetch(`/demands/${demandId}`);
         if (!resp.success || !resp.data) throw new Error('Sotuv ma\'lumotlarini olib bo\'lmadi');
         const d = resp.data;
@@ -2001,48 +2063,65 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
             const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
             const colorHtml = p.color ? p.color : '—';
             
-            let priceHtml = `${formatMoney(origUnitPrice)}`;
+            let priceHtml = '';
             if (hasItemDiscount) {
-                priceHtml = `<strike style="color:#94a3b8;font-size:0.9em;">${formatMoney(origUnitPrice)}</strike><br><strong style="color:#b91c1c;">${formatMoney(finalUnitPrice)} <span style="font-size:0.85em;">(-${pctFormatted})</span></strong>`;
+                priceHtml = `
+                    <div style="line-height:1.2; text-align:right;">
+                        <div style="white-space:nowrap;"><strike style="color:#64748b;font-size:0.88em;">${formatNumber(origUnitPrice)}</strike> <span style="color:#b91c1c;font-size:0.85em;font-weight:700;margin-left:2px;">(-${pctFormatted})</span></div>
+                        <div style="white-space:nowrap;font-weight:700;color:#0f172a;font-size:1em;margin-top:1px;">${formatMoney(finalUnitPrice)}</div>
+                    </div>
+                `;
             } else {
-                priceHtml = formatMoney(finalUnitPrice);
+                priceHtml = `<div style="white-space:nowrap;font-weight:700;color:#0f172a;">${formatMoney(finalUnitPrice)}</div>`;
             }
 
             return `
-                <tr>
-                    <td style="text-align:center;padding:${isA5 ? '6px 8px' : '8px 10px'};">${idx + 1}</td>
-                    <td style="padding:${isA5 ? '6px 8px' : '8px 10px'};"><strong>${p.code && p.code !== '—' ? `[${p.code}] ` : ''}${p.name}</strong></td>
-                    <td style="text-align:center;padding:${isA5 ? '6px 8px' : '8px 10px'};">${colorHtml}</td>
-                    <td style="text-align:center;padding:${isA5 ? '6px 8px' : '8px 10px'};">${formatNumber(qty)}</td>
-                    <td style="text-align:right;padding:${isA5 ? '6px 8px' : '8px 10px'};">${priceHtml}</td>
-                    <td style="text-align:right;padding:${isA5 ? '6px 8px' : '8px 10px'};"><strong>${formatMoney(finalItemSum)}</strong></td>
+                <tr style="border-bottom:1px solid #e2e8f0;${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
+                    <td style="border:1px solid #e2e8f0;text-align:center;padding:${isA5 ? '4px 4px' : '5px 6px'};vertical-align:middle;color:#64748b;">${idx + 1}</td>
+                    <td style="border:1px solid #e2e8f0;padding:${isA5 ? '4px 6px' : '5px 8px'};vertical-align:middle;line-height:1.22;">
+                        ${p.code && p.code !== '—' ? `<span style="font-weight:700;color:#334155;">[${p.code}]</span> ` : ''}<span style="font-weight:600;color:#0f172a;">${p.name}</span>
+                    </td>
+                    <td style="border:1px solid #e2e8f0;text-align:center;padding:${isA5 ? '4px 5px' : '5px 6px'};vertical-align:middle;color:#334155;font-weight:500;">${colorHtml}</td>
+                    <td style="border:1px solid #e2e8f0;text-align:center;padding:${isA5 ? '4px 4px' : '5px 6px'};vertical-align:middle;font-weight:700;color:#0f172a;">${formatNumber(qty)}</td>
+                    <td style="border:1px solid #e2e8f0;text-align:right;padding:${isA5 ? '4px 6px' : '5px 8px'};vertical-align:middle;">${priceHtml}</td>
+                    <td style="border:1px solid #e2e8f0;text-align:right;padding:${isA5 ? '4px 6px' : '5px 8px'};vertical-align:middle;font-weight:700;color:#0f172a;white-space:nowrap;">${formatMoney(finalItemSum)}</td>
                 </tr>
             `;
         }).join('');
 
+        let sumWithoutDiscount = totalSum;
+        let discountAmount = 0;
+        if (discountPercent > 0 && discountPercent < 100) {
+            sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
+            discountAmount = sumWithoutDiscount - totalSum;
+        } else if (totalPositionsDiscountSum > 0) {
+            discountAmount = totalPositionsDiscountSum;
+            sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
+        }
+
         printArea.innerHTML = `
-            <div class="print-report-header" style="${isA5 ? 'padding:10px 15px;margin-bottom:12px;' : 'padding:18px 20px;margin-bottom:18px;'}">
+            <div class="print-report-header" style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #1e3a8a;padding-top:${isA5 ? '4px' : '6px'};padding-bottom:8px;margin-bottom:${isA5 ? '8px' : '12px'};">
                 <div>
-                    <div class="print-report-title" style="${isA5 ? 'font-size:17px;' : 'font-size:24px;'}">🧾 Sotuv Hujjati (Yuk Xati) #${d.name}</div>
-                    <div class="print-report-subtitle" style="${isA5 ? 'font-size:12px;' : 'font-size:14px;'}">
-                        Tashkilot: <strong>${settings.storeName || currentOrgName}</strong> | Sana: ${formatDate(d.moment || new Date())}
+                    <div style="font-size:${isA5 ? '15px' : '20px'};font-weight:800;color:#0f172a;letter-spacing:-0.3px;">🧾 SOTUV HUJJATI (YUK XATI) #${d.name}</div>
+                    <div style="font-size:${isA5 ? '10.5px' : '12px'};color:#475569;margin-top:2px;">
+                        Tashkilot: <strong style="color:#0f172a;">${settings.storeName || currentOrgName}</strong> &nbsp;|&nbsp; Sana: <strong style="color:#0f172a;">${formatDate(d.moment || new Date())}</strong>
                     </div>
                 </div>
                 <div style="text-align:right;">
-                    <div style="font-size:${isA5 ? '13px' : '15px'};font-weight:700;color:#1e3a8a;">Mijoz: ${d.agent_name || 'Noma\'lum'}</div>
-                    <div style="font-size:12px;color:#64748b;">${settings.phones ? `Tel: ${settings.phones}` : ''}</div>
+                    <div style="font-size:${isA5 ? '12px' : '14px'};font-weight:700;color:#1e3a8a;">Mijoz: ${d.agent_name || 'Noma\'lum'}</div>
+                    ${settings.phones ? `<div style="font-size:${isA5 ? '10px' : '11.5px'};color:#64748b;margin-top:1px;">Tel: ${settings.phones}</div>` : ''}
                 </div>
             </div>
 
-            <table class="print-table" style="${isA5 ? 'font-size:12px;' : 'font-size:14px;'} width:100%; border-collapse:collapse; margin-bottom:15px;">
+            <table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:${isA5 ? '10.5px' : '12px'};font-family:inherit;">
                 <thead>
-                    <tr style="background:#f1f5f9;">
-                        <th style="border:1px solid #cbd5e1;padding:8px;width:30px;text-align:center;">№</th>
-                        <th style="border:1px solid #cbd5e1;padding:8px;text-align:left;">Tovar nomi / Kodi</th>
-                        <th style="border:1px solid #cbd5e1;padding:8px;width:70px;text-align:center;">Rang</th>
-                        <th style="border:1px solid #cbd5e1;padding:8px;width:60px;text-align:center;">Soni</th>
-                        <th style="border:1px solid #cbd5e1;padding:8px;width:110px;text-align:right;">Narxi</th>
-                        <th style="border:1px solid #cbd5e1;padding:8px;width:130px;text-align:right;">Jami summa</th>
+                    <tr style="background:#f1f5f9;color:#0f172a;font-weight:700;border-top:1px solid #94a3b8;border-bottom:1.5px solid #94a3b8;">
+                        <th style="border:1px solid #cbd5e1;padding:${isA5 ? '4px 4px' : '6px 6px'};width:${isA5 ? '24px' : '28px'};text-align:center;">№</th>
+                        <th style="border:1px solid #cbd5e1;padding:${isA5 ? '4px 6px' : '6px 8px'};text-align:left;">Tovar nomi / Kodi</th>
+                        <th style="border:1px solid #cbd5e1;padding:${isA5 ? '4px 4px' : '6px 6px'};width:${isA5 ? '65px' : '80px'};text-align:center;">Rang</th>
+                        <th style="border:1px solid #cbd5e1;padding:${isA5 ? '4px 4px' : '6px 6px'};width:${isA5 ? '36px' : '42px'};text-align:center;">Soni</th>
+                        <th style="border:1px solid #cbd5e1;padding:${isA5 ? '4px 6px' : '6px 8px'};width:${isA5 ? '94px' : '108px'};text-align:right;">Narxi</th>
+                        <th style="border:1px solid #cbd5e1;padding:${isA5 ? '4px 6px' : '6px 8px'};width:${isA5 ? '92px' : '104px'};text-align:right;">Jami summa</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2050,47 +2129,35 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                 </tbody>
             </table>
 
-            <div style="margin-bottom:12px; font-size:${isA5 ? '12px' : '14px'}; color:#475569;">
-                Jami tovar: <strong>${formatNumber(totalQuantity)} ta</strong>, Pozitsiya: <strong>${positionsCount} ta</strong>
-            </div>
-
-            <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
-                <div style="width:${isA5 ? '280px' : '340px'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:12px 16px; font-size:${isA5 ? '12.5px' : '14px'};">
-                    ${(() => {
-                        let sumWithoutDiscount = totalSum;
-                        let discountAmount = 0;
-                        if (discountPercent > 0 && discountPercent < 100) {
-                            sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
-                            discountAmount = sumWithoutDiscount - totalSum;
-                        } else if (totalPositionsDiscountSum > 0) {
-                            discountAmount = totalPositionsDiscountSum;
-                            sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
-                        }
-                        return (discountAmount > 0 || discountPercent > 0) ? `
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#475569;">
-                                <span>Jami summasi:</span>
-                                <span>${formatMoney(sumWithoutDiscount)}</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#b91c1c;">
-                                <span>Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}):</span>
-                                <span>- ${formatMoney(discountAmount)}</span>
-                            </div>
-                        ` : '';
-                    })()}
-                    <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:${isA5 ? '13.5px' : '15px'}; font-weight:bold;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;">
+                <div style="font-size:${isA5 ? '12px' : '13.5px'};color:#334155;line-height:1.5;padding-left:14px;padding-top:4px;">
+                    <div>Jami tovar: <strong style="color:#0f172a;font-size:1.08em;">${formatNumber(totalQuantity)} ta</strong>, &nbsp;Pozitsiya: <strong style="color:#0f172a;font-size:1.08em;">${positionsCount} xil</strong></div>
+                </div>
+                <div style="width:${isA5 ? '250px' : '310px'};background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:6px;padding:${isA5 ? '6px 10px' : '8px 12px'};font-size:${isA5 ? '11px' : '12.5px'};line-height:1.35;">
+                    ${(discountAmount > 0 || discountPercent > 0) ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#475569;">
+                            <span>Jami summasi:</span>
+                            <span>${formatMoney(sumWithoutDiscount)}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#b91c1c; font-weight:600;">
+                            <span>Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}):</span>
+                            <span>- ${formatMoney(discountAmount)}</span>
+                        </div>
+                    ` : ''}
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:${isA5 ? '12px' : '13.5px'}; font-weight:800; color:#0f172a;">
                         <span>TO'LOV (JAMI):</span>
                         <span>${formatMoney(totalSum)}</span>
                     </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#15803d;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#15803d; font-weight:600;">
                         <span>To'langan:</span>
                         <strong>${formatMoney(paidSum)}</strong>
                     </div>
-                    <div style="display:flex; justify-content:space-between; padding-top:6px; border-top:1px solid #cbd5e1; color:#b91c1c; font-weight:700;">
+                    <div style="display:flex; justify-content:space-between; padding-top:4px; border-top:1px solid #cbd5e1; color:${remainingSum > 0 ? '#b91c1c' : '#15803d'}; font-weight:700;">
                         <span>Qolgan qarz:</span>
                         <span>${formatMoney(remainingSum)}</span>
                     </div>
                     ${customerBalance !== 0 ? `
-                    <div style="display:flex; justify-content:space-between; margin-top:6px; padding-top:6px; border-top:1px dashed #cbd5e1; font-size:12px; color:#475569;">
+                    <div style="display:flex; justify-content:space-between; margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:${isA5 ? '10px' : '11.5px'}; color:#475569;">
                         <span>Umumiy qarz:</span>
                         <strong>${formatMoney(customerBalance)}</strong>
                     </div>
@@ -2098,27 +2165,28 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                 </div>
             </div>
 
-            <div class="print-signatures" style="display:flex; justify-content:space-between; margin-top:${isA5 ? '15px' : '30px'}; font-size:${isA5 ? '11px' : '12px'};">
+            <div class="print-signatures" style="display:flex; justify-content:space-between; margin-top:${isA5 ? '12px' : '22px'}; font-size:${isA5 ? '10px' : '11.5px'}; color:#334155;">
                 <div>
                     <div>Topshirdi (Sotuvchi): ____________________</div>
-                    <div style="font-size:10px;color:#64748b;margin-top:2px;">(imzo)</div>
+                    <div style="font-size:9.5px;color:#64748b;margin-top:1px;">(imzo)</div>
                 </div>
                 <div>
                     <div>Qabul qildi (Xaridor): ____________________</div>
-                    <div style="font-size:10px;color:#64748b;margin-top:2px;">(imzo)</div>
+                    <div style="font-size:9.5px;color:#64748b;margin-top:1px;">(imzo)</div>
                 </div>
             </div>
         `;
 
         setTimeout(() => {
             window.print();
-        }, 150);
+        }, 120);
     } catch (e) {
         alert(`❌ Chop etishda xatolik: ${e.message}`);
     }
 }
 
 async function printReceipt80mm(demandId) {
+    applyPrintPageSettings('80mm');
     const previewModal = document.getElementById('receiptPreviewModal');
     const previewCard = document.getElementById('receiptPreviewCard');
     previewModal.classList.add('active');
@@ -2299,7 +2367,7 @@ function buildReceiptHtml(demand, currentCustomerDebt, settings) {
             <div class="receipt-summary-qty-box">
                 <div class="receipt-total-row" style="justify-content: center; font-size: 13px; gap: 10px; margin: 0;">
                     <span>Jami tovar: <strong>${formatNumber(totalQuantity)} ta</strong>,</span>
-                    <span>Pozitsiya: <strong>${totalPositionsCount} ta</strong></span>
+                    <span>Pozitsiya: <strong>${totalPositionsCount} xil</strong></span>
                 </div>
             </div>
 

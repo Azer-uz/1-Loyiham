@@ -32,7 +32,7 @@
                         <span>💰</span>
                         <span>To'lovlar</span>
                     </a>
-                    <a href="/supply" class="nav-tab-item">
+                    <a href="javascript:void(0)" onclick="handleSupplyComingSoon(event)" class="nav-tab-item">
                         <span>🏬</span>
                         <span>Asosiy ombor</span>
                     </a>
@@ -95,21 +95,9 @@
     </header>
 
     <!-- Main Workspace -->
-    <main class="main-content">
-        <!-- Variant 7 Greeting Header -->
-        <div class="v7-greeting-bar">
-            <div class="v7-greeting-text-group"><span id="orgName" style="display:none;"></span>
-                <h1 class="v7-greeting-title">Good morning, <span id="adminGreetingName">Admin</span>.</h1>
-                <span class="v7-greeting-subtitle">Today's Overview</span>
-                <div class="v7-org-badge" id="orgBadge">Tashkilot</div>
-            </div>
-            <div>
-                <a href="/demands?action=new" class="v7-btn-new-order" style="display:inline-flex; align-items:center; gap:6px;">➕ Yangi Sotuv</a>
-            </div>
-        </div>
-
-        <!-- Sana filtri (MoySklad Davr Navigatsiyasi Toolbar) -->
-        <div class="v7-date-toolbar">
+    <main class="main-content" style="padding-top: 10px;">
+        <!-- Sana filtri (MoySklad Davr Navigatsiyasi Sticky Toolbar) -->
+        <div class="v7-date-toolbar" id="v7StickyDateToolbar">
             <div class="period-nav-group">
                 <div class="quick-dates">
                     <button class="quick-btn active" data-period="today" onclick="selectPeriod('today')">Bugun</button>
@@ -133,52 +121,73 @@
                     <input type="date" id="dateTo" title="Tugash sanasi">
                 </div>
             </div>
-            <div style="font-size:13px;font-weight:600;color:var(--text-light);" id="currentDate"></div>
+            <div style="font-size:13.5px;font-weight:700;color:var(--text);" id="currentDate"></div>
         </div>
 
         <!-- VARIANT A: HERO ROW (Hashamatli Kassa Karti + 6 ta Metrika) -->
         <div class="va-hero-container">
-            <!-- Variant 1: Hashamatli Ultra-Ixcham Kassa Karti -->
+            <!-- Hashamatli Kengayuvchi Kassa Karti (Chapda Asosiy Balans, O'ngda 6 ta Hisob) -->
             <div class="va-cash-card" id="vaCashCard">
-                <div class="va-cash-top">
-                    <div class="va-cash-title-wrap">
-                        <div class="va-cash-icon-badge">💎</div>
-                        <div class="va-cash-heading-group">
-                            <span class="va-cash-main-label">UMUMIY BALANS</span>
-                            <span class="va-cash-sub-label">Kassa va bank hisoblari</span>
+                <!-- Chap ustun: Asosiy Balans va Vertikal 3 ta To'lov Turi -->
+                <div class="va-cash-left-col">
+                    <div class="va-cash-top">
+                        <div class="va-cash-title-wrap">
+                            <div class="va-cash-icon-badge">💎</div>
+                            <div class="va-cash-heading-group">
+                                <span class="va-cash-main-label">UMUMIY BALANS</span>
+                                <span class="va-cash-sub-label">Kassa va bank hisoblari</span>
+                            </div>
+                        </div>
+                        <div class="va-active-badge">
+                            <span class="va-pulse-dot"></span>
+                            <span>Active</span>
                         </div>
                     </div>
-                    <div class="va-active-badge">
-                        <span class="va-pulse-dot"></span>
-                        <span>Active</span>
+
+                    <div class="va-cash-middle">
+                        <div class="va-cash-big-num" id="heroConsolidatedBalance">0 so'm</div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-top:5px;">
+                            <span class="va-rate-badge" id="heroRefRateBadge">📈 Kurs: 11 800 so'm</span>
+                        </div>
+                    </div>
+
+                    <!-- 3 ta to'lov turi vertikal joylashgan: 1. Naqd, 2. Karta, 3. Dollar -->
+                    <div class="va-cash-vertical-pills">
+                        <div class="va-cash-vpill cash">
+                            <div class="vpill-left"><span>💵</span> <span>Naqd:</span></div>
+                            <strong id="heroCashBalance">0</strong>
+                        </div>
+                        <div class="va-cash-vpill bank">
+                            <div class="vpill-left"><span>💳</span> <span>Kartalar:</span></div>
+                            <strong id="heroCardBalance">0</strong>
+                        </div>
+                        <div class="va-cash-vpill usd">
+                            <div class="vpill-left"><span>💲</span> <span>Dollar:</span></div>
+                            <div style="text-align:right;">
+                                <strong id="heroUsdBalance">$0</strong>
+                                <div id="heroUsdEquivText" style="font-size:10.5px; font-weight:600; color:#fbbf24; opacity:0.9;">~ 0 so'm</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <button class="va-btn-breakdown-inline" id="btnToggleAccounts" onclick="toggleAccountsInline()" title="Hisob qoldiqlarini ko'rsatish / yashirish">
+                            <span id="btnToggleAccountsText">📊 Hisoblar qoldig'i</span>
+                            <span id="btnToggleAccountsIcon" style="transition: transform 0.3s ease;">➔</span>
+                        </button>
                     </div>
                 </div>
 
-                <div class="va-cash-middle">
-                    <div class="va-cash-big-num" id="heroConsolidatedBalance">0 so'm</div>
-                    <span id="heroRefRateText" style="font-size:11.5px; color:#94a3b8; font-weight:600;"></span>
-                </div>
-
-                <div class="va-cash-bottom">
-                    <div class="va-cash-subpill">
-                        <span>💵 Naqd:</span>
-                        <strong id="heroCashBalance">0</strong>
+                <!-- O'ng ustun: Hisob Qoldiqlari Grid Paneli (Tugma bosilganda kengayadi) -->
+                <div class="va-accounts-inline-panel" id="vaAccountsInlinePanel">
+                    <div class="va-inline-panel-header">
+                        <span class="va-inline-header-title">🏦 Hisoblar qoldig'i</span>
+                        <a href="/settings?tab=accounts" class="va-inline-settings-link">Sozlash ⚙️</a>
                     </div>
-                    <div class="va-cash-subpill">
-                        <span>💳 Karta:</span>
-                        <strong id="heroCardBalance">0</strong>
+                    <div class="va-accounts-inline-grid" id="vaAccountsInlineGrid">
+                        <!-- JS orqali hisob kartochkalari chiziladi -->
+                        <div style="text-align:center; padding:15px; color:#94a3b8; font-size:12px;">Yuklanmoqda...</div>
                     </div>
-                    <div class="va-cash-subpill usd">
-                        <span>💲 Dollar:</span>
-                        <strong id="heroUsdBalance">$0</strong>
-                    </div>
-                </div>
-
-                <div style="margin-top:10px;">
-                    <button class="va-btn-breakdown" id="btnToggleAccounts" onclick="openAccountsDrawer(event)" style="width:100%; padding:8px 12px; font-size:12px; font-weight:700; border-radius:8px; display:flex; justify-content:space-between; align-items:center; background:rgba(0,242,254,0.1); border:1px solid rgba(0,242,254,0.3); color:#00f2fe; cursor:pointer;">
-                        <span>📊 Barcha hisoblar taqsimoti</span>
-                        <span>➔</span>
-                    </button>
                 </div>
             </div>
 
@@ -258,7 +267,7 @@
                     <div class="va-card-value" id="supplyInflowSum">0 so'm</div>
                     <div class="va-card-meta">
                         <span class="va-badge-blue" id="supplyInflowDocs">0 ta hujjat</span>
-                        <a href="/supply" style="color:#00f2fe; text-decoration:none; font-weight:700;">Hujjatlar ➔</a>
+                        <a href="javascript:void(0)" onclick="handleSupplyComingSoon(event)" style="color:#00f2fe; text-decoration:none; font-weight:700;">Hujjatlar ➔</a>
                     </div>
                 </div>
             </div>
@@ -270,6 +279,10 @@
                 <div class="va-chart-title-group">
                     <h2 class="va-chart-title">📈 Sotuv dinamikasi</h2>
                     <span class="va-trend-growth-badge" id="trendGrowthBadge">↗ +0%</span>
+                    <div class="va-chart-sums-group">
+                        <span class="va-chart-sum-pill cyan" id="chartCurrentPeriodSum">Joriy: 0 so'm</span>
+                        <span class="va-chart-sum-pill purple" id="chartPrevPeriodSum">Oldingi: 0 so'm</span>
+                    </div>
                     <div class="va-chart-legend">
                         <span class="va-legend-item"><span class="va-legend-dot cyan"></span> Joriy davr</span>
                         <span class="va-legend-item"><span class="va-legend-dot purple"></span> Oldingi davr</span>
@@ -307,7 +320,7 @@
                         <span>🏬</span>
                         <span>Ombor Tovar Kategoriyalari</span>
                     </h3>
-                    <a href="/supply" style="font-size:12px; color:#00f2fe; text-decoration:none; font-weight:700;">Kirim ➔</a>
+                    <a href="javascript:void(0)" onclick="handleSupplyComingSoon(event)" style="font-size:12px; color:#00f2fe; text-decoration:none; font-weight:700;">Kirim ➔</a>
                 </div>
 
                 <div class="va-warehouse-body">
@@ -482,7 +495,7 @@
         </div>
     </aside>
 
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/api.js?v=20261001_v2"></script>
+    <script src="/static/js/dashboard.js?v=20261001_v2"></script>
 </body>
 </html>

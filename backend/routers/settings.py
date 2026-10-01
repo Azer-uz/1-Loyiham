@@ -286,7 +286,9 @@ async def get_accounts_with_corrections():
         return _ACCOUNTS_CACHE
 
     settings = load_settings()
-    ref_rate = settings.get("reference_usd_rate", 12800.0)
+    usd_method = next((m for m in settings.get("payment_methods", []) if m.get("id") == "usd"), None)
+    default_rate = usd_method.get("default_rate") if usd_method else None
+    ref_rate = float(default_rate or settings.get("reference_usd_rate") or 11800.0)
     corrections = settings.get("corrections", {})
 
     from moysklad_client import ms_client
@@ -446,8 +448,17 @@ async def update_reference_rate(req: Dict[str, float]):
         raise HTTPException(status_code=400, detail="Noto'g'ri kurs qiymati")
 
     settings = load_settings()
-    settings["reference_usd_rate"] = rate
+    settings["reference_usd_rate"] = float(rate)
+    for m in settings.get("payment_methods", []):
+        if m.get("id") == "usd":
+            m["default_rate"] = float(rate)
     save_settings(settings)
+    invalidate_accounts_cache()
+    try:
+        from routers.payments import invalidate_cashflow_cache
+        invalidate_cashflow_cache()
+    except Exception:
+        pass
     return {"success": True, "message": f"Hisob kursi yangilandi: 1 USD = {rate:,.0f} so'm", "rate": rate, "data": {"rate": rate}}
 
 

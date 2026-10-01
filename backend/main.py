@@ -10,7 +10,7 @@ if sys.platform == "win32":
 from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pathlib import Path
 
 import asyncio
@@ -89,7 +89,7 @@ async def settings_page():
 
 @app.get("/supply")
 async def supply_page():
-    return FileResponse(str(frontend_path / "supply.html"))
+    return RedirectResponse(url="/?supply_soon=1")
 
 
 @app.get("/docs")

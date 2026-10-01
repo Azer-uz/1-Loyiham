@@ -1,7 +1,7 @@
 // frontend/js/api.js
 const API_BASE = '/api';
 
-window.currentUSDRate = 12800.0;
+window.currentUSDRate = 11800.0;
 window.cbuRateInfo = null;
 
 // ================= AVTORIZATSIYA HIMOYASI (AUTH GUARD) =================
@@ -567,7 +567,36 @@ window.toggleTheme = function() {
     updateThemeIcons(isDark);
 };
 
-// ================= TOAST BILDIRISHNOMALARI =================
+// ================= TOAST BILDIRISHNOMALARI (AUTO-DISMISS ON NEXT ACTION) =================
+let activeToasts = [];
+
+function dismissAllToasts() {
+    if (!activeToasts || activeToasts.length === 0) return;
+    activeToasts.forEach(toast => {
+        if (toast && toast.parentElement) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(12px) scale(0.95)';
+            setTimeout(() => {
+                try { toast.remove(); } catch(e) {}
+            }, 250);
+        }
+    });
+    activeToasts = [];
+}
+
+// Foydalanuvchi ekranning istalgan joyiga bosganda yoki klaviatura bosganda xabar avtomatik yo'qoladi
+if (typeof window !== 'undefined') {
+    window.addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('#toast-container')) {
+            dismissAllToasts();
+        }
+    }, { capture: true, passive: true });
+
+    window.addEventListener('keydown', () => {
+        dismissAllToasts();
+    }, { capture: true, passive: true });
+}
+
 function showToast(message, type = 'info') {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -577,10 +606,10 @@ function showToast(message, type = 'info') {
             position: fixed;
             bottom: 24px;
             right: 24px;
-            z-index: 99999;
+            z-index: 999999;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
             pointer-events: none;
         `;
         document.body.appendChild(container);
@@ -588,10 +617,10 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     const bgColors = {
-        success: '#10b981',
-        error: '#ef4444',
-        warning: '#f59e0b',
-        info: '#3b82f6',
+        success: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        error: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        warning: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        info: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
     };
     const icons = {
         success: '✅',
@@ -603,29 +632,93 @@ function showToast(message, type = 'info') {
     toast.style.cssText = `
         background: ${bgColors[type] || '#1e293b'};
         color: #ffffff;
-        padding: 12px 18px;
-        border-radius: 8px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-        font-size: 14px;
-        font-weight: 500;
+        padding: 12px 20px;
+        border-radius: 10px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.12);
+        font-size: 13.5px;
+        font-weight: 600;
         display: flex;
         align-items: center;
         gap: 10px;
         min-width: 250px;
-        max-width: 400px;
+        max-width: 420px;
         pointer-events: auto;
-        animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        transition: all 0.3s ease;
+        cursor: pointer;
+        opacity: 0;
+        transform: translateY(12px) scale(0.95);
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     `;
 
-    toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
+    toast.innerHTML = `<span style="font-size:16px;">${icons[type] || 'ℹ️'}</span><span style="flex:1;">${message}</span>`;
+    
+    toast.onclick = () => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(12px) scale(0.95)';
+        setTimeout(() => {
+            try { toast.remove(); } catch(e) {}
+            activeToasts = activeToasts.filter(t => t !== toast);
+        }, 200);
+    };
+
     container.appendChild(toast);
+    activeToasts.push(toast);
+
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0) scale(1)';
+    });
 
     setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(10px)';
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+        if (toast && toast.parentElement) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(12px) scale(0.95)';
+            setTimeout(() => {
+                try { toast.remove(); } catch(e) {}
+                activeToasts = activeToasts.filter(t => t !== toast);
+            }, 250);
+        }
+    }, 3500);
+}
+
+// Barcha muvaffaqiyatli saqlash alert'larini avtomatik pastdagi yashil toastga aylantirish
+if (typeof window !== 'undefined') {
+    window.showToast = showToast;
+
+    window.handleSupplyComingSoon = function(e) {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        showToast("🏬 'Asosiy ombor' bo'limi hozirda takomillashtirilmoqda va tez orada ishga tushiriladi!", "warning");
+        return false;
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('a[href="/supply"], a[href="/static/supply.html"]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                window.handleSupplyComingSoon(e);
+            });
+        });
+
+        // Agar URL da ?supply_soon=1 parametri bo'lsa xabar berish
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('supply_soon')) {
+            setTimeout(() => {
+                window.handleSupplyComingSoon();
+                const cleanUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
+            }, 300);
+        }
+    });
+
+    const _origAlert = window.alert;
+    window.alert = function(msg) {
+        if (typeof msg === 'string' && (msg.includes('✅') || msg.toLowerCase().includes('saqlandi') || msg.toLowerCase().includes('muvaffaqiyatli'))) {
+            showToast(msg, 'success');
+            return;
+        }
+        _origAlert(msg);
+    };
 }
 
 // ================= SINXRONIZATSIYA =================
@@ -708,7 +801,7 @@ function formatMoney(amount) {
 }
 
 function formatUSD(amountUzs, customRate) {
-    const rate = customRate || window.currentUSDRate || 12800.0;
+    const rate = customRate || window.currentUSDRate || 11800.0;
     if (!amountUzs || isNaN(amountUzs) || rate <= 0) return "$0.00";
     const usd = amountUzs / rate;
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usd);

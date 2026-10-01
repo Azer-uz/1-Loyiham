@@ -61,7 +61,13 @@ async def get_currencies():
         # Markaziy Bank kursini ham olish
         cbu_info = await fetch_cbu_usd_rate()
 
-        active_rate = usd_currency.get("rate", 12800.0) if usd_currency else 12800.0
+        from routers.settings import load_settings, save_settings
+        app_settings = load_settings()
+        ref_rate = app_settings.get("reference_usd_rate")
+        if ref_rate and float(ref_rate) > 0:
+            active_rate = float(ref_rate)
+        else:
+            active_rate = usd_currency.get("rate", 12800.0) if usd_currency else 12800.0
 
         return {
             "success": True,
@@ -80,11 +86,19 @@ async def get_currencies():
 
 @router.post("/usd-rate")
 async def update_usd_rate(req: UpdateRateRequest):
-    """MoySklad'dagi USD kursini qo'lda yangilash"""
+    """MoySklad'dagi va Sozlamalardagi USD kursini bir vaqtda yangilash"""
     if req.rate <= 0:
         raise HTTPException(status_code=400, detail="Kurs 0 dan katta bo'lishi kerak")
 
     try:
+        from routers.settings import load_settings, save_settings
+        app_settings = load_settings()
+        app_settings["reference_usd_rate"] = req.rate
+        for m in app_settings.get("payment_methods", []):
+            if m.get("id") == "usd":
+                m["default_rate"] = req.rate
+        save_settings(app_settings)
+
         raw_currencies = await ms_client.get_currencies()
         usd_id = None
         for c in raw_currencies:
@@ -92,10 +106,13 @@ async def update_usd_rate(req: UpdateRateRequest):
                 usd_id = c.get("id")
                 break
 
-        if not usd_id:
-            raise HTTPException(status_code=404, detail="MoySklad'da USD valyutasi topilmadi")
+        updated = None
+        if usd_id:
+            try:
+                updated = await ms_client.update_currency_rate(usd_id, req.rate)
+            except Exception as mse:
+                print(f"[MS update rate warning]: {mse}")
 
-        updated = await ms_client.update_currency_rate(usd_id, req.rate)
         return {
             "success": True,
             "message": f"Dollar kursi muvaffaqiyatli yangilandi: 1 USD = {req.rate:,.0f} so'm",

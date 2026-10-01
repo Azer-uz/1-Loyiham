@@ -13,19 +13,50 @@ from moysklad_client import ms_client
 
 router = APIRouter()
 
+def to_tashkent_datetime(moment_str: str) -> Optional[datetime]:
+    """MoySklad (Moskva UTC+3) vaqtini Toshkent (UTC+5, +2 soat) ga o'tkazish"""
+    if not moment_str:
+        return None
+    try:
+        clean = moment_str.split(".")[0].strip()
+        dt = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
+        return dt + timedelta(hours=2)
+    except Exception:
+        try:
+            clean = moment_str[:10]
+            return datetime.strptime(clean, "%Y-%m-%d") + timedelta(hours=2)
+        except Exception:
+            return None
+
+def uz_to_msk_str(uz_dt_str: str) -> str:
+    """Toshkent vaqtini MoySklad (Moskva -2 soat) vaqtiga o'tkazish"""
+    if not uz_dt_str:
+        return ""
+    try:
+        clean = uz_dt_str.split(".")[0].strip()
+        if len(clean) == 10:
+            clean += " 00:00:00"
+        dt = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
+        return (dt - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return uz_dt_str
+
 _supplies_cache = {}
 
 async def get_supplies_summary(moment_from: str, moment_to: str) -> dict:
-    """Tanlangan davrdagi ombor kirimlari (Priemkalar) summasi va soni"""
+    """Tanlangan davrdagi ombor kirimlari (Priemkalar) summasi va soni (Tezkor kesh)"""
     cache_key = f"{moment_from[:10]}_{moment_to[:10]}"
     now_ts = time.time()
     cached = _supplies_cache.get(cache_key)
-    if cached and (now_ts - cached["ts"]) < 120:
+    if cached and (now_ts - cached["ts"]) < 300:
         return cached["data"]
     
     try:
         filt = f"moment>={moment_from};moment<={moment_to}"
-        resp = await ms_client._request("GET", "/entity/supply", params={"filter": filt, "limit": 100})
+        resp = await asyncio.wait_for(
+            ms_client._request("GET", "/entity/supply", params={"filter": filt, "limit": 100}),
+            timeout=2.0
+        )
         rows = resp.get("rows", [])
         total_sum = sum(s.get("sum", 0) / 100.0 for s in rows)
         res = {
@@ -35,7 +66,8 @@ async def get_supplies_summary(moment_from: str, moment_to: str) -> dict:
         _supplies_cache[cache_key] = {"data": res, "ts": now_ts}
         return res
     except Exception as e:
-        print(f"Supply summary error: {e}")
+        if cached:
+            return cached["data"]
         return {"count": 0, "sum": 0.0}
 
 
@@ -137,29 +169,68 @@ async def dashboard_summary(
                 {"name": "Aksessuarlar (ACC)", "share": 6, "count": 1300, "sum": 34000000},
             ]
 
-            # Xarajatlar (Taxminiy / Real)
-            total_expenses = round(total_sales * 0.12 + 15000000.0, 2) if total_sales > 0 else 22560000.0
-
-            # Katta Kirimlar (Top Inflow)
-            top_inflows = [
-                {"source": c["name"], "detail": f"{c['count']} ta xarid", "amount": c["sum"]}
-                for c in top_customers[:5]
-            ]
-
-            # Katta Chiqimlar (Top Outflow)
-            top_outflows = [
-                {"source": "Xarid va Ta'minotchilar", "detail": "Mato va furnitura importi", "amount": round(total_expenses * 0.55, 2)},
-                {"source": "Ish haqi va Bonuslar", "detail": "Xodimlar oylik maoshi", "amount": round(total_expenses * 0.25, 2)},
-                {"source": "Ijara va Kommunal", "detail": "Do'kon va ombor ijarasi", "amount": round(total_expenses * 0.12, 2)},
-                {"source": "Logistika va Yetkazib berish", "detail": "Yuk tashish xizmatlari", "amount": round(total_expenses * 0.08, 2)},
-            ]
-
             # Pul kirimi (Haqiqiy kassa va bank tushumlari)
             inflow_stmt = select(func.coalesce(func.sum(LocalPayment.sum), 0.0)).where(
                 LocalPayment.moment >= moment_from,
                 LocalPayment.moment <= moment_to,
             )
-            total_inflow = float((await db.scalar(inflow_stmt)) or 0.0)
+            real_inflow = float((await db.scalar(inflow_stmt)) or 0.0)
+            total_inflow = real_inflow if real_inflow > 0 else (total_payed if total_sales > 0 else 0.0)
+
+            # Pul kirimi (Haqiqiy kassa va bank tushumlari)
+            msk_from = uz_to_msk_str(moment_from) if 'uz_to_msk_str' in globals() else moment_from
+            msk_to = uz_to_msk_str(moment_to) if 'uz_to_msk_str' in globals() else moment_to
+
+            inflow_stmt = select(func.coalesce(func.sum(LocalPayment.sum), 0.0)).where(
+                LocalPayment.moment >= msk_from,
+                LocalPayment.moment <= msk_to,
+            )
+            real_inflow = float((await db.scalar(inflow_stmt)) or 0.0)
+            total_inflow = real_inflow if real_inflow > 0 else (total_payed if total_sales > 0 else 0.0)
+
+            # Xarajatlar (Faqat haqiqiy xarajatlar, bo'lmasa 0)
+            total_expenses = 0.0
+            top_outflows = []
+
+            # Katta Kirimlar (Top Inflow - Mijozlar bo'yicha yig'indi va To'lovlar bo'limiga sana+nom bilan o'tish)
+            top_inf_stmt = (
+                select(
+                    func.coalesce(LocalCounterparty.name, "Kassa / Mijoz to'lovi").label("payer_name"),
+                    func.sum(LocalPayment.sum).label("total_sum"),
+                    func.count(LocalPayment.id).label("pay_count"),
+                )
+                .select_from(LocalPayment)
+                .outerjoin(LocalCounterparty, LocalPayment.agent_id == LocalCounterparty.id)
+                .where(
+                    LocalPayment.moment >= msk_from,
+                    LocalPayment.moment <= msk_to
+                )
+                .group_by("payer_name")
+                .order_by(desc("total_sum"))
+                .limit(10)
+            )
+            top_inf_rows = (await db.execute(top_inf_stmt)).all()
+
+            import urllib.parse
+            date_f_str = moment_from[:10]
+            date_t_str = moment_to[:10]
+
+            top_inflows = []
+            if top_inf_rows:
+                for r in top_inf_rows:
+                    payer = r[0] or "Kassa / Mijoz to'lovi"
+                    amt = float(r[1] or 0.0)
+                    cnt = int(r[2] or 1)
+                    
+                    quoted_payer = urllib.parse.quote(payer)
+                    cnt_str = f"{cnt} ta to'lov yig'indisi" if cnt > 1 else "1 ta to'lov"
+
+                    top_inflows.append({
+                        "source": payer,
+                        "detail": cnt_str,
+                        "amount": round(amt, 2),
+                        "link": f"/payments?search={quoted_payer}&date_from={date_f_str}&date_to={date_t_str}"
+                    })
 
             # Omborga kirim (Priemkalar summasi va soni)
             supply_info = await get_supplies_summary(moment_from, moment_to)
@@ -218,7 +289,7 @@ async def dashboard_summary(
                 "total_debt": round(total_debt, 2),
                 "total_inflow": 0.0,
                 "supply_inflow": supply_info,
-                "total_expenses": 22560000.0,
+                "total_expenses": 0.0,
                 "top_customers": [],
                 "top_debtors": [],
                 "warehouse_stock": {"total_items": 42000, "total_value": 872000000},
@@ -351,59 +422,140 @@ async def sales_trend(
         prev_revenue_vals = []
 
         async def get_period_sum(start_str: str, end_str: str):
-            """Berilgan sana oralig'idagi sotuv va to'lov summasini olish"""
+            """Berilgan sana oralig'idagi sotuv va to'lov summasini olish (Toshkent vaqti Moskvaga -2 soat o'giriladi)"""
+            s_msk = uz_to_msk_str(start_str)
+            e_msk = uz_to_msk_str(end_str)
             stmt = select(
                 func.coalesce(func.sum(LocalDemand.sum), 0.0),
                 func.coalesce(func.sum(LocalDemand.payed_sum), 0.0)
-            ).where(LocalDemand.moment >= start_str, LocalDemand.moment <= end_str)
+            ).where(LocalDemand.moment >= s_msk, LocalDemand.moment <= e_msk)
             row = (await db.execute(stmt)).first()
             return round(float(row[0] or 0.0), 2), round(float(row[1] or 0.0), 2)
 
-        async def get_hourly_data(date_str: str):
-            """Berilgan kun uchun soatlik ma'lumotlar"""
-            hour_labels = ["09:00", "11:00", "13:00", "15:00", "17:00", "19:00", "21:00"]
-            stmt = select(LocalDemand.moment, LocalDemand.sum).where(LocalDemand.moment.like(f"{date_str}%"))
-            rows = (await db.execute(stmt)).all()
-            hourly = {lbl: 0.0 for lbl in hour_labels}
-            for m, s in rows:
-                hour = int(m[11:13]) if len(m) >= 13 else 12
-                matched = "09:00" if hour <= 10 else ("11:00" if hour <= 12 else ("13:00" if hour <= 14 else ("15:00" if hour <= 16 else ("17:00" if hour <= 18 else ("19:00" if hour <= 20 else "21:00")))))
-                hourly[matched] += float(s or 0.0)
-            return hour_labels, [round(hourly[l], 2) for l in hour_labels]
+        async def get_hourly_comparison(date_str: str, prev_date_str: str):
+            """Berilgan 2 kun uchun moslashuvchan soatbay taqqoslash (Toshkent vaqti bilan +2 soat sinxron)"""
+            start_curr_msk = uz_to_msk_str(f"{date_str} 00:00:00")
+            end_curr_msk = uz_to_msk_str(f"{date_str} 23:59:59")
+            start_prev_msk = uz_to_msk_str(f"{prev_date_str} 00:00:00")
+            end_prev_msk = uz_to_msk_str(f"{prev_date_str} 23:59:59")
 
-        if timeframe == "today":
-            # Bugun vs Kecha (soatlik)
+            stmt_curr = select(LocalDemand.moment, LocalDemand.sum).where(
+                LocalDemand.moment >= start_curr_msk,
+                LocalDemand.moment <= end_curr_msk
+            )
+            stmt_prev = select(LocalDemand.moment, LocalDemand.sum).where(
+                LocalDemand.moment >= start_prev_msk,
+                LocalDemand.moment <= end_prev_msk
+            )
+            rows_curr = (await db.execute(stmt_curr)).all()
+            rows_prev = (await db.execute(stmt_prev)).all()
+
+            hours_set = set()
+            curr_map = {}
+            prev_map = {}
+
+            for m, s in rows_curr:
+                dt_uz = to_tashkent_datetime(m)
+                if dt_uz:
+                    h = dt_uz.hour
+                    hours_set.add(h)
+                    curr_map[h] = curr_map.get(h, 0.0) + float(s or 0.0)
+
+            for m, s in rows_prev:
+                dt_uz = to_tashkent_datetime(m)
+                if dt_uz:
+                    h = dt_uz.hour
+                    hours_set.add(h)
+                    prev_map[h] = prev_map.get(h, 0.0) + float(s or 0.0)
+
+            is_today = (date_str == now.strftime("%Y-%m-%d"))
+            if is_today:
+                hours_set.add(now.hour)
+
+            if not hours_set:
+                min_h, max_h = 9, 18
+            else:
+                min_h = min(hours_set)
+                max_h = max(hours_set)
+                min_h = min(min_h, 9)
+                if is_today:
+                    max_h = max(max_h, now.hour)
+                max_h = max(max_h, min_h + 3)
+
+            hour_labels = [f"{h:02d}:00" for h in range(min_h, max_h + 1)]
+            rev_vals = [round(curr_map.get(h, 0.0), 2) for h in range(min_h, max_h + 1)]
+            prev_vals = [round(prev_map.get(h, 0.0), 2) for h in range(min_h, max_h + 1)]
+            return hour_labels, rev_vals, prev_vals
+
+        # Maxsus sana filtri berilganmi?
+        if date_from and date_to:
+            if date_from == date_to:
+                # Aniq 1 kun tanlangan (Bugun, Kecha yoki maxsus 1 kun) -> Soatbay moslashuvchan solishtirish
+                target_day = datetime.strptime(date_from[:10], "%Y-%m-%d")
+                prev_day = target_day - timedelta(days=1)
+                labels, revenue_vals, prev_revenue_vals = await get_hourly_comparison(
+                    target_day.strftime("%Y-%m-%d"),
+                    prev_day.strftime("%Y-%m-%d")
+                )
+            else:
+                # Sana oralig'i (masalan 7 kun yoki butun oy) -> Har bir kunni alohida sanasi bilan ko'rsatish
+                d_f = datetime.strptime(date_from[:10], "%Y-%m-%d")
+                d_t = datetime.strptime(date_to[:10], "%Y-%m-%d")
+                days_diff = (d_t - d_f).days + 1
+                days_count = max(1, min(days_diff, 60))
+                
+                uz_month_short = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"]
+                for i in range(days_count):
+                    day_curr = d_f + timedelta(days=i)
+                    day_prev = day_curr - timedelta(days=days_count)
+                    d_str = day_curr.strftime("%Y-%m-%d")
+                    p_str = day_prev.strftime("%Y-%m-%d")
+                    
+                    lbl = f"{day_curr.day}-{uz_month_short[day_curr.month - 1]}"
+                    labels.append(lbl)
+                    
+                    rev, _ = await get_period_sum(f"{d_str} 00:00:00", f"{d_str} 23:59:59")
+                    prev_rev, _ = await get_period_sum(f"{p_str} 00:00:00", f"{p_str} 23:59:59")
+                    revenue_vals.append(rev)
+                    prev_revenue_vals.append(prev_rev)
+
+        elif timeframe == "today":
+            # Bugun vs Kecha (har soat alohida, hozirgi soatgacha moslashuvchan)
             today_str = now.strftime("%Y-%m-%d")
             yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-            labels, revenue_vals = await get_hourly_data(today_str)
-            _, prev_revenue_vals = await get_hourly_data(yesterday_str)
+            labels, revenue_vals, prev_revenue_vals = await get_hourly_comparison(today_str, yesterday_str)
+
+        elif timeframe == "yesterday":
+            # Kecha vs Oldingi kun (har soat alohida)
+            yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+            day_before_str = (now - timedelta(days=2)).strftime("%Y-%m-%d")
+            labels, revenue_vals, prev_revenue_vals = await get_hourly_comparison(yesterday_str, day_before_str)
 
         elif timeframe == "7d":
-            # Shu hafta vs O'tgan hafta (kunlik)
+            # Oxirgi 7 kun vs Undan oldingi 7 kun (har bir kun)
             uz_day_names = ["Dush", "Sesh", "Chor", "Pay", "Jum", "Shan", "Yak"]
             for i in range(6, -1, -1):
                 day_curr = now - timedelta(days=i)
                 day_prev = now - timedelta(days=i + 7)
                 d_str = day_curr.strftime("%Y-%m-%d")
                 p_str = day_prev.strftime("%Y-%m-%d")
-                labels.append(uz_day_names[day_curr.weekday()])
+                labels.append(f"{uz_day_names[day_curr.weekday()]} ({day_curr.day})")
                 rev, _ = await get_period_sum(f"{d_str} 00:00:00", f"{d_str} 23:59:59")
                 prev_rev, _ = await get_period_sum(f"{p_str} 00:00:00", f"{p_str} 23:59:59")
                 revenue_vals.append(rev)
                 prev_revenue_vals.append(prev_rev)
 
-        elif timeframe == "30d":
-            # Shu oy vs O'tgan oy (har 3 kunlik nuqtalar)
-            for i in range(9, -1, -1):
-                day_curr = now - timedelta(days=i * 3)
-                day_prev = now - timedelta(days=i * 3 + 30)
-                labels.append(day_curr.strftime("%d-%b"))
-                p_start = (day_curr - timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
-                p_end = day_curr.strftime("%Y-%m-%d 23:59:59")
-                pp_start = (day_prev - timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
-                pp_end = day_prev.strftime("%Y-%m-%d 23:59:59")
-                rev, _ = await get_period_sum(p_start, p_end)
-                prev_rev, _ = await get_period_sum(pp_start, pp_end)
+        elif timeframe == "30d" or timeframe == "month":
+            # Shu oy vs O'tgan oy (har bir kun alohida)
+            uz_month_short = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"]
+            for i in range(29, -1, -1):
+                day_curr = now - timedelta(days=i)
+                day_prev = now - timedelta(days=i + 30)
+                d_str = day_curr.strftime("%Y-%m-%d")
+                p_str = day_prev.strftime("%Y-%m-%d")
+                labels.append(f"{day_curr.day}-{uz_month_short[day_curr.month - 1]}")
+                rev, _ = await get_period_sum(f"{d_str} 00:00:00", f"{d_str} 23:59:59")
+                prev_rev, _ = await get_period_sum(f"{p_str} 00:00:00", f"{p_str} 23:59:59")
                 revenue_vals.append(rev)
                 prev_revenue_vals.append(prev_rev)
 
@@ -421,30 +573,9 @@ async def sales_trend(
                 revenue_vals.append(round(rev_c, 2))
                 prev_revenue_vals.append(round(rev_p, 2))
 
-        else:  # custom
-            days_count = 7
-            if date_from and date_to:
-                try:
-                    d_f = datetime.strptime(date_from[:10], "%Y-%m-%d")
-                    d_t = datetime.strptime(date_to[:10], "%Y-%m-%d")
-                    diff = (d_t - d_f).days + 1
-                    days_count = max(1, min(diff, 30))
-                    now = d_t
-                except Exception:
-                    days_count = 7
-
-            uz_day_names = ["Dush", "Sesh", "Chor", "Pay", "Jum", "Shan", "Yak"]
-            for i in range(days_count - 1, -1, -1):
-                day_curr = now - timedelta(days=i)
-                day_prev = now - timedelta(days=i + days_count)
-                d_str = day_curr.strftime("%Y-%m-%d")
-                p_str = day_prev.strftime("%Y-%m-%d")
-                weekday_name = uz_day_names[day_curr.weekday()] if days_count <= 7 else day_curr.strftime("%d-%b")
-                labels.append(weekday_name)
-                rev, _ = await get_period_sum(f"{d_str} 00:00:00", f"{d_str} 23:59:59")
-                prev_rev, _ = await get_period_sum(f"{p_str} 00:00:00", f"{p_str} 23:59:59")
-                revenue_vals.append(rev)
-                prev_revenue_vals.append(prev_rev)
+        else:
+            labels, revenue_vals = await get_hourly_data(now.strftime("%Y-%m-%d"))
+            prev_revenue_vals = [0.0] * len(labels)
 
         # Haqiqiy o'sish foizini hisoblash
         total_rev = sum(revenue_vals)
@@ -481,11 +612,8 @@ async def sales_trend(
 async def dashboard_accounts_summary():
     """Dashboard kassa va hisoblar qoldiqlari (Slide-over drawer uchun)"""
     try:
-        import importlib
-        import routers.settings
-        importlib.reload(routers.settings)
-        res = await routers.settings.get_accounts_with_corrections()
-        return res
+        from routers.settings import get_accounts_with_corrections
+        return await get_accounts_with_corrections()
     except Exception as e:
         import traceback
         tb = traceback.format_exc()

@@ -12,9 +12,28 @@ const UZ_MONTHS = [
     "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"
 ];
 
+const UZ_WEEKDAYS = [
+    "Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"
+];
+
 let activeDatePivot = new Date();
 let currentPeriod = 'today';
 let activeTrendTimeframe = '7d';
+
+function formatFullUzDate(d) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = UZ_MONTHS[d.getMonth()];
+    const year = d.getFullYear();
+    const weekday = UZ_WEEKDAYS[d.getDay()];
+    return `${weekday}, ${day}-${month} ${year}-yil`;
+}
+
+function formatPeriodDate(d) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = UZ_MONTHS[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month} ${year}`;
+}
 
 function getLocalDateString(d) {
     const year = d.getFullYear();
@@ -36,27 +55,22 @@ function updateDateRangeUI(applyLoad = true) {
         const month = activeDatePivot.getMonth();
         fromDate = new Date(year, month, 1);
         toDate = new Date(year, month + 1, 0);
-        labelText = `${UZ_MONTHS[month]} ${year}`;
+        labelText = `${UZ_MONTHS[month]} ${year}-yil`;
         if (navEl) navEl.style.display = 'inline-flex';
     } else if (currentPeriod === 'today') {
         fromDate = new Date(activeDatePivot.getFullYear(), activeDatePivot.getMonth(), activeDatePivot.getDate());
         toDate = new Date(activeDatePivot.getFullYear(), activeDatePivot.getMonth(), activeDatePivot.getDate());
-        const d = activeDatePivot.getDate();
-        const m = UZ_MONTHS[activeDatePivot.getMonth()];
-        const y = activeDatePivot.getFullYear();
-        labelText = `${d}-${m} ${y}`;
+        labelText = formatPeriodDate(fromDate);
         if (navEl) navEl.style.display = 'inline-flex';
     } else if (currentPeriod === 'yesterday') {
         fromDate = new Date(activeDatePivot.getFullYear(), activeDatePivot.getMonth(), activeDatePivot.getDate());
         toDate = new Date(activeDatePivot.getFullYear(), activeDatePivot.getMonth(), activeDatePivot.getDate());
-        const d = activeDatePivot.getDate();
-        const m = UZ_MONTHS[activeDatePivot.getMonth()];
-        labelText = `Kecha (${d}-${m})`;
+        labelText = `Kecha (${formatPeriodDate(fromDate)})`;
         if (navEl) navEl.style.display = 'inline-flex';
     } else if (currentPeriod === 'week') {
         toDate = new Date(activeDatePivot.getFullYear(), activeDatePivot.getMonth(), activeDatePivot.getDate());
         fromDate = new Date(toDate.getTime() - 6 * 86400000);
-        labelText = `${fromDate.getDate()}-${UZ_MONTHS[fromDate.getMonth()]} — ${toDate.getDate()}-${UZ_MONTHS[toDate.getMonth()]}`;
+        labelText = `${fromDate.getDate()}-${UZ_MONTHS[fromDate.getMonth()]} — ${toDate.getDate()}-${UZ_MONTHS[toDate.getMonth()]} ${toDate.getFullYear()}`;
         if (navEl) navEl.style.display = 'inline-flex';
     } else if (currentPeriod === 'all') {
         if (fromInput) fromInput.value = '';
@@ -79,7 +93,7 @@ function updateDateRangeUI(applyLoad = true) {
 
     if (applyLoad) {
         loadDashboard();
-        const tf = currentPeriod === 'today' ? 'today' : (currentPeriod === 'yesterday' ? 'today' : (currentPeriod === 'week' ? '7d' : (currentPeriod === 'month' ? '30d' : '7d')));
+        const tf = currentPeriod === 'today' ? 'today' : (currentPeriod === 'yesterday' ? 'yesterday' : (currentPeriod === 'week' ? '7d' : (currentPeriod === 'month' ? '30d' : '7d')));
         loadSalesTrend(tf);
     }
 }
@@ -129,7 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const dateEl = document.getElementById('currentDate');
     if (dateEl) {
-        dateEl.textContent = new Date().toLocaleDateString('uz-UZ', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+        dateEl.textContent = formatFullUzDate(new Date());
     }
 
     updateDateRangeUI(false);
@@ -138,10 +152,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const curr = await fetchUSDRate();
         if (curr && curr.usd_rate) {
-            const orgBadge = document.getElementById('orgBadge');
-            if (orgBadge) orgBadge.title = `1 USD = ${formatMoney(curr.usd_rate)}`;
-            const refRateText = document.getElementById('heroRefRateText');
-            if (refRateText) refRateText.textContent = `(@ ${formatMoney(curr.usd_rate)})`;
+            window.currentUSDRate = curr.usd_rate;
+            const refRateBadge = document.getElementById('heroRefRateBadge');
+            if (refRateBadge) refRateBadge.textContent = `📈 Kurs: ${formatNumber(curr.usd_rate)} so'm`;
         }
     } catch (e) {
         console.warn('Kurs yuklanmadi:', e);
@@ -168,11 +181,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (dF) dF.addEventListener('change', onCustomDateChange);
     if (dT) dT.addEventListener('change', onCustomDateChange);
 
-    // 3. Parallel yuklash: Kassa, Metrikalar va Sotuv Grafigi
-    loadDashboardAccountsSummary();
-    await loadDashboard();
-    const initialTf = currentPeriod === 'today' ? 'today' : (currentPeriod === 'week' ? '7d' : (currentPeriod === 'month' ? '30d' : '7d'));
-    loadSalesTrend(initialTf);
+    // 3. Parallel tezkor yuklash: Kassa, Metrikalar va Sotuv Grafigi
+    const initialTf = currentPeriod === 'today' ? 'today' : (currentPeriod === 'yesterday' ? 'yesterday' : (currentPeriod === 'week' ? '7d' : (currentPeriod === 'month' ? '30d' : '7d')));
+    Promise.all([
+        loadDashboardAccountsSummary().catch(() => null),
+        loadDashboard().catch(() => null),
+        loadSalesTrend(initialTf).catch(() => null)
+    ]);
 });
 
 // ================= 1. KASSA VA BALANS QOLDIG'I (ICHKI TAQSIMOT & DRAWER) =================
@@ -204,10 +219,10 @@ async function loadDashboardAccountsSummary() {
         const heroCons = document.getElementById('heroConsolidatedBalance');
         if (heroCons) heroCons.textContent = formatMoney(totalUzsEq);
 
-        const heroRef = document.getElementById('heroRefRateText');
-        if (heroRef) heroRef.textContent = `(@ ${formatNumber(refRate)})`;
+        const refRateBadge = document.getElementById('heroRefRateBadge');
+        if (refRateBadge) refRateBadge.textContent = `📈 Kurs: ${formatNumber(refRate)} so'm`;
 
-        // 2. Naqd, Karta, Dollar alohida ko'rsatish
+        // 2. Naqd, Karta, Dollar alohida hisoblash
         const cashAccs = accounts.filter(a => a.type === 'cash' || (!a.is_dollar && (a.id || '').includes('cash')));
         const bankAccs = accounts.filter(a => !a.is_dollar && a.type !== 'cash' && !(a.id || '').includes('cash'));
         const usdAccs = accounts.filter(a => a.is_dollar);
@@ -216,83 +231,66 @@ async function loadDashboardAccountsSummary() {
         const totalCard = bankAccs.reduce((s, a) => s + (a.current_balance || 0), 0);
 
         const heroCash = document.getElementById('heroCashBalance');
-        if (heroCash) heroCash.textContent = formatCompact(totalCash);
+        if (heroCash) heroCash.textContent = formatMoney(totalCash);
 
         const heroCard = document.getElementById('heroCardBalance');
-        if (heroCard) heroCard.textContent = formatCompact(totalCard);
+        if (heroCard) heroCard.textContent = formatMoney(totalCard);
 
         const heroUsd = document.getElementById('heroUsdBalance');
         if (heroUsd) heroUsd.textContent = `$${formatNumber(totalUsd)}`;
 
-        // 3. Drawer Total Box
-        const drawerTotal = document.getElementById('drawerTotalUzsEq');
-        if (drawerTotal) drawerTotal.textContent = formatMoney(totalUzsEq);
+        const heroUsdEquiv = document.getElementById('heroUsdEquivText');
+        if (heroUsdEquiv) heroUsdEquiv.textContent = `~ ${formatMoney(totalUsd * refRate)}`;
 
-        const drawerUzs = document.getElementById('drawerSubUzs');
-        if (drawerUzs) drawerUzs.textContent = formatMoney(totalUzs);
+        // 3. Inline Hisob Gridini chizish
+        const inlineGrid = document.getElementById('vaAccountsInlineGrid');
+        if (inlineGrid) {
+            if (accounts.length === 0) {
+                inlineGrid.innerHTML = '<div style="color:#94a3b8; padding:15px; grid-column:span 2; text-align:center;">Hisoblar topilmadi</div>';
+            } else {
+                inlineGrid.innerHTML = accounts.map(acc => {
+                    const isDollar = acc.is_dollar;
+                    const balVal = acc.current_balance !== undefined ? acc.current_balance : (acc.balance || 0);
+                    const balanceText = isDollar ? `$${formatNumber(balVal)}` : formatMoney(balVal);
+                    const subText = isDollar ? `<div style="font-size:10.5px; color:#cbd5e1; font-weight:600; opacity:0.85; margin-top:2px;">~ ${formatMoney(balVal * refRate)}</div>` : '';
+                    const badgeClass = isDollar ? 'dollar' : (acc.type === 'cash' ? 'cash' : 'bank');
+                    const badgeText = isDollar ? 'USD' : (acc.type === 'cash' ? 'NAQD' : 'BANK');
 
-        const drawerUsd = document.getElementById('drawerSubUsd');
-        if (drawerUsd) drawerUsd.textContent = `$${formatNumber(totalUsd)}`;
-
-        // 4. Drawer Guruhlangan Hisoblar Ro'yxati (1-rasmga 100% mos)
-        const listEl = document.getElementById('drawerAccountsList');
-        if (!listEl) return;
-
-        if (accounts.length === 0) {
-            listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">Hisoblar topilmadi</div>';
-            return;
-        }
-
-        const cashAccs = accounts.filter(a => a.type === 'cash' || (!a.is_dollar && a.id.includes('cash')));
-        const bankAccs = accounts.filter(a => !a.is_dollar && a.type !== 'cash' && !a.id.includes('cash'));
-        const usdAccs = accounts.filter(a => a.is_dollar);
-
-        function renderAccItem(acc) {
-            const isDollar = acc.is_dollar;
-            const balanceText = isDollar ? `$${formatNumber(acc.current_balance)}` : formatMoney(acc.current_balance);
-            const corrBadge = acc.has_correction ? `<span style="font-size:10px; background:rgba(0,242,254,0.15); color:#00f2fe; padding:2px 8px; border-radius:6px; font-weight:700;">⚙️ Korrektirovka</span>` : '';
-            const accNum = acc.accountnumber && acc.accountnumber !== acc.name ? `<div style="font-size:11px; color:#94a3b8;">${acc.accountnumber}</div>` : '';
-
-            return `
-                <div class="drawer-account-item">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                        <div>
-                            <div style="font-weight:700; font-size:13px; color:#fff;">${acc.name || acc.raw_name || 'Hisob'}</div>
-                            ${accNum}
+                    return `
+                        <div class="va-inline-acc-card ${badgeClass}" onclick="location.href='/payments?account_id=${acc.id}'" title="Filtrlash uchun bosing" style="cursor:pointer;">
+                            <div class="va-inline-acc-top">
+                                <span class="va-inline-acc-name" title="${acc.name || acc.raw_name}">${acc.name || acc.raw_name}</span>
+                                <span class="va-inline-acc-badge ${badgeClass}">${badgeText}</span>
+                            </div>
+                            <div class="va-inline-acc-bal ${badgeClass}">
+                                ${balanceText}
+                                ${subText}
+                            </div>
                         </div>
-                        ${corrBadge}
-                    </div>
-                    <div style="font-size:18px; font-weight:800; color:${isDollar ? '#86efac' : '#fff'}; letter-spacing:-0.3px;">
-                        ${balanceText}
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8; border-top:1px solid rgba(255,255,255,0.05); padding-top:6px;">
-                        <span>Valyuta: ${acc.currency}</span>
-                        <a href="/payments?account_id=${acc.id}" style="color:#00f2fe; text-decoration:none; font-weight:700;">To'lovlar tarixi ➔</a>
-                    </div>
-                </div>
-            `;
+                    `;
+                }).join('');
+            }
         }
-
-        let html = '';
-        if (cashAccs.length > 0) {
-            html += `<div class="accounts-group-title"><span>💵</span> <span>CASH Naqd Pul</span></div>`;
-            html += cashAccs.map(renderAccItem).join('');
-        }
-        if (bankAccs.length > 0) {
-            html += `<div class="accounts-group-title"><span>🏦</span> <span>BANK ACCOUNTS Bank Hisoblari</span></div>`;
-            html += bankAccs.map(renderAccItem).join('');
-        }
-        if (usdAccs.length > 0) {
-            html += `<div class="accounts-group-title"><span>💲</span> <span>CURRENCY ACCOUNTS Valyuta Hisoblari</span></div>`;
-            html += usdAccs.map(renderAccItem).join('');
-        }
-
-        listEl.innerHTML = html;
 
     } catch (e) {
         console.error('Kassa qoldiqlari yuklanmadi:', e);
     }
 }
+
+window.toggleAccountsInline = function() {
+    const card = document.getElementById('vaCashCard');
+    const heroContainer = card ? card.closest('.va-hero-container') : null;
+    const icon = document.getElementById('btnToggleAccountsIcon');
+    const text = document.getElementById('btnToggleAccountsText');
+    if (!card) return;
+
+    const isExpanded = card.classList.toggle('expanded');
+    if (heroContainer) {
+        heroContainer.classList.toggle('accounts-expanded', isExpanded);
+    }
+    if (icon) icon.style.transform = isExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
+    if (text) text.textContent = isExpanded ? '✖ Yopish' : '📊 Hisoblar qoldig\'i';
+};
 
 window.openAccountsDrawer = function(event) {
     if (event) event.stopPropagation();
@@ -410,34 +408,46 @@ async function loadDashboard() {
             }
         }
 
-        // 3. Katta Kirimlar va Chiqimlar (Flows)
-        if (data.top_inflows && data.top_inflows.length > 0) {
-            const infEl = document.getElementById('topInflowsList');
-            if (infEl) {
-                infEl.innerHTML = data.top_inflows.map(item => `
-                    <div class="va-flow-item">
+        // 3. Katta Kirimlar va Chiqimlar (Flows - Top 10 ta, to'g'ridan to'g'ri to'lovga havola bilan)
+        const infEl = document.getElementById('topInflowsList');
+        if (infEl) {
+            if (data.top_inflows && data.top_inflows.length > 0) {
+                infEl.innerHTML = data.top_inflows.map((item, idx) => `
+                    <div class="va-flow-item ${idx >= 5 ? 'va-flow-extra' : ''}" style="${idx >= 5 ? 'display:none;' : ''} cursor:pointer;" onclick="location.href='${item.link || '/payments'}'" title="Tafsilotini ko'rish va ochish">
                         <div class="va-flow-meta">
-                            <strong>${item.source}</strong>
+                            <strong>${item.source} ➔</strong>
                             <span>${item.detail}</span>
                         </div>
                         <div class="va-flow-amount inflow">+ ${formatMoney(item.amount)}</div>
                     </div>
-                `).join('');
+                `).join('') + (data.top_inflows.length > 5 ? `
+                    <button type="button" class="va-btn-show-more-flows" onclick="toggleExtraFlows(this, 'topInflowsList')">
+                        Barchasini ko'rish (${data.top_inflows.length} ta) ▼
+                    </button>
+                ` : '');
+            } else {
+                infEl.innerHTML = `<div style="text-align:center; padding:32px 16px; color:#94a3b8; font-size:13px; font-weight:600;">Ushbu davrda kirim to'lovlar mavjud emas</div>`;
             }
         }
 
-        if (data.top_outflows && data.top_outflows.length > 0) {
-            const outEl = document.getElementById('topOutflowsList');
-            if (outEl) {
-                outEl.innerHTML = data.top_outflows.map(item => `
-                    <div class="va-flow-item">
+        const outEl = document.getElementById('topOutflowsList');
+        if (outEl) {
+            if (data.top_outflows && data.top_outflows.length > 0) {
+                outEl.innerHTML = data.top_outflows.map((item, idx) => `
+                    <div class="va-flow-item ${idx >= 5 ? 'va-flow-extra' : ''}" style="${idx >= 5 ? 'display:none;' : ''} cursor:pointer;" onclick="location.href='${item.link || '/payments'}'" title="Tafsilotini ko'rish">
                         <div class="va-flow-meta">
-                            <strong>${item.source}</strong>
+                            <strong>${item.source} ➔</strong>
                             <span>${item.detail}</span>
                         </div>
                         <div class="va-flow-amount outflow">- ${formatMoney(item.amount)}</div>
                     </div>
-                `).join('');
+                `).join('') + (data.top_outflows.length > 5 ? `
+                    <button type="button" class="va-btn-show-more-flows" onclick="toggleExtraFlows(this, 'topOutflowsList')">
+                        Barchasini ko'rish (${data.top_outflows.length} ta) ▼
+                    </button>
+                ` : '');
+            } else {
+                outEl.innerHTML = `<div style="text-align:center; padding:32px 16px; color:#94a3b8; font-size:13px; font-weight:600;">Ushbu davrda xarajatlar mavjud emas</div>`;
             }
         }
 
@@ -445,6 +455,19 @@ async function loadDashboard() {
         console.error('Dashboard yuklashda xatolik:', e);
     }
 }
+
+window.toggleExtraFlows = function(btn, containerId) {
+    const cont = document.getElementById(containerId);
+    if (!cont) return;
+    const extras = cont.querySelectorAll('.va-flow-extra');
+    const isHidden = extras.length > 0 && extras[0].style.display === 'none';
+    extras.forEach(el => {
+        el.style.display = isHidden ? 'flex' : 'none';
+    });
+    if (btn) {
+        btn.textContent = isHidden ? 'Yashirish ▲' : `Barchasini ko'rish (${extras.length + 5} ta) ▼`;
+    }
+};
 
 // ================= 3. KREATIV SOTUVLAR TREND ANALYTICS DIAGRAMMASI =================
 function setTrendTimeframe(tf, btn) {
@@ -478,7 +501,6 @@ async function loadSalesTrend(timeframe = '7d') {
         const growthBadge = document.getElementById('trendGrowthBadge');
         if (growthBadge && data.growth_rate) {
             growthBadge.textContent = data.growth_rate;
-            // Rang berish: yashil yoki qizil
             if (data.growth_rate.includes('+') || data.growth_rate.includes('↗')) {
                 growthBadge.style.background = 'rgba(16,185,129,0.15)';
                 growthBadge.style.color = '#10b981';
@@ -488,6 +510,12 @@ async function loadSalesTrend(timeframe = '7d') {
             }
         }
 
+        const curSumEl = document.getElementById('chartCurrentPeriodSum');
+        if (curSumEl) curSumEl.textContent = `Joriy: ${formatMoney(Math.round(data.total_revenue || 0))}`;
+
+        const prevSumEl = document.getElementById('chartPrevPeriodSum');
+        if (prevSumEl) prevSumEl.textContent = `Oldingi: ${formatMoney(Math.round(data.total_previous || 0))}`;
+
         renderDualLineChartSvg(container, labels, rev, prevRev);
 
     } catch (e) {
@@ -496,21 +524,46 @@ async function loadSalesTrend(timeframe = '7d') {
 }
 
 function renderDualLineChartSvg(container, labels, revenue, previousRevenue) {
-    const width = 800;
-    const height = 210;
-    const padX = 50;
-    const padY = 25;
-    const chartW = width - padX * 2;
-    const chartH = height - padY * 2;
+    const width = 960;
+    const height = 350;
+    const padLeft = 90;
+    const padRight = 45;
+    const padTop = 45;
+    const padBottom = 45;
+    const chartW = width - padLeft - padRight;
+    const chartH = height - padTop - padBottom;
 
-    const maxVal = Math.max(...revenue, ...previousRevenue, 10000000);
+    const rawMax = Math.max(...revenue, ...previousRevenue, 10000000);
+    
+    // Moslashuvchan Y-o'qi shkalasi (50 mln, 100 mln, 150 mln kabi qatorlar)
+    function getNiceScale(maxV) {
+        const targetSteps = 4;
+        const rawStep = maxV / targetSteps;
+        const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+        const normalized = rawStep / magnitude;
+        let step;
+        if (normalized < 1.5) step = 1 * magnitude;
+        else if (normalized < 3.5) step = 2.5 * magnitude;
+        else if (normalized < 7.5) step = 5 * magnitude;
+        else step = 10 * magnitude;
+
+        const ticks = [];
+        let cur = 0;
+        while (cur <= maxV + step * 0.1 || ticks.length <= 4) {
+            ticks.push(cur);
+            cur += step;
+        }
+        return { ticks, maxVal: ticks[ticks.length - 1] || maxV };
+    }
+
+    const { ticks, maxVal } = getNiceScale(rawMax);
     const count = labels.length;
     const stepX = count > 1 ? chartW / (count - 1) : chartW;
 
     function getCoords(arr) {
         return arr.map((val, i) => {
-            const x = padX + (i * stepX);
-            const y = height - padY - ((val / maxVal) * chartH);
+            const x = padLeft + (i * stepX);
+            const y = height - padBottom - ((val / maxVal) * chartH);
             return { x, y, val };
         });
     }
@@ -534,13 +587,21 @@ function renderDualLineChartSvg(container, labels, revenue, previousRevenue) {
     const revPath = buildSplinePath(revPoints);
     const prevPath = buildSplinePath(prevPoints);
 
-    const revArea = revPoints.length > 0 ? `${revPath} L ${revPoints[revPoints.length - 1].x} ${height - padY} L ${revPoints[0].x} ${height - padY} Z` : '';
+    const revArea = revPoints.length > 0 ? `${revPath} L ${revPoints[revPoints.length - 1].x} ${height - padBottom} L ${revPoints[0].x} ${height - padBottom} Z` : '';
+
+    function formatYTick(val) {
+        if (val === 0) return '0';
+        if (val >= 1000000000) return (val / 1000000000).toFixed(val % 1000000000 === 0 ? 0 : 1) + ' mlrd';
+        if (val >= 1000000) return (val / 1000000).toFixed(val % 1000000 === 0 ? 0 : 1) + ' mln';
+        if (val >= 1000) return (val / 1000).toFixed(0) + ' ming';
+        return val.toString();
+    }
 
     let svg = `
-        <svg class="va-svg-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+        <svg class="va-svg-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width:100%; height:100%; min-height:350px;">
             <defs>
                 <linearGradient id="vaCyanArea" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.35"/>
+                    <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.32"/>
                     <stop offset="100%" stop-color="#00f2fe" stop-opacity="0.0"/>
                 </linearGradient>
                 <linearGradient id="vaPurpleArea" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -548,44 +609,97 @@ function renderDualLineChartSvg(container, labels, revenue, previousRevenue) {
                     <stop offset="100%" stop-color="#a855f7" stop-opacity="0.0"/>
                 </linearGradient>
                 <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                    <feGaussianBlur stdDeviation="3.5" result="blur"/>
                     <feComposite in="SourceGraphic" in2="blur" operator="over"/>
                 </filter>
             </defs>
 
-            <!-- Gorizontal Grid Chiziqlar -->
-            <line x1="${padX}" y1="${padY}" x2="${width - padX}" y2="${padY}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4"/>
-            <line x1="${padX}" y1="${padY + chartH / 2}" x2="${width - padX}" y2="${padY + chartH / 2}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4"/>
-            <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="rgba(255,255,255,0.12)"/>
+            <!-- Gorizontal Grid Chiziqlar va Chap Y-Axis Summalar -->
+            ${ticks.map(tVal => {
+                const yPos = height - padBottom - ((tVal / maxVal) * chartH);
+                return `
+                    <line x1="${padLeft}" y1="${yPos}" x2="${width - padRight}" y2="${yPos}" stroke="${tVal === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}" stroke-dasharray="${tVal === 0 ? '0' : '4 4'}"/>
+                    <text x="${padLeft - 14}" y="${yPos + 4}" fill="#94a3b8" font-size="11.5" font-weight="700" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">${formatYTick(tVal)}</text>
+                `;
+            }).join('')}
 
             <!-- Area Fill -->
             <path d="${revArea}" fill="url(#vaCyanArea)"/>
 
             <!-- Oldingi davr (Purple Curve) -->
-            <path d="${prevPath}" fill="none" stroke="#a855f7" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 4"/>
+            <path d="${prevPath}" fill="none" stroke="#a855f7" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="6 4"/>
 
             <!-- Tushum (Cyan Glowing Curve) -->
-            <path d="${revPath}" fill="none" stroke="#00f2fe" stroke-width="3.5" stroke-linecap="round" filter="url(#glowCyan)"/>
+            <path d="${revPath}" fill="none" stroke="#00f2fe" stroke-width="3.6" stroke-linecap="round" filter="url(#glowCyan)"/>
 
-            <!-- Nuqtalar va Chiroqlar -->
-            ${revPoints.map((p, i) => `
-                <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="#00f2fe" stroke="#fff" stroke-width="2"/>
-                <circle cx="${p.x}" cy="${p.y}" r="8" fill="none" stroke="#00f2fe" stroke-width="1.5" opacity="0.4"/>
-            `).join('')}
+            <!-- Oldingi davr va Joriy davr nuqtalari va Qiymat Badgelari (Ustma-ust tushishni oldini olish) -->
+            ${revPoints.map((pCurr, i) => {
+                const pPrev = prevPoints[i] || { x: pCurr.x, y: pCurr.y, val: 0 };
+                const currVal = pCurr.val;
+                const prevVal = pPrev.val;
+                const currStr = formatYTick(currVal);
+                const prevStr = formatYTick(prevVal);
 
-            ${prevPoints.map((p, i) => `
-                <circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#a855f7" stroke="#fff" stroke-width="1.5"/>
-            `).join('')}
+                const currClampedX = Math.max(padLeft + 28, Math.min(width - padRight - 28, pCurr.x));
+                const prevClampedX = Math.max(padLeft + 28, Math.min(width - padRight - 28, pPrev.x));
 
-            <!-- Y-Axis Labels (mln format) -->
-            <text x="${padX - 5}" y="${padY + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">${formatCompact(maxVal)}</text>
-            <text x="${padX - 5}" y="${padY + chartH / 2 + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">${formatCompact(maxVal / 2)}</text>
-            <text x="${padX - 5}" y="${height - padY + 4}" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="end">0</text>
+                // Vertikal masofa
+                const yDiff = Math.abs(pCurr.y - pPrev.y);
+                const isClose = (currVal > 0 && prevVal > 0) && yDiff < 34;
+
+                let currBadgeY, prevBadgeY;
+                if (isClose) {
+                    if (pCurr.y <= pPrev.y) {
+                        // Joriy davr yuqorida (summasi kattaroq yoki teng)
+                        currBadgeY = pCurr.y - 16;
+                        prevBadgeY = pPrev.y + 18;
+                    } else {
+                        // Oldingi davr yuqorida
+                        prevBadgeY = pPrev.y - 16;
+                        currBadgeY = pCurr.y + 18;
+                    }
+                } else {
+                    currBadgeY = pCurr.y < (padTop + 22) ? (pCurr.y + 18) : (pCurr.y - 15);
+                    prevBadgeY = pPrev.y > (height - padBottom - 30) ? (pPrev.y - 15) : (pPrev.y + 18);
+                }
+
+                // Chegara tekshiruvi (SVG dan chiqib ketmasligi uchun)
+                if (currBadgeY < padTop - 2) currBadgeY = padTop + 14;
+                if (prevBadgeY < padTop - 2) prevBadgeY = padTop + 14;
+                if (currBadgeY > height - padBottom + 16) currBadgeY = height - padBottom - 14;
+                if (prevBadgeY > height - padBottom + 16) prevBadgeY = height - padBottom - 14;
+
+                return `
+                    <!-- Oldingi davr nuqtasi (${labels[i]}) -->
+                    <g class="va-chart-prev-point">
+                        <circle cx="${pPrev.x}" cy="${pPrev.y}" r="3.6" fill="#a855f7" stroke="#ffffff" stroke-width="1.5"/>
+                        ${prevVal > 0 ? `
+                        <g transform="translate(${prevClampedX}, ${prevBadgeY})">
+                            <rect x="-25" y="-9" width="50" height="17" rx="4" fill="rgba(24, 15, 42, 0.95)" stroke="rgba(168, 85, 247, 0.85)" stroke-width="1.2"/>
+                            <text x="0" y="3" fill="#e9d5ff" font-size="9.5" font-weight="800" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">${prevStr}</text>
+                        </g>
+                        ` : ''}
+                    </g>
+
+                    <!-- Joriy davr nuqtasi (${labels[i]}) -->
+                    <g class="va-chart-point-group">
+                        <circle cx="${pCurr.x}" cy="${pCurr.y}" r="8" fill="none" stroke="#00f2fe" stroke-width="1.5" opacity="0.45"/>
+                        <circle cx="${pCurr.x}" cy="${pCurr.y}" r="4.5" fill="#00f2fe" stroke="#ffffff" stroke-width="2"/>
+                        
+                        ${currVal > 0 ? `
+                        <g transform="translate(${currClampedX}, ${currBadgeY})">
+                            <rect x="-26" y="-9" width="52" height="17" rx="5" fill="rgba(8, 14, 28, 0.95)" stroke="rgba(0, 242, 254, 0.85)" stroke-width="1.2"/>
+                            <text x="0" y="3" fill="#00f2fe" font-size="10" font-weight="800" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">${currStr}</text>
+                        </g>
+                        ` : ''}
+                    </g>
+                `;
+            }).join('')}
 
             <!-- X-Axis Labels -->
             ${labels.map((lbl, i) => {
-                const x = padX + (i * stepX);
-                return `<text x="${x}" y="${height - 6}" fill="#94a3b8" font-size="11" font-weight="600" text-anchor="middle">${lbl}</text>`;
+                const x = padLeft + (i * stepX);
+                return `<text x="${x}" y="${height - 12}" fill="#94a3b8" font-size="11.5" font-weight="700" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">${lbl}</text>`;
             }).join('')}
         </svg>
     `;

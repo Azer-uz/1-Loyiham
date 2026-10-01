@@ -1082,7 +1082,7 @@
                         <span>💰</span>
                         <span>To'lovlar</span>
                     </a>
-                    <a href="/supply" class="nav-tab-item">
+                    <a href="javascript:void(0)" onclick="handleSupplyComingSoon(event)" class="nav-tab-item">
                         <span>🏬</span>
                         <span>Asosiy ombor</span>
                     </a>
@@ -1144,45 +1144,44 @@
         </div>
     </header>
     <div class="app-layout">
-        <main class="main-content">
-            <div class="v7-greeting-bar">
-                <div class="v7-greeting-text-group"><span id="currentDate" style="display:none;"></span><span id="orgName" style="display:none;"></span>
-                    <h1 class="v7-greeting-title">👥 Mijozlar Boshqaruvi</h1>
-                    <span class="v7-greeting-subtitle">Barcha mijozlar, hisob-kitoblar va qarzdorliklar</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <button type="button" class="btn-top-action" onclick="loadCustomers(true)" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-size:13px; padding:9px 14px; cursor:pointer;" title="MoySklad'dan eng so'nggi balanslarni yangilash">
-                        🔄 Yangilash
-                    </button>
-                    <button type="button" class="btn-top-action btn-save-cust" onclick="openNewCustomerModal()" style="font-size:13px; padding:9px 16px; box-shadow:0 2px 6px rgba(22,163,74,0.3); cursor:pointer;">
-                        ➕ Yangi Mijoz
-                    </button>
-                    <a href="/demands?action=new" class="v7-btn-new-order" style="display:inline-flex; align-items:center; gap:6px;">
-                        📦 Yangi Sotuv
-                    </a>
-                </div>
-            </div>
+        <main class="main-content" style="padding-top: 10px;">
+            <span id="currentDate" style="display:none;"></span>
+            <span id="orgName" style="display:none;"></span>
 
-            <!-- Qidiruv va Qarz filtri -->
-            <div class="filter-panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
-                    <div class="quick-dates" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <!-- Qidiruv, Qarz filtri va Amallar paneli -->
+            <div class="filter-panel" style="padding: 10px 14px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                    <!-- Qarz filtri -->
+                    <div class="quick-dates" style="display: flex; gap: 6px; flex-wrap: wrap;">
                         <button class="quick-btn active" data-debt="all" onclick="selectDebtFilter('all')">👥 Barcha mijozlar</button>
                         <button class="quick-btn" data-debt="debtors" onclick="selectDebtFilter('debtors')">🔴 Faqat qarzdorlar</button>
                         <button class="quick-btn" data-debt="no_debt" onclick="selectDebtFilter('no_debt')">🟢 Qarzi yo'qlar</button>
                     </div>
-                    <div class="print-dropdown-wrapper">
-                        <button class="btn-print" onclick="togglePrintDropdown(this)">
-                            🖨️ Ro'yxatni chop etish ▼
+
+                    <!-- Amallar tugmalari -->
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="btn-top-action" onclick="loadCustomers(true)" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-size:12px; padding:6px 12px; cursor:pointer; font-weight:600;" title="MoySklad'dan eng so'nggi balanslarni yangilash">
+                            🔄 Yangilash
                         </button>
-                        <div class="print-dropdown-menu">
-                            <button onclick="printCustomerList('a4')">📄 A4 format</button>
-                            <button onclick="printCustomerList('a5')">📃 A5 format (kichik)</button>
+                        <button type="button" class="btn-top-action btn-save-cust" onclick="openNewCustomerModal()" style="font-size:12.5px; padding:6px 14px; box-shadow:0 2px 6px rgba(22,163,74,0.3); cursor:pointer; font-weight:700;">
+                            ➕ Yangi Mijoz
+                        </button>
+                        <a href="/demands?action=new" class="btn-top-action btn-akt-cust" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:6px 12px; text-decoration:none; font-weight:700;">
+                            📦 Yangi Sotuv
+                        </a>
+                        <div class="print-dropdown-wrapper">
+                            <button class="btn-print" onclick="togglePrintDropdown(this)" style="padding:6px 12px; font-size:12px;">
+                                🖨️ Chop etish ▼
+                            </button>
+                            <div class="print-dropdown-menu">
+                                <button onclick="printCustomerList('a4')">📄 A4 format</button>
+                                <button onclick="printCustomerList('a5')">📃 A5 format (kichik)</button>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="filter-row">
-                    <input type="text" id="searchInput" class="filter-input" placeholder="🔍 Ism, telefon yoki email bo'yicha qidirish...">
+                <div class="filter-row" style="margin:0;">
+                    <input type="text" id="searchInput" class="filter-input" style="width:100%; padding:7px 12px; font-size:13px;" placeholder="🔍 Ism, telefon yoki izoh bo'yicha qidirish...">
                 </div>
             </div>
 

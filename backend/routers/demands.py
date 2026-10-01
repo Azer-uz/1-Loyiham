@@ -813,8 +813,9 @@ async def get_demand_detail(demand_id: str):
         for p in paymentins:
             check_match(p, "card", "💳 Karta")
 
-        demand_payed_sum = demand.get("payedSum", 0) / 100.0
-        if total_paid == 0 and demand_payed_sum > 0:
+        demand_payed_sum = float(demand.get("payedSum", 0) or 0) / 100.0
+        # MoySkladning payedSum maydoni har doim rasmiy haqiqat manbai (bog'langan to'lovlarning ortiqcha qismini chiqarib tashlaydi)
+        if demand_payed_sum > 0:
             total_paid = demand_payed_sum
 
         matched_payments.sort(key=lambda x: x.get("moment", ""), reverse=True)
@@ -1232,6 +1233,11 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
         # 7. Keshni tozalash
         ms_client.invalidate_demands_cache()
         ms_client.invalidate_payments_cache()
+        try:
+            from routers.payments import invalidate_cashflow_cache
+            invalidate_cashflow_cache()
+        except Exception:
+            pass
 
         # 8. Yangilangan hujjatni olish
         result = await ms_client.get_demand(demand_id)

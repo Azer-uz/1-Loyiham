@@ -140,15 +140,44 @@ function navigatePeriod(direction) {
 // ===== SAHIFA YUKLANGANDA =====
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        // Standart davr: 'month' (Joriy to'liq oy)
-        updateDateRangeUI(false);
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchParam = urlParams.get('search');
+        const dateFromParam = urlParams.get('date_from');
+        const dateToParam = urlParams.get('date_to');
+
+        if (dateFromParam && dateToParam) {
+            currentPeriod = 'custom';
+            const fEl = document.getElementById('dateFrom');
+            const tEl = document.getElementById('dateTo');
+            if (fEl) fEl.value = dateFromParam;
+            if (tEl) tEl.value = dateToParam;
+            clearActivePeriodButtons();
+            const labelEl = document.getElementById('periodDisplayLabel');
+            if (labelEl) labelEl.textContent = `${dateFromParam} — ${dateToParam}`;
+        } else {
+            // Standart davr: 'month' (Joriy to'liq oy)
+            updateDateRangeUI(false);
+        }
+
+        if (searchParam) {
+            const sInput = document.getElementById('searchInput');
+            if (sInput) sInput.value = searchParam;
+        }
 
         // Hodisalarni ulash (Search & Date)
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            searchInput.addEventListener('input', debounce(() => {
-                loadCashflow();
-            }, 300));
+            const onSearchFilter = () => {
+                if (currentCashflowData) {
+                    applyLocalFilter();
+                } else {
+                    loadCashflow();
+                }
+            };
+            searchInput.addEventListener('input', onSearchFilter);
+            searchInput.addEventListener('keyup', onSearchFilter);
+            searchInput.addEventListener('search', onSearchFilter);
+            searchInput.addEventListener('change', onSearchFilter);
         }
 
         const onCustomDateChange = () => {
@@ -169,14 +198,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             dateToInput.addEventListener('change', onCustomDateChange);
         }
 
-        // 🚀 Barcha ma'lumotlarni parallel yuklash (Tezkor 0.05 soniyada to'liq yuklanadi)
-        await Promise.all([
-            loadCashflow(),
+        // 🚀 1-BOSQICH: Kassa ma'lumotlarini darhol yuklash (Ekran bir lahzada ochiladi)
+        await loadCashflow();
+
+        // 🚀 2-BOSQICH: Orqa fonda boshqa qo'shimcha ma'lumotlarni parallel yuklash (blokirovkasiz)
+        Promise.all([
             loadCurrencyData().catch(() => null),
             loadOrgAndAccounts().catch(() => null),
             loadExpenseItems().catch(() => null),
             loadCustomersForModal().catch(() => null),
         ]);
+
+        // URL parametri orqali to'g'ridan to'g'ri to'lov tafsilotini ochish (?edit_id=...&doc_type=...)
+        const editId = urlParams.get('edit_id') || urlParams.get('payment_id');
+        const docType = urlParams.get('doc_type') || 'cashin';
+        if (editId) {
+            setTimeout(() => {
+                if (typeof openPaymentEditModal === 'function') {
+                    openPaymentEditModal(editId, docType);
+                }
+            }, 300);
+        }
     } catch (error) {
         console.error('Kassa sahifasi boshlang\'ich xatosi:', error);
     }
@@ -328,6 +370,7 @@ async function loadOrgAndAccounts() {
                 if (accountsResp.success) {
                     orgAccounts = accountsResp.data || [];
                     populateAccountSelects();
+                    populateDrawerAccounts();
                 }
             }
         }
@@ -337,25 +380,40 @@ async function loadOrgAndAccounts() {
 }
 
 function getCardAccountsList() {
+    let list = [];
     const cardMethod = appPaymentMethods.find(m => m.id === 'card');
     if (cardMethod && Array.isArray(cardMethod.linked_accounts_detail) && cardMethod.linked_accounts_detail.length > 0) {
-        return cardMethod.linked_accounts_detail;
+        list = cardMethod.linked_accounts_detail;
+    } else if (cardMethod && Array.isArray(cardMethod.linked_account_ids) && cardMethod.linked_account_ids.length > 0) {
+        list = orgAccounts.filter(a => cardMethod.linked_account_ids.includes(a.id));
     }
-    if (cardMethod && Array.isArray(cardMethod.linked_account_ids) && cardMethod.linked_account_ids.length > 0) {
-        return orgAccounts.filter(a => cardMethod.linked_account_ids.includes(a.id));
+    if (!list || list.length === 0) {
+        list = orgAccounts.filter(a => a.type !== 'cash' && a.type !== 'dollar' && !a.isDollar && !a.is_dollar && a.currency !== 'USD');
     }
-    return orgAccounts.filter(a => a.type !== 'cash' && a.type !== 'dollar' && !a.isDollar && !a.is_dollar && a.currency !== 'USD');
+    if (!list || list.length === 0) {
+        list = (appAvailableAccounts || []).filter(a => a.type !== 'cash' && a.type !== 'dollar' && !a.isDollar && !a.is_dollar && a.currency !== 'USD');
+    }
+    if (!list || list.length === 0) {
+        list = orgAccounts.filter(a => a.id !== 'cash_default');
+    }
+    return list;
 }
 
 function getDollarAccountsList() {
+    let list = [];
     const usdMethod = appPaymentMethods.find(m => m.id === 'usd');
     if (usdMethod && Array.isArray(usdMethod.linked_accounts_detail) && usdMethod.linked_accounts_detail.length > 0) {
-        return usdMethod.linked_accounts_detail;
+        list = usdMethod.linked_accounts_detail;
+    } else if (usdMethod && Array.isArray(usdMethod.linked_account_ids) && usdMethod.linked_account_ids.length > 0) {
+        list = orgAccounts.filter(a => usdMethod.linked_account_ids.includes(a.id));
     }
-    if (usdMethod && Array.isArray(usdMethod.linked_account_ids) && usdMethod.linked_account_ids.length > 0) {
-        return orgAccounts.filter(a => usdMethod.linked_account_ids.includes(a.id));
+    if (!list || list.length === 0) {
+        list = orgAccounts.filter(a => a.type === 'dollar' || a.isDollar || a.is_dollar || a.currency === 'USD' || (a.name || '').toLowerCase().includes('dollar'));
     }
-    return orgAccounts.filter(a => a.type === 'dollar' || a.isDollar || a.is_dollar || a.currency === 'USD');
+    if (!list || list.length === 0) {
+        list = (appAvailableAccounts || []).filter(a => a.type === 'dollar' || a.isDollar || a.is_dollar || a.currency === 'USD' || (a.name || '').toLowerCase().includes('dollar'));
+    }
+    return list;
 }
 
 function populateAccountSelects() {
@@ -428,9 +486,18 @@ function handleAccountFilterChange() {
 }
 
 // ===== HISOBLAR BALANSI MODALI BO'YICHA BOSHQARUV =====
-function openAccountsModal() {
+async function openAccountsModal() {
     const modal = document.getElementById('accountsModal');
     if (modal) modal.classList.add('active');
+
+    try {
+        const resp = await apiFetch('/settings/accounts');
+        if (resp && resp.success && resp.data && resp.data.accounts) {
+            renderAccountsGrid(resp.data.accounts);
+        }
+    } catch (e) {
+        console.warn('Hisoblar qoldiqlarini yuklashda xatolik:', e);
+    }
 }
 
 function closeAccountsModal() {
@@ -454,21 +521,22 @@ function renderAccountsGrid(accountBalances) {
         const isCash = acc.type === 'cash';
         const isDollar = acc.type === 'dollar' || acc.is_dollar || acc.currency === 'USD';
         const badgeTypeClass = isCash ? 'account-type-cash' : (isDollar ? 'account-type-dollar' : 'account-type-bank');
-        const badgeLabel = isCash ? 'Naqd Kassa' : (isDollar ? 'Valyuta (USD)' : 'Bank Hisob');
+        const badgeLabel = isCash ? 'NAQD KASSA' : (isDollar ? 'VALYUTA (USD)' : 'BANK HISOB');
         const isActive = currentAccountId === acc.id;
 
+        const balVal = (acc.current_balance !== undefined) ? acc.current_balance : (acc.balance !== undefined ? acc.balance : 0);
         const balanceFormatted = isDollar
-            ? `$${formatNumber(acc.balance || 0)}`
-            : `${formatNumber(acc.balance || 0)} so'm`;
+            ? `$${formatNumber(balVal)}`
+            : `${formatMoney(balVal)}`;
 
         return `
-            <div class="account-card ${isActive ? 'active-filter' : ''}" data-account-id="${acc.id}" onclick="filterByAccount('${acc.id}', false)" title="${isActive ? 'Tanlangan filtr' : 'Filtrlash uchun bosing'}">
+            <div class="account-card ${isActive ? 'active-filter' : ''}" data-account-id="${acc.id}" onclick="filterByAccount('${acc.id}', true)" title="${isActive ? 'Tanlangan filtr' : 'Filtrlash uchun bosing'}" style="cursor:pointer;">
                 <div class="account-card-top">
-                    <span class="account-card-name" title="${acc.name}">${acc.name}</span>
+                    <span class="account-card-name" title="${acc.name || acc.raw_name || 'Hisob'}">${acc.name || acc.raw_name || 'Hisob'}</span>
                     <span class="account-card-type-badge ${badgeTypeClass}">${badgeLabel}</span>
                 </div>
                 <div class="account-card-balance" style="${isDollar ? 'color:#15803d;' : ''}">${balanceFormatted}</div>
-                ${acc.is_adjusted ? `<div class="adjusted-tag" title="Sabab: ${acc.reason || 'Korrektirovka'}">✏️ To'g'rilangan</div>` : ''}
+                ${(acc.has_correction || acc.is_adjusted) ? `<div class="adjusted-tag" title="Korrektirovka">✏️ To'g'rilangan</div>` : ''}
             </div>
         `;
     }).join('');
@@ -494,12 +562,26 @@ async function loadExpenseItems() {
             expenseItems = resp.data;
 
             const filterSelect = document.getElementById('expenseItemFilter');
-            filterSelect.innerHTML = '<option value="">Barcha xarajat moddalari</option>' +
-                expenseItems.map(it => `<option value="${it.id}">${it.name}</option>`).join('');
+            if (filterSelect) {
+                filterSelect.innerHTML = '<option value="">Barcha xarajat moddalari</option>' +
+                    expenseItems.map(it => `<option value="${it.id}">${it.name}</option>`).join('');
+            }
 
             const modalSelect = document.getElementById('expenseItemSelect');
-            modalSelect.innerHTML = '<option value="">Tanlang...</option>' +
-                expenseItems.map(it => `<option value="${it.id}">${it.name}</option>`).join('');
+            if (modalSelect) {
+                modalSelect.innerHTML = '<option value="">Tanlang...</option>' +
+                    expenseItems.map(it => `<option value="${it.id}">${it.name}</option>`).join('');
+            }
+
+            const drawerSelect = document.getElementById('drawerExpItemSelect');
+            if (drawerSelect) {
+                drawerSelect.innerHTML = '<option value="">Toifani tanlang...</option>' +
+                    expenseItems.map(it => `<option value="${it.id}">🏷️ ${it.name}</option>`).join('');
+            }
+
+            if (typeof renderDrawerExpenseChips === 'function') {
+                renderDrawerExpenseChips();
+            }
         }
     } catch (e) {
         console.warn('Xarajat moddalari yuklanmadi:', e);
@@ -536,21 +618,7 @@ async function loadCashflow() {
                 window.currentUSDRate = resp.data.summary.usd_rate;
             }
 
-            let txList = resp.data.transactions || [];
-            if (searchVal) {
-                txList = txList.filter(t => 
-                    (t.target_name || '').toLowerCase().includes(searchVal) ||
-                    (t.purpose || '').toLowerCase().includes(searchVal) ||
-                    (t.doc_number || '').toLowerCase().includes(searchVal) ||
-                    (t.account_name || '').toLowerCase().includes(searchVal) ||
-                    (t.expense_item || '').toLowerCase().includes(searchVal)
-                );
-            }
-
-            renderStats(resp.data.summary);
-            renderTransactions(txList);
-            const countEl = document.getElementById('resultsCount');
-            if (countEl) countEl.textContent = `Jami: ${txList.length} ta operatsiya`;
+            applyLocalFilter();
         } else {
             throw new Error(resp.detail || 'Ma\'lumot yuklanmadi');
         }
@@ -558,6 +626,93 @@ async function loadCashflow() {
         console.error('Cashflow yuklash xatosi:', e);
         if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading" style="color:red;">Xato: ${e.message}</td></tr>`;
     }
+}
+
+function calculateFilteredSummary(txList, baseSummary) {
+    if (!baseSummary) return null;
+    let inflowTotal = 0;
+    let inflowUzs = 0;
+    let inflowUsd = 0;
+
+    let outflowTotal = 0;
+    let outflowUzs = 0;
+    let outflowUsd = 0;
+
+    let cashIn = 0;
+    let cashOut = 0;
+    let cardIn = 0;
+    let cardOut = 0;
+
+    (txList || []).forEach(t => {
+        const isUsd = !!t.is_usd || t.account_type === 'dollar' || (t.type_name && t.type_name.toLowerCase().includes('dollar'));
+        const amt = parseFloat(t.amount || 0);
+        const usdAmt = parseFloat(t.usd_amount || 0);
+        const isIn = t.direction === 'in' || t.doc_type === 'cashin' || t.doc_type === 'paymentin';
+
+        if (isIn) {
+            inflowTotal += amt;
+            if (isUsd) {
+                inflowUsd += usdAmt;
+            } else {
+                inflowUzs += amt;
+            }
+        } else {
+            outflowTotal += amt;
+            if (isUsd) {
+                outflowUsd += usdAmt;
+            } else {
+                outflowUzs += amt;
+            }
+        }
+
+        if (t.doc_type === 'cashin') cashIn += amt;
+        else if (t.doc_type === 'cashout') cashOut += amt;
+        else if (t.doc_type === 'paymentin') cardIn += amt;
+        else if (t.doc_type === 'paymentout') cardOut += amt;
+    });
+
+    const netTotal = inflowTotal - outflowTotal;
+    const netUzs = inflowUzs - outflowUzs;
+    const netUsd = inflowUsd - outflowUsd;
+
+    return {
+        ...baseSummary,
+        total_inflow: Math.round(inflowTotal * 100) / 100,
+        inflow_uzs: Math.round(inflowUzs * 100) / 100,
+        inflow_usd: Math.round(inflowUsd * 100) / 100,
+        total_outflow: Math.round(outflowTotal * 100) / 100,
+        outflow_uzs: Math.round(outflowUzs * 100) / 100,
+        outflow_usd: Math.round(outflowUsd * 100) / 100,
+        net_balance: Math.round(netTotal * 100) / 100,
+        net_uzs: Math.round(netUzs * 100) / 100,
+        net_usd: Math.round(netUsd * 100) / 100,
+        cash_balance: cashIn - cashOut,
+        card_balance: cardIn - cardOut,
+    };
+}
+
+function applyLocalFilter() {
+    if (!currentCashflowData) return;
+    const searchVal = document.getElementById('searchInput')?.value.toLowerCase().trim() || '';
+
+    let txList = currentCashflowData.transactions || [];
+    if (searchVal) {
+        txList = txList.filter(t => 
+            (t.target_name || '').toLowerCase().includes(searchVal) ||
+            (t.purpose || '').toLowerCase().includes(searchVal) ||
+            (t.doc_number || '').toLowerCase().includes(searchVal) ||
+            (t.account_name || '').toLowerCase().includes(searchVal) ||
+            (t.expense_item || '').toLowerCase().includes(searchVal) ||
+            (t.type_name || '').toLowerCase().includes(searchVal)
+        );
+    }
+
+    const activeSummary = searchVal ? calculateFilteredSummary(txList, currentCashflowData.summary) : currentCashflowData.summary;
+    renderStats(activeSummary);
+    renderTransactions(txList);
+
+    const countEl = document.getElementById('resultsCount');
+    if (countEl) countEl.textContent = `Jami: ${txList.length} ta operatsiya`;
 }
 
 // ===== STATISTIKANI CHIZISH =====
@@ -570,10 +725,10 @@ function renderStats(summary) {
     const topConsEl = document.getElementById('topConsolidatedDisplay');
     const topRefSub = document.getElementById('topRefRateSub');
 
-    if (topUzsEl) topUzsEl.textContent = formatMoney(summary.total_uzs_balance || 0) + " so'm";
-    if (topUsdEl) topUsdEl.textContent = "$" + formatMoney(summary.total_usd_balance || 0);
-    if (topConsEl) topConsEl.textContent = "~ " + formatMoney(summary.consolidated_uzs_equivalent || 0) + " so'm";
-    if (topRefSub && summary.usd_rate) topRefSub.textContent = `(@ ${formatMoney(summary.usd_rate)})`;
+    if (topUzsEl) topUzsEl.textContent = formatMoney(summary.total_uzs_balance || 0);
+    if (topUsdEl) topUsdEl.textContent = "$" + formatNumber(summary.total_usd_balance || 0);
+    if (topConsEl) topConsEl.textContent = "~ " + formatMoney(summary.consolidated_uzs_equivalent || 0);
+    if (topRefSub && summary.usd_rate) topRefSub.textContent = `(@ ${formatNumber(summary.usd_rate)})`;
 
     // 1. Asosiy summalar (So'm va Dollar aniq taqsimoti bilan)
     const inflowTotal = summary.total_inflow || 0;
@@ -1400,6 +1555,14 @@ function openQuickPayDrawer(tab = 'income', customerId = null, customerName = nu
     const drawer = document.getElementById('quickPayDrawer');
     if (!drawer || !backdrop) return;
 
+    // Ensure accounts and expense items are loaded
+    if (!orgAccounts || orgAccounts.length === 0) {
+        loadOrgAndAccounts().then(() => populateDrawerAccounts()).catch(() => {});
+    }
+    if (!expenseItems || expenseItems.length === 0) {
+        loadExpenseItems().catch(() => {});
+    }
+
     // Accounts populated
     populateDrawerAccounts();
 
@@ -1412,8 +1575,12 @@ function openQuickPayDrawer(tab = 'income', customerId = null, customerName = nu
     if (expMoment) expMoment.value = nowIso;
 
     // Default rates
+    const activeRate = window.currentUSDRate || 11800;
     const rateInput = document.getElementById('drawerPayUsdRate');
-    if (rateInput) rateInput.value = formatNumber(window.currentUSDRate || 12800);
+    if (rateInput) rateInput.value = formatNumber(activeRate);
+    const expRateInput = document.getElementById('drawerExpUsdRate');
+    if (expRateInput) expRateInput.value = formatNumber(activeRate);
+    updateDrawerExpUsdPreview();
 
     switchDrawerTab(tab);
     backdrop.classList.add('active');
@@ -1429,7 +1596,7 @@ function openQuickPayDrawer(tab = 'income', customerId = null, customerName = nu
             if (tab === 'income') {
                 document.getElementById('drawerIncomeCustomerSearch')?.focus();
             } else {
-                document.getElementById('drawerExpAmount')?.focus();
+                document.getElementById('drawerExpAgentSearch')?.focus();
             }
         }, 200);
     }
@@ -1586,7 +1753,7 @@ function setDrawerExpenseType(type) {
         accSelect.innerHTML = displayAccs.map(a => `<option value="${a.id}">💳 ${a.name}</option>`).join('');
         if (displayAccs.length > 0) accSelect.value = displayAccs[0].id;
     } else if (type === 'usd') {
-        if (accGroup) accGroup.style.display = 'block';
+        if (accGroup) accGroup.style.display = 'none';
         const usdAccs = getDollarAccountsList();
         const displayAccs = usdAccs.length > 0 ? usdAccs : orgAccounts.filter(a => a.is_dollar || a.currency === 'USD');
         accSelect.innerHTML = displayAccs.map(a => `<option value="${a.id}">💲 ${a.name}</option>`).join('');
@@ -1605,7 +1772,7 @@ function updateDrawerExpUsdPreview() {
 
     if (currentDrawerExpenseType === 'usd') {
         if (usdAmountEl) usdAmountEl.textContent = `$${formatNumber(amt)}`;
-        if (usdEquivEl) usdEquivEl.textContent = `~ ${formatMoney(Math.round(amt * rate))} so'm`;
+        if (usdEquivEl) usdEquivEl.textContent = `~ ${formatMoney(Math.round(amt * rate))}`;
         if (previewEl) previewEl.style.display = 'none';
     } else {
         if (previewEl) {
@@ -2365,7 +2532,79 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    // Enter in input -> move to next input instead of submitting
+    // Enter in drawer customer search -> select top customer and focus cash input
+    if (e.key === 'Enter' && e.target.id === 'drawerIncomeCustomerSearch') {
+        e.preventDefault();
+        const query = (e.target.value || '').toLowerCase().trim();
+        const list = customersList || [];
+        const matched = query ? list.filter(c => 
+            (c.name && c.name.toLowerCase().includes(query)) || 
+            (c.phone && c.phone.toLowerCase().includes(query))
+        ) : list;
+        if (matched.length > 0) {
+            selectDrawerCust(matched[0].id, matched[0].name);
+            setTimeout(() => {
+                const cashInput = document.getElementById('drawerPayCash');
+                if (cashInput) {
+                    cashInput.focus();
+                    cashInput.select();
+                }
+            }, 100);
+        }
+        return;
+    }
+
+    // Enter in drawer expense agent search -> select top agent and focus expense amount
+    if (e.key === 'Enter' && e.target.id === 'drawerExpAgentSearch') {
+        e.preventDefault();
+        const query = (e.target.value || '').toLowerCase().trim();
+        const list = customersList || [];
+        const matched = query ? list.filter(a => 
+            (a.name && a.name.toLowerCase().includes(query)) || 
+            (a.phone && a.phone.toLowerCase().includes(query))
+        ) : list;
+        if (matched.length > 0) {
+            selectExpAgent(matched[0].id, matched[0].name);
+            setTimeout(() => {
+                const amtInput = document.getElementById('drawerExpAmount');
+                if (amtInput) {
+                    amtInput.focus();
+                    amtInput.select();
+                }
+            }, 100);
+        }
+        return;
+    }
+
+    // Enter on drawer amount inputs -> move to next input
+    if (e.key === 'Enter') {
+        if (e.target.id === 'drawerPayCash') {
+            e.preventDefault();
+            document.getElementById('drawerPayCard')?.focus();
+            document.getElementById('drawerPayCard')?.select();
+            return;
+        }
+        if (e.target.id === 'drawerPayCard') {
+            e.preventDefault();
+            document.getElementById('drawerPayUsd')?.focus();
+            document.getElementById('drawerPayUsd')?.select();
+            return;
+        }
+        if (e.target.id === 'drawerPayUsd') {
+            e.preventDefault();
+            document.getElementById('drawerPayUsdRate')?.focus();
+            document.getElementById('drawerPayUsdRate')?.select();
+            return;
+        }
+        if (e.target.id === 'drawerExpAmount') {
+            e.preventDefault();
+            const expSel = document.getElementById('drawerExpItemSelect');
+            if (expSel) expSel.focus();
+            return;
+        }
+    }
+
+    // Enter in other form inputs -> move to next
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.closest('#newCustomerModal')) {
         e.preventDefault();
         const form = e.target.closest('form');
