@@ -1,4 +1,6 @@
 # backend/routers/auth.py
+import base64
+import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List
@@ -46,58 +48,55 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Login va parol kiritilishi shart",
         )
 
-    # MoySklad API orqali autentifikatsiya (YAGONA usul)
+    # MoySklad API orqali autentifikatsiya (UTF-8 Basic Auth)
     ms_auth_success = False
-    ms_employee_name = username  # default
+    ms_employee_name = username
 
     try:
+        # Basic auth tokenni UTF-8 formatida yaratish (bo'sh joy va maxsus belgilar xavfsiz o'tishi uchun)
+        raw_cred = f"{username}:{password}".encode("utf-8")
+        basic_token = base64.b64encode(raw_cred).decode("ascii")
+
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # MoySklad token olish orqali parolni tekshirish
-            auth_resp = await client.post(
-                "https://api.moysklad.ru/api/remap/1.2/security/token",
-                auth=(username, password),
-                headers={"Content-Type": "application/json"}
+            auth_resp = await client.get(
+                "https://api.moysklad.ru/api/remap/1.2/context/employee",
+                headers={
+                    "Authorization": f"Basic {basic_token}",
+                    "Content-Type": "application/json",
+                }
             )
 
             print(f"[MoySklad auth] Status: {auth_resp.status_code}, User: {username}")
 
             if auth_resp.status_code == 200:
                 ms_auth_success = True
-                # MoySklad'dan foydalanuvchi ma'lumotlarini olish
-                try:
-                    ms_token = auth_resp.json().get("access_token", "")
-                    if ms_token:
-                        emp_resp = await client.get(
-                            "https://api.moysklad.ru/api/remap/1.2/context/employee",
-                            headers={
-                                "Authorization": f"Bearer {ms_token}",
-                                "Content-Type": "application/json"
-                            }
-                        )
-                        if emp_resp.status_code == 200:
-                            emp_data = emp_resp.json()
-                            ms_employee_name = emp_data.get("name", username) or username
-                except Exception as emp_err:
-                    print(f"[MoySklad auth] Employee olishda xato: {emp_err}")
+                emp_data = auth_resp.json()
+                ms_employee_name = emp_data.get("name", username) or username
             else:
-                # MoySklad xato javobini logga yozish
+                # MoySklad xato javobini aniqlash
                 err_msg = ""
-                try:
-                    err_body = auth_resp.json()
-                    if isinstance(err_body, dict):
-                        errors = err_body.get("errors", [])
-                        if errors and len(errors) > 0:
-                            err_msg = errors[0].get("error", "")
-                except Exception:
-                    err_msg = auth_resp.text[:200]
+                # 1. Header'dagi xabarni tekshirish
+                auth_header_msg = auth_resp.headers.get("x-lognex-auth-message", "")
+                if auth_header_msg:
+                    try:
+                        err_msg = urllib.parse.unquote_plus(auth_header_msg)
+                    except Exception:
+                        pass
 
-                print(f"[MoySklad auth] Rad etildi: {auth_resp.status_code} — {err_msg}")
+                # 2. Body'dagi xabarni tekshirish
+                if not err_msg:
+                    try:
+                        err_body = auth_resp.json()
+                        if isinstance(err_body, dict):
+                            errors = err_body.get("errors", [])
+                            if errors and len(errors) > 0:
+                                err_msg = errors[0].get("error", "")
+                    except Exception:
+                        pass
 
-                detail_msg = "MoySklad login yoki parol noto'g'ri."
-                if "@" not in username:
-                    detail_msg = "MoySklad login yoki parol noto'g'ri. Diqqat: MoySklad logini odatda 'login@kompaniya_nomi' shaklida bo'ladi (masalan: admin@azer yoki emailingiz)."
-                elif err_msg:
-                    detail_msg = f"MoySklad rad etdi: {err_msg}"
+                print(f"[MoySklad auth] Rad etildi ({auth_resp.status_code}): {err_msg}")
+
+                detail_msg = f"MoySklad: {err_msg}" if err_msg else "MoySklad login yoki parol noto'g'ri. Iltimos, parolni ko'zcha tugmasi orqali tekshirib qayta kiriting."
 
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -109,7 +108,7 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         print(f"[MoySklad auth] Ulanish xatosi: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="MoySklad serveri bilan bog'lanishda xatolik. Iltimos, keyinroq urinib ko'ring.",
+            detail="MoySklad serveri bilan bog'lanishda xatolik. Iltimos, qayta urinib ko'ring.",
         )
 
     if not ms_auth_success:
