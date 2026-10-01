@@ -1565,8 +1565,8 @@ function openQuickPayDrawer(tab = 'income', customerId = null, customerName = nu
         loadExpenseItems().catch(() => {});
     }
 
-    // Accounts populated
     populateDrawerAccounts();
+    initDrawerAutocompleteKeyboardNav();
 
     // Default dates
     const now = new Date();
@@ -1848,7 +1848,7 @@ function filterExpAgentSuggestions(query) {
         box.innerHTML = filtered.map((c, idx) => {
             const cleanName = (c.name || '').replace(/'/g, "\\'");
             return `
-                <div class="exp-agent-suggest-item" data-id="${c.id}" data-name="${cleanName}" onclick="selectExpAgent('${c.id}', '${cleanName}')" style="padding:8px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                <div class="exp-agent-suggest-item" data-id="${c.id}" data-name="${cleanName}" onclick="selectExpAgent('${c.id}', '${cleanName}')" onmouseenter="drawerExpAgentActiveIndex = ${idx}; updateSuggestHighlight(Array.from(document.getElementById('drawerExpAgentSuggestions')?.querySelectorAll('.exp-agent-suggest-item') || []), ${idx});" style="padding:8px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;">
                     <div>
                         <strong style="color:var(--text-color);">👤 ${c.name}</strong>
                         ${c.phone ? `<span style="color:#64748b;font-size:11px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
@@ -1920,7 +1920,7 @@ function filterDrawerCustList(query) {
             const balText = bal > 0 ? `<span style="color:#ef4444;font-size:11px;font-weight:700;">(Qarz: ${formatMoney(bal)})</span>` : (bal < 0 ? `<span style="color:#16a34a;font-size:11px;font-weight:700;">(Haq: ${formatMoney(Math.abs(bal))})</span>` : '');
             const cleanName = (c.name || '').replace(/'/g, "\\'");
             return `
-                <div class="cust-suggest-item" data-id="${c.id}" data-name="${cleanName}" onclick="selectDrawerCust('${c.id}', '${cleanName}')" style="padding:8px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                <div class="cust-suggest-item" data-id="${c.id}" data-name="${cleanName}" onclick="selectDrawerCust('${c.id}', '${cleanName}')" onmouseenter="drawerCustActiveIndex = ${idx}; updateSuggestHighlight(Array.from(document.getElementById('drawerCustSuggestionsList')?.querySelectorAll('.cust-suggest-item') || []), ${idx});" style="padding:8px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;">
                     <div>
                         <strong style="color:var(--text-color);">👤 ${c.name}</strong>
                         ${c.phone ? `<span style="color:#64748b;font-size:11.5px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
@@ -1959,6 +1959,11 @@ function initDrawerAutocompleteKeyboardNav() {
                 e.preventDefault();
                 if (!isBoxOpen) {
                     showDrawerCustList();
+                    const newItems = custBox ? Array.from(custBox.querySelectorAll('.cust-suggest-item')) : [];
+                    if (newItems.length > 0) {
+                        drawerCustActiveIndex = 0;
+                        updateSuggestHighlight(newItems, 0);
+                    }
                     return;
                 }
                 drawerCustActiveIndex = (drawerCustActiveIndex + 1) % items.length;
@@ -2005,6 +2010,11 @@ function initDrawerAutocompleteKeyboardNav() {
                 e.preventDefault();
                 if (!isBoxOpen) {
                     showExpAgentSuggestions();
+                    const newItems = expAgentBox ? Array.from(expAgentBox.querySelectorAll('.exp-agent-suggest-item')) : [];
+                    if (newItems.length > 0) {
+                        drawerExpAgentActiveIndex = 0;
+                        updateSuggestHighlight(newItems, 0);
+                    }
                     return;
                 }
                 drawerExpAgentActiveIndex = (drawerExpAgentActiveIndex + 1) % items.length;
@@ -2407,49 +2417,6 @@ async function loadCustomerUnpaidDemandsForDrawer(customerId, customerName) {
     drawerRecalculateFifo(true);
 }
 
-// --- Customer Search in Drawer ---
-function showDrawerCustList() {
-    const box = document.getElementById('drawerCustSuggestionsList');
-    if (!box) return;
-    filterDrawerCustList(document.getElementById('drawerIncomeCustomerSearch')?.value || '');
-}
-
-function filterDrawerCustList(query) {
-    const box = document.getElementById('drawerCustSuggestionsList');
-    if (!box) return;
-    const q = (query || '').toLowerCase().trim();
-    const list = customersList || [];
-
-    const filtered = q ? list.filter(c => 
-        (c.name && c.name.toLowerCase().includes(q)) || 
-        (c.phone && c.phone.toLowerCase().includes(q))
-    ) : list.slice(0, 50);
-
-    if (filtered.length === 0) {
-        box.innerHTML = `
-            <div style="padding:10px 12px; font-size:12px; color:#64748b; text-align:center;">
-                Mijoz topilmadi.
-                <button type="button" onclick="openNewCustomerModal()" style="display:block; margin:6px auto 0; padding:4px 10px; font-size:12px; background:#16a34a; color:#fff; border-radius:4px; border:none; cursor:pointer;">➕ Yangi mijoz yaratish</button>
-            </div>
-        `;
-    } else {
-        box.innerHTML = filtered.map(c => {
-            const bal = Number(c.balance || 0);
-            const balText = bal > 0 ? `<span style="color:#ef4444;font-size:11px;font-weight:700;">(Qarz: ${formatMoney(bal)})</span>` : (bal < 0 ? `<span style="color:#16a34a;font-size:11px;font-weight:700;">(Haq: ${formatMoney(Math.abs(bal))})</span>` : '');
-            return `
-                <div onclick="selectDrawerCust('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}')" style="padding:8px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
-                    <div>
-                        <strong style="color:var(--text-color);">👤 ${c.name}</strong>
-                        ${c.phone ? `<span style="color:#64748b;font-size:11.5px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
-                    </div>
-                    <div>${balText}</div>
-                </div>
-            `;
-        }).join('');
-    }
-    box.style.display = 'block';
-}
-
 async function selectDrawerCust(id, name) {
     const input = document.getElementById('drawerIncomeCustomerSearch');
     const hidden = document.getElementById('drawerIncomeCustomerId');
@@ -2650,9 +2617,25 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    // Enter in drawer customer search -> select top customer and focus cash input
+    // Enter in drawer customer search -> select active/top customer and focus cash input
     if (e.key === 'Enter' && e.target.id === 'drawerIncomeCustomerSearch') {
         e.preventDefault();
+        const box = document.getElementById('drawerCustSuggestionsList');
+        const items = box ? Array.from(box.querySelectorAll('.cust-suggest-item')) : [];
+        if (items.length > 0) {
+            const targetItem = (drawerCustActiveIndex >= 0 && items[drawerCustActiveIndex]) ? items[drawerCustActiveIndex] : items[0];
+            if (targetItem) {
+                targetItem.click();
+                const cashInput = document.getElementById('drawerPayCash');
+                if (cashInput) {
+                    setTimeout(() => {
+                        cashInput.focus();
+                        cashInput.select();
+                    }, 50);
+                }
+                return;
+            }
+        }
         const query = (e.target.value || '').toLowerCase().trim();
         const list = customersList || [];
         const matched = query ? list.filter(c => 
@@ -2667,14 +2650,30 @@ document.addEventListener('keydown', (e) => {
                     cashInput.focus();
                     cashInput.select();
                 }
-            }, 100);
+            }, 50);
         }
         return;
     }
 
-    // Enter in drawer expense agent search -> select top agent and focus expense amount
+    // Enter in drawer expense agent search -> select active/top agent and focus expense amount
     if (e.key === 'Enter' && e.target.id === 'drawerExpAgentSearch') {
         e.preventDefault();
+        const box = document.getElementById('drawerExpAgentSuggestions');
+        const items = box ? Array.from(box.querySelectorAll('.exp-agent-suggest-item')) : [];
+        if (items.length > 0) {
+            const targetItem = (drawerExpAgentActiveIndex >= 0 && items[drawerExpAgentActiveIndex]) ? items[drawerExpAgentActiveIndex] : items[0];
+            if (targetItem) {
+                targetItem.click();
+                const amtInput = document.getElementById('drawerExpAmount');
+                if (amtInput) {
+                    setTimeout(() => {
+                        amtInput.focus();
+                        amtInput.select();
+                    }, 50);
+                }
+                return;
+            }
+        }
         const query = (e.target.value || '').toLowerCase().trim();
         const list = customersList || [];
         const matched = query ? list.filter(a => 
@@ -2689,7 +2688,7 @@ document.addEventListener('keydown', (e) => {
                     amtInput.focus();
                     amtInput.select();
                 }
-            }, 100);
+            }, 50);
         }
         return;
     }
