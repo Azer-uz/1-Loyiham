@@ -209,6 +209,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadCustomersForModal().catch(() => null),
         ]);
 
+        initDrawerAutocompleteKeyboardNav();
+
         // URL parametri orqali to'g'ridan to'g'ri to'lov tafsilotini ochish (?edit_id=...&doc_type=...)
         const editId = urlParams.get('edit_id') || urlParams.get('payment_id');
         const docType = urlParams.get('doc_type') || 'cashin';
@@ -1799,9 +1801,13 @@ function showExpAgentSuggestions() {
     filterExpAgentSuggestions(input?.value || '');
 }
 
+let drawerExpAgentActiveIndex = -1;
+let drawerCustActiveIndex = -1;
+
 function filterExpAgentSuggestions(query) {
     const box = document.getElementById('drawerExpAgentSuggestions');
     if (!box) return;
+    drawerExpAgentActiveIndex = -1;
     const q = (query || '').toLowerCase().trim();
     const list = customersList || [];
 
@@ -1839,10 +1845,10 @@ function filterExpAgentSuggestions(query) {
             </div>
         `;
     } else {
-        box.innerHTML = filtered.map(c => {
+        box.innerHTML = filtered.map((c, idx) => {
             const cleanName = (c.name || '').replace(/'/g, "\\'");
             return `
-                <div onclick="selectExpAgent('${c.id}', '${cleanName}')" style="padding:7px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                <div class="exp-agent-suggest-item" data-id="${c.id}" data-name="${cleanName}" onclick="selectExpAgent('${c.id}', '${cleanName}')" style="padding:8px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
                     <div>
                         <strong style="color:var(--text-color);">👤 ${c.name}</strong>
                         ${c.phone ? `<span style="color:#64748b;font-size:11px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
@@ -1862,6 +1868,7 @@ function selectExpAgent(id, name) {
     if (input) input.value = name;
     if (hidden) hidden.value = id;
     if (box) box.style.display = 'none';
+    drawerExpAgentActiveIndex = -1;
 }
 
 // Global click to close expense agent suggestions
@@ -1870,6 +1877,14 @@ document.addEventListener('click', (e) => {
     const searchInput = document.getElementById('drawerExpAgentSearch');
     if (box && searchInput && !box.contains(e.target) && e.target !== searchInput && !e.target.closest('.exp-agent-group-btn')) {
         box.style.display = 'none';
+        drawerExpAgentActiveIndex = -1;
+    }
+
+    const custBox = document.getElementById('drawerCustSuggestionsList');
+    const custInput = document.getElementById('drawerIncomeCustomerSearch');
+    if (custBox && custInput && !custBox.contains(e.target) && e.target !== custInput) {
+        custBox.style.display = 'none';
+        drawerCustActiveIndex = -1;
     }
 });
 
@@ -1883,6 +1898,7 @@ function showDrawerCustList() {
 function filterDrawerCustList(query) {
     const box = document.getElementById('drawerCustSuggestionsList');
     if (!box) return;
+    drawerCustActiveIndex = -1;
     const q = (query || '').toLowerCase().trim();
     const list = customersList || [];
 
@@ -1899,11 +1915,12 @@ function filterDrawerCustList(query) {
             </div>
         `;
     } else {
-        box.innerHTML = filtered.map(c => {
+        box.innerHTML = filtered.map((c, idx) => {
             const bal = Number(c.balance || 0);
             const balText = bal > 0 ? `<span style="color:#ef4444;font-size:11px;font-weight:700;">(Qarz: ${formatMoney(bal)})</span>` : (bal < 0 ? `<span style="color:#16a34a;font-size:11px;font-weight:700;">(Haq: ${formatMoney(Math.abs(bal))})</span>` : '');
+            const cleanName = (c.name || '').replace(/'/g, "\\'");
             return `
-                <div onclick="selectDrawerCust('${c.id}', '${(c.name || '').replace(/'/g, "\\'")}')" style="padding:7px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
+                <div class="cust-suggest-item" data-id="${c.id}" data-name="${cleanName}" onclick="selectDrawerCust('${c.id}', '${cleanName}')" style="padding:8px 12px; cursor:pointer; font-size:12.5px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='transparent'">
                     <div>
                         <strong style="color:var(--text-color);">👤 ${c.name}</strong>
                         ${c.phone ? `<span style="color:#64748b;font-size:11.5px;margin-left:6px;">📞 ${c.phone}</span>` : ''}
@@ -1914,6 +1931,111 @@ function filterDrawerCustList(query) {
         }).join('');
     }
     box.style.display = 'block';
+}
+
+function updateSuggestHighlight(items, activeIndex) {
+    items.forEach((item, idx) => {
+        if (idx === activeIndex) {
+            item.classList.add('active-highlight');
+            item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } else {
+            item.classList.remove('active-highlight');
+        }
+    });
+}
+
+function initDrawerAutocompleteKeyboardNav() {
+    // 1. Kirim mijoz qidiruvi
+    const custInput = document.getElementById('drawerIncomeCustomerSearch');
+    const custBox = document.getElementById('drawerCustSuggestionsList');
+
+    if (custInput && !custInput._keyboardNavInit) {
+        custInput._keyboardNavInit = true;
+        custInput.addEventListener('keydown', (e) => {
+            const items = custBox ? Array.from(custBox.querySelectorAll('.cust-suggest-item')) : [];
+            const isBoxOpen = custBox && custBox.style.display !== 'none' && items.length > 0;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!isBoxOpen) {
+                    showDrawerCustList();
+                    return;
+                }
+                drawerCustActiveIndex = (drawerCustActiveIndex + 1) % items.length;
+                updateSuggestHighlight(items, drawerCustActiveIndex);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!isBoxOpen) return;
+                drawerCustActiveIndex = (drawerCustActiveIndex - 1 + items.length) % items.length;
+                updateSuggestHighlight(items, drawerCustActiveIndex);
+            } else if (e.key === 'Enter') {
+                if (isBoxOpen) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const targetItem = (drawerCustActiveIndex >= 0 && items[drawerCustActiveIndex]) ? items[drawerCustActiveIndex] : items[0];
+                    if (targetItem) {
+                        targetItem.click();
+                        const cashInput = document.getElementById('drawerPayCash');
+                        if (cashInput) {
+                            setTimeout(() => {
+                                cashInput.focus();
+                                cashInput.select();
+                            }, 50);
+                        }
+                    }
+                }
+            } else if (e.key === 'Escape') {
+                if (custBox) custBox.style.display = 'none';
+                drawerCustActiveIndex = -1;
+            }
+        });
+    }
+
+    // 2. Xarajat kontragent qidiruvi
+    const expAgentInput = document.getElementById('drawerExpAgentSearch');
+    const expAgentBox = document.getElementById('drawerExpAgentSuggestions');
+
+    if (expAgentInput && !expAgentInput._keyboardNavInit) {
+        expAgentInput._keyboardNavInit = true;
+        expAgentInput.addEventListener('keydown', (e) => {
+            const items = expAgentBox ? Array.from(expAgentBox.querySelectorAll('.exp-agent-suggest-item')) : [];
+            const isBoxOpen = expAgentBox && expAgentBox.style.display !== 'none' && items.length > 0;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!isBoxOpen) {
+                    showExpAgentSuggestions();
+                    return;
+                }
+                drawerExpAgentActiveIndex = (drawerExpAgentActiveIndex + 1) % items.length;
+                updateSuggestHighlight(items, drawerExpAgentActiveIndex);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!isBoxOpen) return;
+                drawerExpAgentActiveIndex = (drawerExpAgentActiveIndex - 1 + items.length) % items.length;
+                updateSuggestHighlight(items, drawerExpAgentActiveIndex);
+            } else if (e.key === 'Enter') {
+                if (isBoxOpen) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const targetItem = (drawerExpAgentActiveIndex >= 0 && items[drawerExpAgentActiveIndex]) ? items[drawerExpAgentActiveIndex] : items[0];
+                    if (targetItem) {
+                        targetItem.click();
+                        const amtInput = document.getElementById('drawerExpAmount');
+                        if (amtInput) {
+                            setTimeout(() => {
+                                amtInput.focus();
+                                amtInput.select();
+                            }, 50);
+                        }
+                    }
+                }
+            } else if (e.key === 'Escape') {
+                if (expAgentBox) expAgentBox.style.display = 'none';
+                drawerExpAgentActiveIndex = -1;
+            }
+        });
+    }
 }
 
 // ================= UNIVERSAL QUICK-PAY DRAWER FIFO STATE & LOGIC =================
@@ -2335,15 +2457,11 @@ async function selectDrawerCust(id, name) {
     if (input) input.value = name;
     if (hidden) hidden.value = id;
     if (box) box.style.display = 'none';
+    drawerCustActiveIndex = -1;
 
-    // Fetch customer balance
-    let bal = 0;
-    try {
-        const bResp = await apiFetch(`/payments/balance/${id}`);
-        if (bResp && bResp.success && bResp.data) {
-            bal = bResp.data.balance || 0;
-        }
-    } catch (e) {}
+    // 1. Darhol mavjud keshdan mijoz qarzini ko'rsatish (0ms kechikish)
+    const existingCust = (customersList || []).find(c => c.id === id);
+    let bal = existingCust ? (Number(existingCust.balance) || 0) : 0;
 
     drawerCurrentCustomerDebt = bal > 0.01 ? bal : 0;
 
@@ -2358,7 +2476,7 @@ async function selectDrawerCust(id, name) {
         if (fillBtn) fillBtn.style.display = isDebt ? 'inline-block' : 'none';
     }
 
-    // Load unpaid demands for FIFO allocation in Drawer
+    // 2. Bir vaqtda sotuvlarni tezkor SQLite keshdan yuklash
     await loadCustomerUnpaidDemandsForDrawer(id, name);
 }
 

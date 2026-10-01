@@ -666,7 +666,7 @@
             top: 100%;
             left: 0;
             right: 0;
-            max-height: 220px;
+            max-height: 240px;
             overflow-y: auto;
             background: #fff;
             border: 1.5px solid #0284c7;
@@ -674,6 +674,26 @@
             border-radius: 0 0 8px 8px;
             z-index: 9999;
             box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .cust-suggest-item, .exp-agent-suggest-item {
+            user-select: none;
+        }
+
+        .cust-suggest-item.active-highlight,
+        .exp-agent-suggest-item.active-highlight {
+            background: #e0f2fe !important;
+            border-left: 4px solid #0284c7 !important;
+        }
+        .cust-suggest-item.active-highlight strong,
+        .exp-agent-suggest-item.active-highlight strong {
+            color: #0369a1 !important;
+        }
+
+        body.dark-mode .cust-suggest-item.active-highlight,
+        body.dark-mode .exp-agent-suggest-item.active-highlight {
+            background: #1e3a8a !important;
+            border-left: 4px solid #38bdf8 !important;
         }
 
         .drawer-chips-grid {

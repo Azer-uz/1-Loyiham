@@ -165,17 +165,27 @@ async def get_demand_payments(demand_id: str):
         traceback.print_exc()
         return {"success": True, "data": {"payments": [], "total_paid": 0}}
 
-# ===== MIJOZ BALANSI =====
+# ===== MIJOZ BALANSI (Tezkor SQLite kesh 1ms) =====
 @router.get("/balance/{counterparty_id}")
-async def get_counterparty_balance(counterparty_id: str):
-    """Mijoz balansi"""
+async def get_counterparty_balance(counterparty_id: str, db: AsyncSession = Depends(get_db)):
+    """Mijoz balansi (Tezkor SQLite kesh 1ms)"""
     try:
+        from models_db import LocalCounterparty
+        cp = await db.scalar(select(LocalCounterparty).where(LocalCounterparty.id == counterparty_id))
+        if cp:
+            return {
+                "success": True,
+                "data": {
+                    "name": cp.name or "",
+                    "balance": cp.balance or 0.0,
+                }
+            }
         balance = await ms_client.get_counterparty_balance_report(counterparty_id)
-        cp = await ms_client.get_counterparty(counterparty_id)
+        cp_ms = await ms_client.get_counterparty(counterparty_id)
         return {
             "success": True,
             "data": {
-                "name": cp.get("name", "Noma'lum"),
+                "name": cp_ms.get("name", "Noma'lum"),
                 "balance": balance,
             }
         }
