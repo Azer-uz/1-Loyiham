@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kirish - Azer</title>
+    <title>Kirish - Azer ERP</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
         body {
@@ -154,20 +154,26 @@
             gap: 8px;
         }
 
-        .default-credentials {
+        .moysklad-info {
             margin-top: 24px;
             padding: 12px 16px;
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid rgba(59, 130, 246, 0.2);
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.15);
             border-radius: 10px;
             font-size: 12px;
             color: #93c5fd;
             text-align: center;
-            line-height: 1.5;
+            line-height: 1.6;
         }
 
-        .default-credentials strong {
-            color: #ffffff;
+        .moysklad-info .ms-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 700;
+            color: #60a5fa;
+            font-size: 13px;
+            margin-bottom: 4px;
         }
     </style>
 </head>
@@ -175,8 +181,8 @@
     <div class="login-card">
         <div class="login-header">
             <div class="logo-icon">📊</div>
-            <h1 class="login-title">Azer</h1>
-            <p class="login-subtitle">Tizimga kirish uchun login va parolingizni kiriting</p>
+            <h1 class="login-title">Azer ERP</h1>
+            <p class="login-subtitle">MoySklad hisobingiz orqali tizimga kiring</p>
         </div>
 
         <div id="login-alert" class="login-alert">
@@ -186,23 +192,24 @@
 
         <form id="login-form" onsubmit="handleLogin(event)">
             <div class="form-group">
-                <label class="form-label" for="username">Login</label>
-                <input type="text" id="username" class="form-input" placeholder="admin" required value="admin" autocomplete="username">
+                <label class="form-label" for="username">MoySklad Login</label>
+                <input type="text" id="username" class="form-input" placeholder="MoySklad login yoki email" required autocomplete="username">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="password">Parol</label>
-                <input type="password" id="password" class="form-input" placeholder="••••••••" required value="admin123" autocomplete="current-password">
+                <label class="form-label" for="password">MoySklad Parol</label>
+                <input type="password" id="password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
             </div>
 
             <button type="submit" id="submit-btn" class="btn-submit">
-                Tizimga Kirish
+                🔐 Tizimga Kirish
             </button>
         </form>
 
-        <div class="default-credentials">
-            Standart ma'lumotlar:<br>
-            Login: <strong>admin</strong> &nbsp;|&nbsp; Parol: <strong>admin123</strong>
+        <div class="moysklad-info">
+            <div class="ms-logo">🏢 MoySklad Autentifikatsiya</div>
+            Kirish uchun MoySklad tizimidagi login va parolingizni kiriting.<br>
+            Faqat ruxsat berilgan foydalanuvchilar tizimga kira oladi.
         </div>
     </div>
 
@@ -220,9 +227,15 @@
             const u = document.getElementById('username').value.trim();
             const p = document.getElementById('password').value;
 
+            if (!u || !p) {
+                alertText.textContent = "Login va parolni kiriting";
+                alertEl.style.display = 'flex';
+                return;
+            }
+
             alertEl.style.display = 'none';
             btn.disabled = true;
-            btn.textContent = 'Tekshirilmoqda...';
+            btn.textContent = '🔄 MoySklad bilan tekshirilmoqda...';
 
             try {
                 const resp = await fetch('/api/auth/login', {
@@ -239,7 +252,7 @@
                 localStorage.setItem('token', data.access_token);
                 localStorage.setItem('user', JSON.stringify(data.user));
 
-                btn.textContent = 'Muvaffaqiyatli!';
+                btn.textContent = '✅ Muvaffaqiyatli!';
                 setTimeout(() => {
                     window.location.href = '/';
                 }, 300);
@@ -247,7 +260,7 @@
                 alertText.textContent = err.message;
                 alertEl.style.display = 'flex';
                 btn.disabled = false;
-                btn.textContent = 'Tizimga Kirish';
+                btn.textContent = '🔐 Tizimga Kirish';
             }
         }
     </script>

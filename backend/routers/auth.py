@@ -34,16 +34,24 @@ class UserResponse(BaseModel):
 
 @router.post("/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """Tizimga kirish — avval MoySklad API orqali tekshiradi, keyin lokal DB (fallback)"""
+    """Tizimga kirish — FAQAT MoySklad API orqali autentifikatsiya"""
     import httpx
 
     username = req.username.strip()
     password = req.password
 
-    # 1-bosqich: MoySklad API orqali autentifikatsiya
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Login va parol kiritilishi shart",
+        )
+
+    # MoySklad API orqali autentifikatsiya (YAGONA usul)
     ms_auth_success = False
+    ms_employee_name = username  # default
+
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             # MoySklad token olish orqali parolni tekshirish
             auth_resp = await client.post(
                 "https://api.moysklad.ru/api/remap/1.2/security/token",
@@ -52,39 +60,64 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             )
             if auth_resp.status_code == 200:
                 ms_auth_success = True
+                # MoySklad'dan foydalanuvchi ma'lumotlarini olish
+                try:
+                    ms_token = auth_resp.json().get("access_token", "")
+                    if ms_token:
+                        emp_resp = await client.get(
+                            "https://api.moysklad.ru/api/remap/1.2/context/employee",
+                            headers={
+                                "Authorization": f"Bearer {ms_token}",
+                                "Content-Type": "application/json"
+                            }
+                        )
+                        if emp_resp.status_code == 200:
+                            emp_data = emp_resp.json()
+                            ms_employee_name = emp_data.get("name", username) or username
+                except Exception:
+                    pass
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="MoySklad login yoki parol noto'g'ri. Iltimos, MoySklad hisobingiz bilan kiring.",
+                )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[MoySklad auth check] Xatolik (fallback to local): {e}")
+        print(f"[MoySklad auth] Xatolik: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MoySklad serveri bilan bog'lanishda xatolik. Iltimos, keyinroq urinib ko'ring.",
+        )
 
-    # 2-bosqich: Lokal DB'dan foydalanuvchini qidirish
+    if not ms_auth_success:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MoySklad login yoki parol noto'g'ri",
+        )
+
+    # MoySklad muvaffaqiyatli — lokal userni yangilash yoki yaratish
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalars().first()
 
-    if ms_auth_success:
-        # MoySklad muvaffaqiyatli — lokal userni yangilash yoki yaratish
-        if user:
-            # Parolni sinxronlash
-            user.hashed_password = hash_password(password)
-            await db.commit()
-            await db.refresh(user)
-        else:
-            # Yangi lokal user yaratish
-            user = User(
-                username=username,
-                hashed_password=hash_password(password),
-                full_name=username,
-                role="admin",
-                is_active=True,
-            )
-            db.add(user)
-            await db.commit()
-            await db.refresh(user)
+    if user:
+        # Parolni sinxronlash
+        user.hashed_password = hash_password(password)
+        user.full_name = ms_employee_name
+        await db.commit()
+        await db.refresh(user)
     else:
-        # MoySklad javob bermadi yoki xato — lokal DB'dan tekshirish (fallback)
-        if not user or not verify_password(password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Login yoki parol noto'g'ri",
-            )
+        # Yangi lokal user yaratish (faqat MoySklad tasdiqlagan foydalanuvchilar)
+        user = User(
+            username=username,
+            hashed_password=hash_password(password),
+            full_name=ms_employee_name,
+            role="admin",
+            is_active=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
 
     if not user.is_active:
         raise HTTPException(

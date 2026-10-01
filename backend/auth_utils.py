@@ -90,17 +90,11 @@ async def get_current_user(
 
 
 async def ensure_default_admin(db: AsyncSession):
-    """Bazada kamida 1 ta admin borligini kafolatlash"""
+    """Bazada kamida 1 ta admin borligini tekshirish (faqat log uchun)"""
     result = await db.execute(select(User).limit(1))
     existing = result.scalars().first()
     if not existing:
-        admin_user = User(
-            username="admin",
-            hashed_password=hash_password("admin123"),
-            full_name="Bosh Admin",
-            role="admin",
-            is_active=True,
-        )
-        db.add(admin_user)
-        await db.commit()
-        print("👤 Default admin foydalanuvchi yaratildi (admin / admin123)")
+        print("👤 Hech qanday foydalanuvchi topilmadi. MoySklad orqali birinchi kirish admin sifatida ro'yxatdan o'tkaziladi.")
+    else:
+        print(f"👤 Mavjud foydalanuvchi: {existing.username} ({existing.role})")
+
