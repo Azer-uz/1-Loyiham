@@ -11,6 +11,7 @@ cd /var/www/moysklad-app
 
 # 1. GitHub dan so'nggi o'zgarishlarni tortib olish
 echo "⬇️ 1/3: GitHub'dan yangi kodlar olinmoqda..."
+git stash || true
 git pull origin main
 
 # 2. Yangi Python kutubxonalari bo'lsa o'rnatish
