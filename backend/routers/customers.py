@@ -122,6 +122,25 @@ async def create_customer(req: CustomerCreateRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/filters")
+async def get_customer_filters(db: AsyncSession = Depends(get_db)):
+    """Mijozlar filtri uchun barcha mavjud guruhlar va statuslar"""
+    try:
+        distinct_groups_q = select(LocalCounterparty.group).where(LocalCounterparty.group != None, LocalCounterparty.group != "").distinct()
+        distinct_statuses_q = select(LocalCounterparty.status).where(LocalCounterparty.status != None, LocalCounterparty.status != "").distinct()
+        avail_groups = [g for g in (await db.execute(distinct_groups_q)).scalars().all() if g and g.strip() and g.strip() != "—"]
+        avail_statuses = [s for s in (await db.execute(distinct_statuses_q)).scalars().all() if s and s.strip() and s.strip() != "—"]
+        return {
+            "success": True,
+            "data": {
+                "groups": sorted(list(set(avail_groups))),
+                "statuses": sorted(list(set(avail_statuses)))
+            }
+        }
+    except Exception as e:
+        return {"success": False, "data": {"groups": [], "statuses": []}}
+
+
 @router.get("")
 @router.get("/")
 async def list_customers(
@@ -131,20 +150,55 @@ async def list_customers(
     sort_by: str = Query("balance"),
     sort_dir: str = Query("desc"),
     debt_filter: Optional[str] = Query("all"),
+    groups: Optional[str] = Query(None),
+    statuses: Optional[str] = Query(None),
     refresh: Optional[bool] = Query(False),
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # Agar refresh so'ralgan bo'lsa, MoySklad'dan nativ balanslarni olib lokal bazaga darhol yangilash
+        # Agar refresh so'ralgan bo'lsa yoki birinchi marta bo'lsa, MoySklad'dan nativ balanslarni, guruhlarni va statuslarni olib lokal bazaga darhol yangilash
         if refresh:
             try:
-                balances = await ms_client.get_all_balances()
-                if balances:
-                    all_cps = (await db.execute(select(LocalCounterparty))).scalars().all()
-                    for cp in all_cps:
-                        if cp.id in balances:
-                            cp.balance = balances[cp.id]
-                    await db.commit()
+                balances_task = ms_client.get_all_balances()
+                cps_task = ms_client.get_all_counterparties_cached()
+                cp_meta_task = ms_client.get_counterparty_metadata()
+                groups_task = ms_client._request("GET", "/entity/group")
+                balances, cps, cp_meta, groups_resp = await asyncio.gather(balances_task, cps_task, cp_meta_task, groups_task, return_exceptions=True)
+
+                cp_state_map = {}
+                if isinstance(cp_meta, dict):
+                    for s in cp_meta.get("states", []):
+                        sid = s.get("id") or (s.get("meta", {}).get("href", "").split("/")[-1] if isinstance(s.get("meta"), dict) else "")
+                        if sid:
+                            cp_state_map[sid] = s.get("name", "")
+
+                group_map = {}
+                if isinstance(groups_resp, dict):
+                    for g in groups_resp.get("rows", []):
+                        gid = g.get("id") or (g.get("meta", {}).get("href", "").split("/")[-1] if isinstance(g.get("meta"), dict) else "")
+                        if gid and g.get("name"):
+                            group_map[gid] = g["name"]
+
+                cp_dict = {c.get("id"): c for c in cps if isinstance(c, dict)} if isinstance(cps, list) else {}
+                all_cps = (await db.execute(select(LocalCounterparty))).scalars().all()
+                for cp in all_cps:
+                    if isinstance(balances, dict) and cp.id in balances:
+                        cp.balance = balances[cp.id]
+                    if cp.id in cp_dict:
+                        raw_c = cp_dict[cp.id]
+                        tags = raw_c.get("tags", [])
+                        g_obj = raw_c.get("group", {})
+                        gid = g_obj.get("id") or (g_obj.get("meta", {}).get("href", "").split("/")[-1] if isinstance(g_obj, dict) and g_obj.get("meta") else "")
+                        g_name = group_map.get(gid, "")
+                        group_val = ", ".join(tags) if tags else (g_name or "Основной")
+
+                        st = raw_c.get("state", {})
+                        sid = st.get("id") or (st.get("meta", {}).get("href", "").split("/")[-1] if isinstance(st, dict) and st.get("meta") else "")
+                        status_val = st.get("name") or cp_state_map.get(sid, "") or "Новый"
+
+                        cp.group = group_val
+                        cp.status = status_val
+                await db.commit()
             except Exception as re:
                 print(f"⚠️ list_customers refresh balances xatosi: {re}")
 
@@ -167,7 +221,43 @@ async def list_customers(
                 )
             )
 
-        # 3. Tartiblash (Sorting)
+        # 3. Guruhlar filtri (1 yoki bir nechta tanlangan)
+        if groups:
+            group_list = [g.strip() for g in groups.split(",") if g.strip()]
+            if group_list:
+                group_conds = []
+                for g in group_list:
+                    if g == "—" or g.lower() == "biriktirilmagan" or g == "none":
+                        group_conds.append(or_(LocalCounterparty.group == None, LocalCounterparty.group == "", LocalCounterparty.group == "—"))
+                    else:
+                        group_conds.append(or_(
+                            LocalCounterparty.group == g,
+                            LocalCounterparty.group.like(f"%{g}%"),
+                            LocalCounterparty.group == g.lower(),
+                            LocalCounterparty.group == g.capitalize()
+                        ))
+                if group_conds:
+                    query = query.where(or_(*group_conds))
+
+        # 4. Statuslar filtri (1 yoki bir nechta tanlangan)
+        if statuses:
+            status_list = [s.strip() for s in statuses.split(",") if s.strip()]
+            if status_list:
+                status_conds = []
+                for st in status_list:
+                    if st == "—" or st.lower() == "biriktirilmagan" or st == "none":
+                        status_conds.append(or_(LocalCounterparty.status == None, LocalCounterparty.status == "", LocalCounterparty.status == "—"))
+                    else:
+                        status_conds.append(or_(
+                            LocalCounterparty.status == st,
+                            LocalCounterparty.status.like(f"%{st}%"),
+                            LocalCounterparty.status == st.lower(),
+                            LocalCounterparty.status == st.capitalize()
+                        ))
+                if status_conds:
+                    query = query.where(or_(*status_conds))
+
+        # 5. Tartiblash (Sorting)
         sort_column = LocalCounterparty.balance
         if sort_by == "name":
             sort_column = LocalCounterparty.name
@@ -175,13 +265,17 @@ async def list_customers(
             sort_column = LocalCounterparty.phone
         elif sort_by == "date":
             sort_column = LocalCounterparty.updated_at
+        elif sort_by == "group":
+            sort_column = LocalCounterparty.group
+        elif sort_by == "status":
+            sort_column = LocalCounterparty.status
 
         if sort_dir == "desc":
             query = query.order_by(desc(sort_column))
         else:
             query = query.order_by(sort_column)
 
-        # 4. Global statistika va sahifalash
+        # 6. Global statistika va sahifalash
         total = await db.scalar(select(func.count()).select_from(query.subquery()))
         
         # Global qarz summasini hisoblash (barcha qarzadorlar uchun)
@@ -193,6 +287,12 @@ async def list_customers(
         
         total_customers_query = select(func.count(LocalCounterparty.id))
         total_customers = await db.scalar(total_customers_query) or 0
+
+        # Mavjud unikal guruhlar va statuslar
+        distinct_groups_q = select(LocalCounterparty.group).where(LocalCounterparty.group != None, LocalCounterparty.group != "").distinct()
+        distinct_statuses_q = select(LocalCounterparty.status).where(LocalCounterparty.status != None, LocalCounterparty.status != "").distinct()
+        avail_groups = [g for g in (await db.execute(distinct_groups_q)).scalars().all() if g and g.strip() and g.strip() != "—"]
+        avail_statuses = [s for s in (await db.execute(distinct_statuses_q)).scalars().all() if s and s.strip() and s.strip() != "—"]
 
         # Sahifalash (Pagination)
         query = query.limit(limit).offset(offset)
@@ -209,8 +309,8 @@ async def list_customers(
                 "description": "",
                 "balance": cp.balance,
                 "created": "",
-                "group": "—",
-                "status": "—",
+                "group": getattr(cp, "group", "") or "—",
+                "status": getattr(cp, "status", "") or "—",
             })
 
         return {
@@ -223,6 +323,8 @@ async def list_customers(
                 "total_customers": total_customers,
                 "total_debt": global_total_debt,
                 "debtors_count": global_debtors_count,
+                "available_groups": sorted(list(set(avail_groups))),
+                "available_statuses": sorted(list(set(avail_statuses))),
             },
         }
     except Exception as e:
@@ -805,6 +907,15 @@ async def update_customer(customer_id: str, data: dict):
             elif isinstance(grp, dict):
                 ms_payload["group"] = grp
 
+        if "state_id" in data and data["state_id"]:
+            ms_payload["state"] = {
+                "meta": {
+                    "href": f"{ms_client.base_url}/entity/counterparty/metadata/states/{data['state_id']}",
+                    "type": "state",
+                    "mediaType": "application/json"
+                }
+            }
+
         result = await ms_client.update_counterparty(customer_id, ms_payload)
         ms_client.invalidate_counterparties_cache()
 
@@ -824,6 +935,11 @@ async def update_customer(customer_id: str, data: dict):
                             cp.group = data["group"].strip()
                         elif "tags" in data and isinstance(data["tags"], list) and len(data["tags"]) > 0:
                             cp.group = data["tags"][0]
+                    if hasattr(cp, "status"):
+                        if "state_name" in data and data["state_name"]:
+                            cp.status = data["state_name"]
+                        elif "status" in data and data["status"]:
+                            cp.status = data["status"]
                     await db.commit()
         except Exception as dbe:
             print(f"⚠️ LocalCounterparty yangilash xatosi: {dbe}")

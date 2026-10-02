@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from database import get_db, AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from models_db import SyncQueue
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from moysklad_client import ms_client
 
 router = APIRouter()
@@ -199,7 +199,12 @@ async def get_counterparty_balance(counterparty_id: str, db: AsyncSession = Depe
 async def get_org_accounts(org_id: str):
     """Tashkilot hisob raqamlari va kassalari"""
     try:
-        accounts = await ms_client.get_organization_accounts(org_id)
+        accounts = []
+        try:
+            accounts = await ms_client.get_organization_accounts(org_id)
+        except Exception as mse:
+            safe_print(f"[get_org_accounts MoySklad warning] {mse}")
+
         formatted = []
 
         # 1. Asosiy naqd kassa
@@ -214,44 +219,68 @@ async def get_org_accounts(org_id: str):
             "type": "cash",
         })
 
-        # 2. Bank va Valyuta hisob raqamlari
-        for i, a in enumerate(accounts):
-            bank = a.get("bankName", "")
-            num = a.get("accountnumber", "")
-            name = a.get("name", "")
+        if accounts:
+            # 2. Bank va Valyuta hisob raqamlari
+            for i, a in enumerate(accounts):
+                bank = a.get("bankName", "")
+                num = a.get("accountnumber", "")
+                name = a.get("name", "")
 
-            is_dollar = "dollar" in (name + " " + num).lower()
+                is_dollar = "dollar" in (name + " " + num).lower()
 
-            if not name or name in ("None", "undefined", "", "Hisob"):
-                if num:
-                    name = f"Hisob: {num}"
-                elif bank:
-                    name = bank
+                if not name or name in ("None", "undefined", "", "Hisob"):
+                    if num:
+                        name = f"Hisob: {num}"
+                    elif bank:
+                        name = bank
+                    else:
+                        name = f"Hisob {i+1}"
+
+                if is_dollar:
+                    icon = "💵"
+                    acc_type = "dollar"
+                    display_name = f"Dollar ({num or name})" if "dollar" not in name.lower() else name
                 else:
-                    name = f"Hisob {i+1}"
+                    icon = "🏦"
+                    acc_type = "bank"
+                    display_name = name
 
-            if is_dollar:
-                icon = "💵"
-                acc_type = "dollar"
-                display_name = f"Dollar ({num or name})" if "dollar" not in name.lower() else name
-            else:
-                icon = "🏦"
-                acc_type = "bank"
-                display_name = name
+                if bank and bank not in display_name and not is_dollar:
+                    display_name = f"{display_name} ({bank})"
 
-            if bank and bank not in display_name and not is_dollar:
-                display_name = f"{display_name} ({bank})"
-
-            formatted.append({
-                "id": a.get("id"),
-                "name": f"{icon} {display_name}",
-                "rawName": display_name,
-                "accountnumber": num,
-                "bankName": bank,
-                "isDefault": a.get("isDefault", False),
-                "isDollar": is_dollar,
-                "type": acc_type,
-            })
+                formatted.append({
+                    "id": a.get("id"),
+                    "name": f"{icon} {display_name}",
+                    "rawName": display_name,
+                    "accountnumber": num,
+                    "bankName": bank,
+                    "isDefault": a.get("isDefault", False),
+                    "isDollar": is_dollar,
+                    "type": acc_type,
+                })
+        else:
+            # Fallback: payment_settings.json dan yuklash
+            try:
+                from routers.settings import load_settings
+                settings = load_settings()
+                lka = settings.get("last_known_accounts", {}).get("accounts", [])
+                for a in lka:
+                    if a.get("id") == "cash_default":
+                        continue
+                    is_dollar = bool(a.get("is_dollar") or a.get("currency") == "USD" or a.get("type") == "dollar")
+                    icon = "💵" if is_dollar else "🏦"
+                    formatted.append({
+                        "id": a.get("id"),
+                        "name": a.get("name") if str(a.get("name", "")).startswith(("💵", "🏦", "💳", "💲")) else f"{icon} {a.get('name')}",
+                        "rawName": a.get("raw_name") or a.get("name"),
+                        "accountnumber": a.get("accountnumber", ""),
+                        "bankName": "Bank",
+                        "isDefault": False,
+                        "isDollar": is_dollar,
+                        "type": "dollar" if is_dollar else "bank",
+                    })
+            except Exception as fbe:
+                print(f"[get_org_accounts fallback error] {fbe}")
 
         return {"success": True, "data": formatted}
     except Exception as e:
@@ -929,18 +958,35 @@ class ExpenseCreateRequest(BaseModel):
     account_id: Optional[str] = None
     agent_id: Optional[str] = None
     agent_name: Optional[str] = None
+    moment: Optional[str] = None
+    usd_rate: Optional[float] = 12800.0
+
+
+class TransferMoneyRequest(BaseModel):
+    from_account_id: str
+    to_account_id: str
+    amount: float
+    target_amount: Optional[float] = None
+    rate: Optional[float] = 12800.0
+    moment: Optional[str] = None
+    description: Optional[str] = ""
 
 
 @router.get("/expense-items")
 async def get_expense_items():
-    """Barcha xarajat moddalari (Статьи расходов)"""
+    """Barcha xarajat moddalari (Статьи расходов) - Peremesheniya olib tashlangan"""
     try:
         items = await ms_client.get_expense_items()
         formatted = []
         for it in items:
+            name = it.get("name", "")
+            # Xarajatlardan peremesheniyani olib tashlash
+            name_low = name.lower()
+            if "перемещ" in name_low or "peremesh" in name_low or "ko'chirish" in name_low or "ko‘chirish" in name_low:
+                continue
             formatted.append({
                 "id": it.get("id"),
-                "name": it.get("name", ""),
+                "name": name,
                 "description": it.get("description", ""),
             })
         return {"success": True, "data": formatted}
@@ -966,6 +1012,7 @@ async def create_expense(expense: ExpenseCreateRequest):
     Yangi xarajat kiritish:
     - payment_type == 'cash' -> Kassa chiqim orderi (cashout)
     - payment_type == 'card' -> Bank chiqim to'lovi (paymentout)
+    - payment_type == 'usd'  -> Valyuta chiqim to'lovi (paymentout)
     """
     try:
         if expense.amount <= 0:
@@ -978,7 +1025,7 @@ async def create_expense(expense: ExpenseCreateRequest):
             raise HTTPException(status_code=400, detail="Tashkilot topilmadi")
 
         org_meta = org.get("meta", {})
-        moment_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        moment_str = expense.moment if expense.moment else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         expense_item_meta = None
         if expense.expense_item_id:
@@ -1010,7 +1057,7 @@ async def create_expense(expense: ExpenseCreateRequest):
         if expense.payment_type == "cash":
             cashout_data = {
                 "organization": {"meta": org_meta},
-                "sum": int(expense.amount * 100),
+                "sum": int(round(expense.amount * 100)),
                 "moment": moment_str,
                 "paymentPurpose": purpose,
                 "expenseItem": {"meta": expense_item_meta},
@@ -1021,7 +1068,7 @@ async def create_expense(expense: ExpenseCreateRequest):
             print(f"💸 Naqd xarajat yaratildi: {expense.amount:,.0f} so'm ({purpose})")
         elif expense.payment_type == "usd":
             usd_curr_meta = await ms_client.get_usd_currency_meta()
-            rate_val = await ms_client.get_usd_rate() or 12800.0
+            rate_val = expense.usd_rate if (expense.usd_rate and expense.usd_rate > 1) else (await ms_client.get_usd_rate())
             paymentout_data = {
                 "organization": {"meta": org_meta},
                 "sum": int(round(expense.amount * 100)),
@@ -1073,6 +1120,32 @@ async def create_expense(expense: ExpenseCreateRequest):
             res = await ms_client.create_paymentout(paymentout_data)
             print(f"[Expense created] Bank xarajati: {expense.amount:,.0f} so'm ({purpose})")
 
+        # Lokal DB ga saqlash
+        try:
+            import uuid
+            from database import AsyncSessionLocal
+            from models_db import LocalPayment
+            async with AsyncSessionLocal() as db:
+                doc_id = (res.get("id") if isinstance(res, dict) else None) or str(uuid.uuid4())
+                is_usd = (expense.payment_type == "usd")
+                rate_val = expense.usd_rate if (expense.usd_rate and expense.usd_rate > 1) else 12800.0
+                sum_uzs = (expense.amount * rate_val) if is_usd else expense.amount
+                db.add(LocalPayment(
+                    id=doc_id,
+                    type="cashout" if expense.payment_type == "cash" else "paymentout",
+                    name=res.get("name", "Xarajat") if isinstance(res, dict) else "Xarajat",
+                    sum=sum_uzs,
+                    moment=moment_str,
+                    agent_id=expense.agent_id or "",
+                    purpose=purpose,
+                    is_usd=is_usd,
+                    usd_amount=expense.amount if is_usd else 0.0,
+                    usd_rate=rate_val if is_usd else 0.0,
+                ))
+                await db.commit()
+        except Exception as dbe:
+            print(f"⚠️ LocalPayment expense write warning: {dbe}")
+
         # Keshni tozalash
         ms_client.invalidate_payments_cache()
         invalidate_cashflow_cache()
@@ -1082,6 +1155,246 @@ async def create_expense(expense: ExpenseCreateRequest):
         raise
     except Exception as e:
         print(f"❌ Xarajat yaratish xatosi: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/transfer")
+async def transfer_money(req: TransferMoneyRequest):
+    """
+    Hisob raqamlar o'rtasida pul ko'chirish (Перемещение):
+    - from_account_id: Chiqim qilinadigan hisob (cash_default yoki bank/usd hisob id)
+    - to_account_id: Kirim qilinadigan hisob (cash_default yoki bank/usd hisob id)
+    - amount: Chiqim summasi
+    - target_amount: Kirim summasi (agar valyuta almashinuvi bo'lsa)
+    - rate: Dollar kursi
+    """
+    try:
+        if req.amount <= 0:
+            raise HTTPException(status_code=400, detail="Ko'chirish summasi 0 dan katta bo'lishi kerak")
+        
+        if req.from_account_id == req.to_account_id:
+            raise HTTPException(status_code=400, detail="Chiqim va kirim hisoblari bir xil bo'lishi mumkin emas")
+
+        org = await ms_client.get_organization()
+        if not org or not org.get("id"):
+            raise HTTPException(status_code=400, detail="Tashkilot ma'lumotlari topilmadi")
+
+        org_id = org.get("id")
+        org_meta = org.get("meta", {})
+        moment_str = req.moment if req.moment else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Tashkilot bank hisoblarini olish
+        org_accounts = await ms_client.get_organization_accounts(org_id)
+        acc_dict = {a.get("id"): a for a in org_accounts if isinstance(a, dict) and a.get("id")}
+
+        # 1. From hisobi ma'lumotlari
+        is_from_cash = req.from_account_id in ["cash_default", "cash", ""]
+        from_acc = acc_dict.get(req.from_account_id) if not is_from_cash else None
+        from_name = "Asosiy Naqd Kassa" if is_from_cash else (from_acc.get("name", "Bank hisobi") if from_acc else "Bank hisobi")
+        is_from_dollar = False if is_from_cash else bool("dollar" in from_name.lower() or "usd" in from_name.lower())
+
+        # 2. To hisobi ma'lumotlari
+        is_to_cash = req.to_account_id in ["cash_default", "cash", ""]
+        to_acc = acc_dict.get(req.to_account_id) if not is_to_cash else None
+        to_name = "Asosiy Naqd Kassa" if is_to_cash else (to_acc.get("name", "Bank hisobi") if to_acc else "Bank hisobi")
+        is_to_dollar = False if is_to_cash else bool("dollar" in to_name.lower() or "usd" in to_name.lower())
+
+        # 3. Summalarni hisoblash
+        amount_from = req.amount
+        rate_val = float(req.rate if (req.rate and req.rate > 1) else 12800.0)
+
+        if req.target_amount is not None and req.target_amount > 0:
+            amount_to = req.target_amount
+        else:
+            if is_from_dollar and not is_to_dollar:
+                amount_to = amount_from * rate_val
+            elif not is_from_dollar and is_to_dollar:
+                amount_to = amount_from / rate_val
+            else:
+                amount_to = amount_from
+
+        # 4. Izoh va maqsad
+        desc_suffix = f": {req.description.strip()}" if (req.description and req.description.strip()) else ""
+        purpose = f"Ko'chirish: {from_name} ➔ {to_name}{desc_suffix}"
+
+        # 5. Agent meta (MoySklad ichki ko'chirishda tashkilotning o'zi agent bo'ladi)
+        # Bu orqali hech qanday mijoz (Islom onlayn va h.k.) balansi va qarzi o'zgarmaydi!
+        org_agent_meta = {
+            "meta": {
+                "href": f"{ms_client.base_url}/entity/organization/{org_id}",
+                "type": "organization",
+                "mediaType": "application/json"
+            }
+        }
+
+        # 6. MoySklad expenseitem "Перемещение" (agar mavjud bo'lsa)
+        expense_items = await ms_client.get_expense_items()
+        move_item = next((it for it in expense_items if "перемещ" in (it.get("name") or "").lower() or "peremesh" in (it.get("name") or "").lower()), None)
+        move_item_meta = {
+            "href": f"{ms_client.base_url}/entity/expenseitem/{move_item['id']}",
+            "type": "expenseitem",
+            "mediaType": "application/json"
+        } if move_item else None
+
+        usd_curr_meta = None
+        if is_from_dollar or is_to_dollar:
+            usd_curr_meta = await ms_client.get_usd_currency_meta()
+
+        # Hisob raqamlari meta obyektlari
+        from_acc_meta = None
+        if not is_from_cash and req.from_account_id:
+            from_acc_meta = {
+                "meta": {
+                    "href": f"{ms_client.base_url}/entity/organization/{org_id}/accounts/{req.from_account_id}",
+                    "type": "account",
+                    "mediaType": "application/json"
+                }
+            }
+
+        to_acc_meta = None
+        if not is_to_cash and req.to_account_id:
+            to_acc_meta = {
+                "meta": {
+                    "href": f"{ms_client.base_url}/entity/organization/{org_id}/accounts/{req.to_account_id}",
+                    "type": "account",
+                    "mediaType": "application/json"
+                }
+            }
+
+        # 7. CHIQIM (from_account)
+        if is_from_cash:
+            cashout_data = {
+                "organization": {"meta": org_meta},
+                "agent": org_agent_meta,
+                "sum": int(round(amount_from * 100)),
+                "moment": moment_str,
+                "paymentPurpose": purpose,
+            }
+            if move_item_meta:
+                cashout_data["expenseItem"] = {"meta": move_item_meta}
+            out_res = await ms_client.create_cashout(cashout_data)
+        else:
+            pout_data = {
+                "organization": {"meta": org_meta},
+                "organizationAccount": from_acc_meta,
+                "account": from_acc_meta,
+                "agent": org_agent_meta,
+                "agentAccount": to_acc_meta or from_acc_meta,
+                "sum": int(round(amount_from * 100)),
+                "moment": moment_str,
+                "paymentPurpose": purpose,
+            }
+            if move_item_meta:
+                pout_data["expenseItem"] = {"meta": move_item_meta}
+            if is_from_dollar and usd_curr_meta:
+                pout_data["rate"] = {
+                    "currency": {"meta": usd_curr_meta},
+                    "value": rate_val
+                }
+            out_res = await ms_client.create_paymentout(pout_data)
+
+        # 8. KIRIM (to_account)
+        if is_to_cash:
+            cashin_data = {
+                "organization": {"meta": org_meta},
+                "agent": org_agent_meta,
+                "sum": int(round(amount_to * 100)),
+                "moment": moment_str,
+                "paymentPurpose": purpose,
+            }
+            if is_to_dollar and usd_curr_meta:
+                cashin_data["rate"] = {
+                    "currency": {"meta": usd_curr_meta},
+                    "value": rate_val
+                }
+            in_res = await ms_client.create_cashin(cashin_data)
+        else:
+            pin_data = {
+                "organization": {"meta": org_meta},
+                "organizationAccount": to_acc_meta,
+                "account": to_acc_meta,
+                "agent": org_agent_meta,
+                "agentAccount": from_acc_meta or to_acc_meta,
+                "sum": int(round(amount_to * 100)),
+                "moment": moment_str,
+                "paymentPurpose": purpose,
+            }
+            if is_to_dollar and usd_curr_meta:
+                pin_data["rate"] = {
+                    "currency": {"meta": usd_curr_meta},
+                    "value": rate_val
+                }
+            in_res = await ms_client.create_paymentin(pin_data)
+
+        # 8.1. Lokal DB ga saqlash (Dashboard va hisobotlar darhol ko'rishi uchun)
+        try:
+            import uuid
+            from database import AsyncSessionLocal
+            from models_db import LocalPayment
+            async with AsyncSessionLocal() as db:
+                out_id = (out_res.get("id") if isinstance(out_res, dict) else None) or str(uuid.uuid4())
+                in_id = (in_res.get("id") if isinstance(in_res, dict) else None) or str(uuid.uuid4())
+
+                # Chiqim
+                out_sum_uzs = amount_from * (rate_val if is_from_dollar else 1.0)
+                db.add(LocalPayment(
+                    id=out_id,
+                    type="cashout" if is_from_cash else "paymentout",
+                    name=out_res.get("name", "Ko'chirish chiqim") if isinstance(out_res, dict) else "Chiqim",
+                    sum=out_sum_uzs,
+                    moment=moment_str,
+                    agent_id="",
+                    purpose=purpose,
+                    is_usd=is_from_dollar,
+                    usd_amount=amount_from if is_from_dollar else 0.0,
+                    usd_rate=rate_val if is_from_dollar else 0.0,
+                ))
+
+                # Kirim
+                in_sum_uzs = amount_to * (rate_val if is_to_dollar else 1.0)
+                db.add(LocalPayment(
+                    id=in_id,
+                    type="cash" if is_to_cash else "card",
+                    name=in_res.get("name", "Ko'chirish kirim") if isinstance(in_res, dict) else "Kirim",
+                    sum=in_sum_uzs,
+                    moment=moment_str,
+                    agent_id="",
+                    purpose=purpose,
+                    is_usd=is_to_dollar,
+                    usd_amount=amount_to if is_to_dollar else 0.0,
+                    usd_rate=rate_val if is_to_dollar else 0.0,
+                ))
+                await db.commit()
+        except Exception as dbe:
+            print(f"⚠️ LocalPayment transfer write warning: {dbe}")
+
+        # 9. Keshni tozalash
+        ms_client.invalidate_payments_cache()
+        invalidate_cashflow_cache()
+        try:
+            from routers.settings import invalidate_accounts_cache
+            invalidate_accounts_cache()
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "message": f"Pul muvaffaqiyatli ko'chirildi: {from_name} ➔ {to_name}",
+            "data": {
+                "out": out_res,
+                "in": in_res,
+                "amount_from": amount_from,
+                "amount_to": amount_to,
+                "from": from_name,
+                "to": to_name
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Pul ko'chirish xatosi: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1183,10 +1496,14 @@ async def get_cashflow(
                     return fallback
                 if obj.get("name"):
                     return obj["name"]
+                meta = obj.get("meta") or {}
+                m_type = meta.get("type", "")
                 aid = obj.get("id")
-                if not aid:
-                    href = obj.get("meta", {}).get("href", "")
-                    aid = href.split("/")[-1] if href else ""
+                href = meta.get("href", "")
+                if not aid and href:
+                    aid = href.split("/")[-1]
+                if m_type == "organization":
+                    return "Said_Baraka (Ichki o'tkazma)"
                 if aid and aid in agent_map:
                     return agent_map[aid]
                 return fallback
@@ -1429,22 +1746,42 @@ async def get_cashflow(
                                 amt = float(p.sum or 0.0)
                                 u_amt = float(p.usd_amount or 0.0)
                                 u_rate = float(p.usd_rate or 0.0)
-                                doc_t = "cashin" if p.type == "cash" else "paymentin"
+                                is_out = str(p.type or "").lower() in ["cashout", "paymentout", "expense", "outflow"] or str(p.id or "").startswith("outflow-")
+                                doc_t = ("cashout" if p.type == "cashout" else "paymentout") if is_out else ("cashin" if p.type == "cash" else "paymentin")
+                                direction = "out" if is_out else "in"
+                                if is_out:
+                                    type_name = "💸 Dollar chiqim" if is_dol else ("📤 Naqd chiqim" if p.type == "cashout" else "🏛️ Bank xarajat")
+                                else:
+                                    type_name = "💲 Dollar to'lov" if is_dol else ("💵 Naqd to'lov" if p.type == "cash" else "💳 Karta to'lov")
+                                if is_dol:
+                                    acc_id = "1749a7d1-ab4b-11f1-0a80-08ba00832cc6"
+                                    acc_name = "💲 Dollar Hisobi (USD)"
+                                elif p.type in ["cash", "cashout"]:
+                                    acc_id = "cash_default"
+                                    acc_name = "💵 Asosiy Naqd Kassa"
+                                else:
+                                    if "akbar" in str(p.purpose or "").lower():
+                                        acc_id = "792524e8-9929-11f1-0a80-1d7a002d6416"
+                                        acc_name = "💳 Akbarxo'ja Ipak 5614 6821 1567 6605"
+                                    else:
+                                        acc_id = "642dfa59-8e62-11f1-0a80-0fc400216a7f"
+                                        acc_name = "💳 Humo / Uzcard"
+
                                 all_tx.append({
                                     "id": p.id,
                                     "doc_type": doc_t,
-                                    "direction": "in",
-                                    "type_name": "💲 Dollar to'lov" if is_dol else ("💵 Naqd to'lov" if p.type == "cash" else "💳 Karta to'lov"),
+                                    "direction": direction,
+                                    "type_name": type_name,
                                     "doc_number": p.name or "—",
                                     "moment": p.moment or "",
                                     "amount": amt,
                                     "usd_amount": u_amt,
                                     "usd_rate": u_rate,
                                     "is_usd": is_dol,
-                                    "account_id": "dollar" if is_dol else ("cash_default" if p.type == "cash" else "card"),
-                                    "account_name": "💵 Dollar Kassa" if is_dol else ("💵 Asosiy Naqd Kassa" if p.type == "cash" else "💳 Humo / Uzcard"),
-                                    "account_type": "dollar" if is_dol else ("cash" if p.type == "cash" else "bank"),
-                                    "target_name": p.purpose or "Mijozdan to'lov",
+                                    "account_id": acc_id,
+                                    "account_name": acc_name,
+                                    "account_type": "dollar" if is_dol else ("cash" if (p.type in ["cash", "cashout"]) else "bank"),
+                                    "target_name": p.purpose or ("Xarajat / Chiqim" if is_out else "Mijozdan to'lov"),
                                     "expense_item": None,
                                     "expense_item_id": None,
                                     "purpose": p.purpose or "",
@@ -1506,6 +1843,50 @@ async def get_cashflow(
         cash_out = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "cashout")
         card_in = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "paymentin")
         card_out = sum(t["amount"] for t in filtered_tx if t["doc_type"] == "paymentout")
+
+        # 3.1. Agar hisoblar balansi 0 bo'lsa (MoySklad 503 yoki oflayn rejimda), barcha tranzaksiyalardan hisoblaymiz:
+        if account_balances and (total_uzs_balance == 0.0 and total_usd_balance == 0.0):
+            acc_totals = {}
+            for t in all_tx:
+                aid = t.get("account_id")
+                is_d = bool(t.get("account_type") == "dollar" or t.get("is_usd"))
+                amt = float(t.get("usd_amount", 0.0) if is_d else t.get("amount", 0.0))
+                if aid:
+                    if aid not in acc_totals:
+                        acc_totals[aid] = 0.0
+                    acc_totals[aid] += (amt if t.get("direction") == "in" else -amt)
+
+            calc_uzs = 0.0
+            calc_usd = 0.0
+            for ab in account_balances:
+                aid = ab.get("id")
+                is_d = bool(ab.get("type") == "dollar" or ab.get("is_dollar") or ab.get("currency") == "USD")
+                if aid in acc_totals:
+                    ab["current_balance"] = acc_totals[aid]
+                    ab["raw_balance"] = acc_totals[aid]
+                if is_d:
+                    calc_usd += ab.get("current_balance", 0.0)
+                else:
+                    calc_uzs += ab.get("current_balance", 0.0)
+
+            total_uzs_balance = calc_uzs
+            total_usd_balance = calc_usd
+            consolidated_uzs = total_uzs_balance + (total_usd_balance * ref_rate)
+
+            try:
+                from routers.settings import set_accounts_cache
+                set_accounts_cache({
+                    "success": True,
+                    "data": {
+                        "accounts": account_balances,
+                        "total_uzs_balance": total_uzs_balance,
+                        "total_usd_balance": total_usd_balance,
+                        "reference_rate": ref_rate,
+                        "consolidated_uzs_equivalent": consolidated_uzs,
+                    }
+                })
+            except Exception:
+                pass
 
         # 4. Hisoblar bo'yicha keshni saqlash (faqat haqiqiy ma'lumot bo'lsa)
         if all_tx and (_CASHFLOW_RAW_CACHE is None or refresh or (now_ts - _CASHFLOW_RAW_CACHE.get("timestamp", 0)) >= _CASHFLOW_CACHE_TTL):

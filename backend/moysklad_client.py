@@ -178,11 +178,17 @@ class MoySkladClient:
                         except Exception:
                             pass
                         if not err_detail:
-                            err_detail = response.text or f"HTTP {response.status_code}"
+                            txt = response.text or ""
+                            if response.status_code == 503 or "<!DOCTYPE" in txt or "<html" in txt.lower():
+                                err_detail = f"Texnik ishlar olib borilmoqda (HTTP {response.status_code} Maintenance)"
+                            else:
+                                err_detail = txt[:300] or f"HTTP {response.status_code}"
                         
                         safe_print(f"❌ MoySklad Xatolik [{response.status_code}] {method} {url}: {err_detail}")
                         raise Exception(f"MoySklad API xatosi ({response.status_code}): {err_detail}")
 
+                    if response.status_code == 204 or not response.content or not response.content.strip():
+                        return {}
                     return response.json()
 
                 except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
@@ -236,6 +242,21 @@ class MoySkladClient:
             "type": "currency",
             "mediaType": "application/json"
         }
+
+    async def get_usd_rate(self) -> float:
+        """USD valyutasining kursini topish"""
+        currencies = await self.get_currencies()
+        for c in currencies:
+            iso = (c.get("isoCode") or "").upper()
+            code = str(c.get("code") or "")
+            name = (c.get("name") or "").lower()
+            full_name = (c.get("fullName") or "").lower()
+            if iso == "USD" or code == "840" or "usd" in name or "dollar" in name or "$" in name or "dollar" in full_name:
+                rate = c.get("rate")
+                if rate and float(rate) > 1:
+                    return float(rate)
+        return 12800.0
+
 
     # ================= OTGRUZKA (DEMAND) =================
     async def get_demands(

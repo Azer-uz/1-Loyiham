@@ -51,6 +51,10 @@ async def init_db():
             except Exception:
                 pass
             try:
+                await conn.exec_driver_sql("ALTER TABLE local_counterparties ADD COLUMN status VARCHAR(100) DEFAULT '';")
+            except Exception:
+                pass
+            try:
                 await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) DEFAULT '';")
             except Exception:
                 pass

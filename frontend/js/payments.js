@@ -144,6 +144,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const searchParam = urlParams.get('search');
         const dateFromParam = urlParams.get('date_from');
         const dateToParam = urlParams.get('date_to');
+        const typeFilterParam = urlParams.get('type_filter');
+        const accountIdParam = urlParams.get('account_id');
+
+        if (typeFilterParam) {
+            currentTypeFilter = typeFilterParam;
+            document.querySelectorAll('[data-type]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.type === typeFilterParam);
+            });
+        }
+
+        if (accountIdParam) {
+            currentAccountId = accountIdParam;
+        }
 
         if (dateFromParam && dateToParam) {
             currentPeriod = 'custom';
@@ -561,7 +574,11 @@ async function loadExpenseItems() {
     try {
         const resp = await apiFetch('/payments/expense-items');
         if (resp.success && Array.isArray(resp.data)) {
-            expenseItems = resp.data;
+            // Peremesheniyani xarajatlardan olib tashlash
+            expenseItems = resp.data.filter(it => {
+                const lower = (it.name || '').toLowerCase().trim();
+                return !lower.includes('перемещ') && !lower.includes('peremesh') && !lower.includes("ko'chirish") && !lower.includes("ko‘chirish");
+            });
 
             const filterSelect = document.getElementById('expenseItemFilter');
             if (filterSelect) {
@@ -1670,7 +1687,6 @@ const EXPENSE_ICONS = {
     'дивидент': '💰',
     'налоги и сборы': '🏛️',
     'налоги': '🏛️',
-    'перемещение': '🔄',
     'списания': '🗑️',
     'возврат': '↩️'
 };
@@ -1679,7 +1695,12 @@ function renderDrawerExpenseChips() {
     const container = document.getElementById('drawerExpenseChipsContainer');
     if (!container || !expenseItems || expenseItems.length === 0) return;
 
-    container.innerHTML = expenseItems.map(item => {
+    const validItems = expenseItems.filter(item => {
+        const lower = (item.name || '').toLowerCase().trim();
+        return !lower.includes('перемещ') && !lower.includes('peremesh') && !lower.includes("ko'chirish") && !lower.includes("ko‘chirish");
+    });
+
+    container.innerHTML = validItems.map(item => {
         const lower = (item.name || '').toLowerCase().trim();
         const icon = EXPENSE_ICONS[lower] || '🏷️';
         const cleanName = (item.name || '').replace(/'/g, "\\'");
@@ -2752,3 +2773,209 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+
+// ===== PUL KO'CHIRISH (PEREMESHENIYA) MODALI =====
+let allTransferAccounts = [];
+
+async function openTransferModal() {
+    const modal = document.getElementById('transferMoneyModal');
+    if (!modal) return;
+
+    // Sana & vaqtni hozirgi vaqtga o'rnatish
+    const now = new Date();
+    const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const momentInput = document.getElementById('transferMoment');
+    if (momentInput) momentInput.value = localIso;
+
+    // Reset inputs
+    const amtInput = document.getElementById('transferAmount');
+    if (amtInput) amtInput.value = '';
+    const descInput = document.getElementById('transferDescription');
+    if (descInput) descInput.value = '';
+    
+    // Dollar kursi
+    const rateInput = document.getElementById('transferRateInput');
+    if (rateInput) {
+        rateInput.value = formatNumber(window.currentUSDRate || 12800);
+    }
+
+    modal.classList.add('active');
+
+    // Hisoblar ro'yxatini yuklash
+    await loadTransferAccountsSelect();
+}
+
+function closeTransferModal() {
+    const modal = document.getElementById('transferMoneyModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function loadTransferAccountsSelect() {
+    const fromSel = document.getElementById('transferFromAccount');
+    const toSel = document.getElementById('transferToAccount');
+    if (!fromSel || !toSel) return;
+
+    fromSel.innerHTML = '<option value="">Yuklanmoqda...</option>';
+    toSel.innerHTML = '<option value="">Yuklanmoqda...</option>';
+
+    try {
+        const resp = await apiFetch('/settings/accounts');
+        if (resp && resp.data && resp.data.accounts) {
+            allTransferAccounts = resp.data.accounts;
+            
+            // Build options
+            const optionsHtml = allTransferAccounts.map(acc => {
+                const balFormatted = acc.is_dollar 
+                    ? `$${(acc.current_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+                    : `${formatMoney(acc.current_balance || 0)}`;
+                return `<option value="${acc.id}" data-dollar="${acc.is_dollar}" data-bal="${acc.current_balance || 0}">${acc.name} (${balFormatted})</option>`;
+            }).join('');
+
+            fromSel.innerHTML = optionsHtml;
+            toSel.innerHTML = optionsHtml;
+
+            // Default: from = 1st account, to = 2nd account (if available)
+            if (allTransferAccounts.length > 1) {
+                fromSel.selectedIndex = 0;
+                toSel.selectedIndex = 1;
+            }
+
+            onTransferAccountChange();
+        }
+    } catch (e) {
+        console.warn("Transfer hisoblarini yuklashda xatolik:", e);
+    }
+}
+
+function onTransferAccountChange() {
+    const fromSel = document.getElementById('transferFromAccount');
+    const toSel = document.getElementById('transferToAccount');
+    if (!fromSel || !toSel) return;
+
+    const fromOpt = fromSel.selectedOptions[0];
+    const toOpt = toSel.selectedOptions[0];
+
+    const isFromDollar = fromOpt ? fromOpt.dataset.dollar === 'true' : false;
+    const isToDollar = toOpt ? toOpt.dataset.dollar === 'true' : false;
+    
+    const fromBal = fromOpt ? Number(fromOpt.dataset.bal || 0) : 0;
+    const toBal = toOpt ? Number(toOpt.dataset.bal || 0) : 0;
+
+    // Hints
+    const fromHint = document.getElementById('transferFromBalanceHint');
+    const toHint = document.getElementById('transferToBalanceHint');
+    if (fromHint) {
+        fromHint.textContent = `Qoldiq: ${isFromDollar ? '$' + fromBal.toLocaleString('en-US', {minimumFractionDigits:2}) : formatMoney(fromBal)}`;
+    }
+    if (toHint) {
+        toHint.textContent = `Qoldiq: ${isToDollar ? '$' + toBal.toLocaleString('en-US', {minimumFractionDigits:2}) : formatMoney(toBal)}`;
+    }
+
+    // Currency Badge
+    const badge = document.getElementById('transferCurrencyBadge');
+    if (badge) {
+        badge.textContent = isFromDollar ? 'USD ($)' : 'UZS (so\'m)';
+        badge.style.color = isFromDollar ? '#16a34a' : '#1d4ed8';
+    }
+
+    // Rate Box (faqat agar bittasi dollar va ikkinchisi so'm bo'lsa)
+    const rateBox = document.getElementById('transferRateBox');
+    if (rateBox) {
+        if (isFromDollar !== isToDollar) {
+            rateBox.style.display = 'block';
+        } else {
+            rateBox.style.display = 'none';
+        }
+    }
+
+    onTransferAmountInput();
+}
+
+function onTransferAmountInput() {
+    const fromSel = document.getElementById('transferFromAccount');
+    const toSel = document.getElementById('transferToAccount');
+    if (!fromSel || !toSel) return;
+
+    const isFromDollar = fromSel.selectedOptions[0]?.dataset.dollar === 'true';
+    const isToDollar = toSel.selectedOptions[0]?.dataset.dollar === 'true';
+
+    const amount = parseAmount(document.getElementById('transferAmount').value) || 0;
+    const rate = parseAmount(document.getElementById('transferRateInput')?.value) || (window.currentUSDRate || 12800);
+    const previewEl = document.getElementById('transferConvertedPreview');
+
+    if (previewEl) {
+        if (isFromDollar && !isToDollar) {
+            const converted = amount * rate;
+            previewEl.textContent = `~ ${formatMoney(converted)} (so'm)`;
+        } else if (!isFromDollar && isToDollar) {
+            const converted = rate > 0 ? (amount / rate) : 0;
+            previewEl.textContent = `~ $${converted.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
+        } else if (isFromDollar && isToDollar) {
+            previewEl.textContent = `$${amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
+        } else {
+            previewEl.textContent = `${formatMoney(amount)}`;
+        }
+    }
+}
+
+async function handleTransferSubmit(event) {
+    event.preventDefault();
+    const fromId = document.getElementById('transferFromAccount').value;
+    const toId = document.getElementById('transferToAccount').value;
+    const amount = parseAmount(document.getElementById('transferAmount').value);
+    const rate = parseAmount(document.getElementById('transferRateInput')?.value) || (window.currentUSDRate || 12800);
+    const moment = document.getElementById('transferMoment').value;
+    const desc = document.getElementById('transferDescription').value.trim();
+
+    if (!fromId || !toId) {
+        alert("Iltimos, chiqim va kirim hisoblarini tanlang!");
+        return;
+    }
+    if (fromId === toId) {
+        alert("Chiqim va kirim hisoblari bir xil bo'lishi mumkin emas!");
+        return;
+    }
+    if (!amount || amount <= 0) {
+        alert("Iltimos, to'g'ri ko'chirish summasini kiriting!");
+        return;
+    }
+
+    const btn = document.getElementById('saveTransferBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Ko\'chirilmoqda...';
+    }
+
+    try {
+        const payload = {
+            from_account_id: fromId,
+            to_account_id: toId,
+            amount: amount,
+            rate: rate,
+            moment: moment ? (moment.replace('T', ' ') + ':00') : undefined,
+            description: desc
+        };
+
+        const resp = await apiFetch('/payments/transfer', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (resp && resp.success) {
+            alert("✅ " + (resp.message || "Pul muvaffaqiyatli ko'chirildi!"));
+            closeTransferModal();
+            await loadCashflow();
+        } else {
+            throw new Error(resp?.detail || "Pul ko'chirishda xatolik yuz berdi");
+        }
+    } catch (e) {
+        alert(`❌ Xatolik: ${e.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '💾 Ko\'chirishni Saqlash';
+        }
+    }
+}
+

@@ -120,16 +120,30 @@ async def get_payment_methods():
             "type": "cash"
         }
     }
-    for a in org_accounts:
-        a_id = a.get("id")
-        a_name = a.get("name") or a.get("accountnumber") or "Bank hisobi"
-        is_dol = "dollar" in (a_name + " " + a.get("accountnumber", "")).lower()
-        acc_map[a_id] = {
-            "id": a_id,
-            "name": f"{'💵' if is_dol else '🏦'} {a_name}",
-            "currency": "USD" if is_dol else "UZS",
-            "type": "dollar" if is_dol else "bank"
-        }
+    if org_accounts:
+        for a in org_accounts:
+            a_id = a.get("id")
+            a_name = a.get("name") or a.get("accountnumber") or "Bank hisobi"
+            is_dol = "dollar" in (a_name + " " + a.get("accountnumber", "")).lower()
+            acc_map[a_id] = {
+                "id": a_id,
+                "name": f"{'💵' if is_dol else '🏦'} {a_name}",
+                "currency": "USD" if is_dol else "UZS",
+                "type": "dollar" if is_dol else "bank"
+            }
+    else:
+        lka = settings.get("last_known_accounts", {}).get("accounts", [])
+        for a in lka:
+            a_id = a.get("id")
+            if not a_id or a_id == "cash_default":
+                continue
+            is_dol = bool(a.get("is_dollar") or a.get("currency") == "USD" or a.get("type") == "dollar")
+            acc_map[a_id] = {
+                "id": a_id,
+                "name": a.get("name") if str(a.get("name", "")).startswith(("💵", "🏦", "💳", "💲")) else f"{'💵' if is_dol else '🏦'} {a.get('name')}",
+                "currency": "USD" if is_dol else "UZS",
+                "type": "dollar" if is_dol else "bank"
+            }
 
     # Har bir to'lov turiga hisoblar tafsilotini biriktirish
     enriched = []
@@ -271,9 +285,22 @@ _ACCOUNTS_CACHE_TTL = 120.0  # 2 daqiqa kesh
 
 
 def invalidate_accounts_cache():
-    global _ACCOUNTS_CACHE, _ACCOUNTS_CACHE_TIME
-    _ACCOUNTS_CACHE = None
+    global _ACCOUNTS_CACHE_TIME
+    # Keshni eskirgan deb belgilaymiz, lekin MoySklad xato berganda fallback sifatida saqlab qolamiz
     _ACCOUNTS_CACHE_TIME = 0.0
+
+
+def set_accounts_cache(cache_obj: dict):
+    global _ACCOUNTS_CACHE, _ACCOUNTS_CACHE_TIME
+    _ACCOUNTS_CACHE = cache_obj
+    _ACCOUNTS_CACHE_TIME = time.time()
+    try:
+        settings = load_settings()
+        if isinstance(cache_obj, dict) and "data" in cache_obj:
+            settings["last_known_accounts"] = cache_obj["data"]
+            save_settings(settings)
+    except Exception:
+        pass
 
 
 # ===== HISOBLAR BALANSI VA KORREKTIROVKA API =====
@@ -366,16 +393,27 @@ async def get_accounts_with_corrections():
         if adjusted_accounts:
             _ACCOUNTS_CACHE = res
             _ACCOUNTS_CACHE_TIME = time.time()
+            try:
+                settings["last_known_accounts"] = res["data"]
+                save_settings(settings)
+            except Exception:
+                pass
         return res
 
     except Exception as e:
         print(f"[Accounts /report/money/byaccount error] {e}")
-        # Agar oldingi to'g'ri kesh bo'lsa, uni asrab qolamiz va qaytaramiz
+        # Agar oldingi to'g'ri xotiradagi kesh bo'lsa, uni asrab qolamiz va qaytaramiz
         if _ACCOUNTS_CACHE is not None:
             return _ACCOUNTS_CACHE
 
+        if settings.get("last_known_accounts"):
+            return {
+                "success": True,
+                "data": settings["last_known_accounts"]
+            }
+
         adjusted_accounts = [
-            {"id": "cash_default", "name": "💵 Asosiy Naqd Kassa (UZS)", "currency": "UZS", "current_balance": 0.0, "is_dollar": False, "has_correction": False},
+            {"id": "cash_default", "name": "💵 Asosiy Naqd Kassa", "currency": "UZS", "current_balance": 0.0, "is_dollar": False, "has_correction": False},
         ]
         return {
             "success": True,

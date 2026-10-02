@@ -72,7 +72,9 @@ class LocalCounterparty(Base):
     phone = Column(String(50), default="")
     balance = Column(Float, default=0.0)
     group = Column(String(100), default="")
+    status = Column(String(100), default="")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 
 class SyncLog(Base):

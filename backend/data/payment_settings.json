@@ -43,5 +43,85 @@
   ],
   "corrections": {},
   "reference_usd_rate": 11800.0,
-  "organization_name": "Said_Baraka"
+  "organization_name": "Said_Baraka",
+  "last_known_accounts": {
+    "accounts": [
+      {
+        "id": "cash_default",
+        "name": "💵 Asosiy Naqd Kassa",
+        "raw_name": "Касса организации",
+        "accountnumber": "KASSA-UZS",
+        "type": "cash",
+        "currency": "UZS",
+        "is_dollar": false,
+        "current_balance": 1304534266.74,
+        "raw_balance": 1304534266.74,
+        "has_correction": false
+      },
+      {
+        "id": "642dfa59-8e62-11f1-0a80-0fc400216a7f",
+        "name": "💳 Abdulaziz ASIA 5614 6826 1790 8480",
+        "raw_name": "Abdulaziz ASIA 5614 6826 1790 8480",
+        "accountnumber": "5614 6826 1790 8480",
+        "type": "bank",
+        "currency": "UZS",
+        "is_dollar": false,
+        "current_balance": 1282214500.0,
+        "raw_balance": 1282214500.0,
+        "has_correction": false
+      },
+      {
+        "id": "792524e8-9929-11f1-0a80-1d7a002d6416",
+        "name": "💳 Akbarxo'ja Ipak 5614 6821 1567 6605",
+        "raw_name": "Akbarxo'ja Ipak 5614 6821 1567 6605",
+        "accountnumber": "5614 6821 1567 6605",
+        "type": "bank",
+        "currency": "UZS",
+        "is_dollar": false,
+        "current_balance": 1180000.0,
+        "raw_balance": 1180000.0,
+        "has_correction": false
+      },
+      {
+        "id": "792526c7-9929-11f1-0a80-1d7a002d6417",
+        "name": "💳 Ziyoda Ipak 9860 1701 1192 7399",
+        "raw_name": "Ziyoda Ipak 9860 1701 1192 7399",
+        "accountnumber": "9860 1701 1192 7399",
+        "type": "bank",
+        "currency": "UZS",
+        "is_dollar": false,
+        "current_balance": 276880.0,
+        "raw_balance": 276880.0,
+        "has_correction": false
+      },
+      {
+        "id": "7925286c-9929-11f1-0a80-1d7a002d6418",
+        "name": "💳 Akbarxo'ja Asia 1828",
+        "raw_name": "Akbarxo'ja Asia 1828",
+        "accountnumber": "1828",
+        "type": "bank",
+        "currency": "UZS",
+        "is_dollar": false,
+        "current_balance": 2815896.0,
+        "raw_balance": 2815896.0,
+        "has_correction": false
+      },
+      {
+        "id": "1749a7d1-ab4b-11f1-0a80-08ba00832cc6",
+        "name": "💲 Dollar Hisobi (USD)",
+        "raw_name": "Dollar Hisobi",
+        "accountnumber": "USD-ACCOUNT",
+        "type": "dollar",
+        "currency": "USD",
+        "is_dollar": true,
+        "current_balance": 1035.0,
+        "raw_balance": 1035.0,
+        "has_correction": false
+      }
+    ],
+    "total_uzs_balance": 2590325646.74,
+    "total_usd_balance": 1035.0,
+    "reference_rate": 11800.0,
+    "consolidated_uzs_equivalent": 2602538646.74
+  }
 }

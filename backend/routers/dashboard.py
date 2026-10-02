@@ -170,29 +170,26 @@ async def dashboard_summary(
             ]
 
             # Pul kirimi (Haqiqiy kassa va bank tushumlari)
-            inflow_stmt = select(func.coalesce(func.sum(LocalPayment.sum), 0.0)).where(
-                LocalPayment.moment >= moment_from,
-                LocalPayment.moment <= moment_to,
-            )
-            real_inflow = float((await db.scalar(inflow_stmt)) or 0.0)
-            total_inflow = real_inflow if real_inflow > 0 else (total_payed if total_sales > 0 else 0.0)
-
-            # Pul kirimi (Haqiqiy kassa va bank tushumlari)
             msk_from = uz_to_msk_str(moment_from) if 'uz_to_msk_str' in globals() else moment_from
             msk_to = uz_to_msk_str(moment_to) if 'uz_to_msk_str' in globals() else moment_to
 
             inflow_stmt = select(func.coalesce(func.sum(LocalPayment.sum), 0.0)).where(
+                LocalPayment.type.in_(["cash", "card", "cashin", "paymentin"]),
                 LocalPayment.moment >= msk_from,
                 LocalPayment.moment <= msk_to,
             )
             real_inflow = float((await db.scalar(inflow_stmt)) or 0.0)
             total_inflow = real_inflow if real_inflow > 0 else (total_payed if total_sales > 0 else 0.0)
 
-            # Xarajatlar (Faqat haqiqiy xarajatlar, bo'lmasa 0)
-            total_expenses = 0.0
-            top_outflows = []
+            # Xarajatlar va Chiqimlar (Faqat haqiqiy xarajatlar va pul chiqimlari)
+            outflow_stmt = select(func.coalesce(func.sum(LocalPayment.sum), 0.0)).where(
+                LocalPayment.type.in_(["cashout", "paymentout"]),
+                LocalPayment.moment >= msk_from,
+                LocalPayment.moment <= msk_to,
+            )
+            total_expenses = float((await db.scalar(outflow_stmt)) or 0.0)
 
-            # Katta Kirimlar (Top Inflow - Mijozlar bo'yicha yig'indi va To'lovlar bo'limiga sana+nom bilan o'tish)
+            # Katta Kirimlar (Top Inflow - Mijozlar bo'yicha yig'indi)
             top_inf_stmt = (
                 select(
                     func.coalesce(LocalCounterparty.name, "Kassa / Mijoz to'lovi").label("payer_name"),
@@ -202,6 +199,7 @@ async def dashboard_summary(
                 .select_from(LocalPayment)
                 .outerjoin(LocalCounterparty, LocalPayment.agent_id == LocalCounterparty.id)
                 .where(
+                    LocalPayment.type.in_(["cash", "card", "cashin", "paymentin"]),
                     LocalPayment.moment >= msk_from,
                     LocalPayment.moment <= msk_to
                 )
@@ -229,8 +227,59 @@ async def dashboard_summary(
                         "source": payer,
                         "detail": cnt_str,
                         "amount": round(amt, 2),
-                        "link": f"/payments?search={quoted_payer}&date_from={date_f_str}&date_to={date_t_str}"
+                        "link": f"/payments?date_from={date_f_str}&date_to={date_t_str}&type_filter=inflow"
                     })
+
+            # Katta Xarajatlar va Chiqimlar (Top Outflow)
+            top_out_stmt = (
+                select(
+                    LocalPayment.purpose,
+                    LocalPayment.sum,
+                    LocalPayment.is_usd,
+                    LocalPayment.usd_amount,
+                    LocalPayment.type,
+                    func.coalesce(LocalCounterparty.name, "").label("agent_name")
+                )
+                .select_from(LocalPayment)
+                .outerjoin(LocalCounterparty, LocalPayment.agent_id == LocalCounterparty.id)
+                .where(
+                    LocalPayment.type.in_(["cashout", "paymentout"]),
+                    LocalPayment.moment >= msk_from,
+                    LocalPayment.moment <= msk_to
+                )
+                .order_by(desc(LocalPayment.sum))
+                .limit(10)
+            )
+            top_out_rows = (await db.execute(top_out_stmt)).all()
+
+            top_outflows = []
+            for r in top_out_rows:
+                purpose = r[0] or "Chiqim / Xarajat"
+                amt = float(r[1] or 0.0)
+                is_usd = bool(r[2])
+                u_amt = float(r[3] or 0.0)
+                p_type = r[4]
+                ag_name = r[5]
+
+                if "ko'chirish" in purpose.lower() or "перемещ" in purpose.lower():
+                    src = "Pul ko'chirish"
+                    det = purpose
+                elif ag_name and ag_name != "Said_Baraka":
+                    src = ag_name
+                    det = purpose
+                else:
+                    src = "Xarajat"
+                    det = purpose
+
+                if is_usd and u_amt > 0:
+                    det += f" (${u_amt:,.2f} USD)"
+
+                top_outflows.append({
+                    "source": src,
+                    "detail": det,
+                    "amount": round(amt, 2),
+                    "link": f"/payments?date_from={date_f_str}&date_to={date_t_str}&type_filter=outflow"
+                })
 
             # Omborga kirim (Priemkalar summasi va soni)
             supply_info = await get_supplies_summary(moment_from, moment_to)
@@ -250,7 +299,7 @@ async def dashboard_summary(
                     "total_debt": round(float(total_debt_val), 2),
                     "total_inflow": round(total_inflow, 2),
                     "supply_inflow": supply_info,
-                    "total_expenses": total_expenses,
+                    "total_expenses": round(total_expenses, 2),
                     "top_customers": top_customers,
                     "top_debtors": top_debtors,
                     "warehouse_stock": {"total_items": 42000, "total_value": 872000000},

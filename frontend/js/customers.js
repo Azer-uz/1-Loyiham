@@ -33,6 +33,13 @@ const pageSize = 50;
 let totalSize = 0;
 let currentDebtFilter = 'all';
 
+// ===== GURUH VA STATUS KO'P TANLOVLI FILTRI =====
+let selectedGroups = new Set();
+let selectedStatuses = new Set();
+let availableGroupsList = [];
+let availableStatusesList = [];
+let filtersInitialized = false;
+
 // ===== SARALASH HOLATI =====
 let currentSortField = 'balance';  // Default: qarz
 let currentSortDir = 'desc';        // Default: katta → kichik
@@ -70,6 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Real-time qidiruv
     document.getElementById('searchInput').addEventListener('input', debounce(() => {
         currentOffset = 0;
+        checkFilterClearBtn();
         loadCustomers();
     }, 400));
 
@@ -107,13 +115,218 @@ function selectDebtFilter(filter) {
     loadCustomers();
 }
 
+// ===== MULTISELECT (GURUH VA STATUS) FUNKSIYALARI =====
+function toggleMultiselect(dropdownId) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+    const isShowing = dropdown.classList.contains('show');
+
+    // Boshqa ochiq menyularni yopish
+    document.querySelectorAll('.multiselect-dropdown').forEach(d => {
+        if (d.id !== dropdownId) d.classList.remove('show');
+    });
+
+    dropdown.classList.toggle('show', !isShowing);
+}
+
+// Click outside to close dropdowns
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-multiselect')) {
+        document.querySelectorAll('.multiselect-dropdown').forEach(d => d.classList.remove('show'));
+    }
+});
+
+// ESC tugmasi bosilganda dropdownlarni yopish
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.multiselect-dropdown').forEach(d => d.classList.remove('show'));
+    }
+});
+
+function filterMultiselectOptions(dropdownId, query) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+    const q = (query || '').toLowerCase().trim();
+    const options = dropdown.querySelectorAll('.multiselect-option');
+    options.forEach(opt => {
+        const text = (opt.textContent || '').toLowerCase();
+        opt.style.display = text.includes(q) ? 'flex' : 'none';
+    });
+}
+
+function renderGroupOptions(groups) {
+    if (Array.isArray(groups) && groups.length > 0) {
+        availableGroupsList = groups;
+    }
+    const container = document.getElementById('groupOptionsContainer');
+    if (!container) return;
+
+    if (!availableGroupsList || availableGroupsList.length === 0) {
+        container.innerHTML = '<div style="padding:10px; text-align:center; color:var(--text-light); font-size:12px;">Guruhlar topilmadi</div>';
+        return;
+    }
+
+    container.innerHTML = availableGroupsList.map(g => {
+        const isChecked = selectedGroups.has(g);
+        const safeG = g.replace(/'/g, "\\'");
+        return `
+            <label class="multiselect-option" onclick="toggleGroupOption('${safeG}', event)">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleGroupOption('${safeG}', event)">
+                <span>🏷️ ${g}</span>
+            </label>
+        `;
+    }).join('');
+
+    updateGroupLabel();
+}
+
+function renderStatusOptions(statuses) {
+    if (Array.isArray(statuses) && statuses.length > 0) {
+        availableStatusesList = statuses;
+    }
+    const container = document.getElementById('statusOptionsContainer');
+    if (!container) return;
+
+    if (!availableStatusesList || availableStatusesList.length === 0) {
+        container.innerHTML = '<div style="padding:10px; text-align:center; color:var(--text-light); font-size:12px;">Statuslar topilmadi</div>';
+        return;
+    }
+
+    container.innerHTML = availableStatusesList.map(st => {
+        const isChecked = selectedStatuses.has(st);
+        const safeSt = st.replace(/'/g, "\\'");
+        return `
+            <label class="multiselect-option" onclick="toggleStatusOption('${safeSt}', event)">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleStatusOption('${safeSt}', event)">
+                <span>📌 ${st}</span>
+            </label>
+        `;
+    }).join('');
+
+    updateStatusLabel();
+}
+
+function toggleGroupOption(groupName, e) {
+    if (e && e.target && e.target.tagName === 'INPUT') {
+        // change event
+    } else if (e) {
+        e.preventDefault();
+    }
+    if (selectedGroups.has(groupName)) {
+        selectedGroups.delete(groupName);
+    } else {
+        selectedGroups.add(groupName);
+    }
+    renderGroupOptions();
+    currentOffset = 0;
+    loadCustomers();
+}
+
+function toggleStatusOption(statusName, e) {
+    if (e && e.target && e.target.tagName === 'INPUT') {
+        // change event
+    } else if (e) {
+        e.preventDefault();
+    }
+    if (selectedStatuses.has(statusName)) {
+        selectedStatuses.delete(statusName);
+    } else {
+        selectedStatuses.add(statusName);
+    }
+    renderStatusOptions();
+    currentOffset = 0;
+    loadCustomers();
+}
+
+function selectAllMultiselect(type) {
+    if (type === 'group') {
+        availableGroupsList.forEach(g => selectedGroups.add(g));
+        renderGroupOptions();
+    } else if (type === 'status') {
+        availableStatusesList.forEach(st => selectedStatuses.add(st));
+        renderStatusOptions();
+    }
+    currentOffset = 0;
+    loadCustomers();
+}
+
+function clearMultiselect(type) {
+    if (type === 'group') {
+        selectedGroups.clear();
+        renderGroupOptions();
+    } else if (type === 'status') {
+        selectedStatuses.clear();
+        renderStatusOptions();
+    }
+    currentOffset = 0;
+    loadCustomers();
+}
+
+function resetAllCustomerFilters() {
+    selectedGroups.clear();
+    selectedStatuses.clear();
+    const sInput = document.getElementById('searchInput');
+    if (sInput) sInput.value = '';
+    renderGroupOptions();
+    renderStatusOptions();
+    currentOffset = 0;
+    loadCustomers();
+}
+
+function updateGroupLabel() {
+    const label = document.getElementById('groupSelectLabel');
+    const btn = document.getElementById('groupMultiselectBtn');
+    if (!label) return;
+
+    if (selectedGroups.size === 0) {
+        label.textContent = '🏷️ Guruh: Barchasi';
+        btn?.classList.remove('active-filtered');
+    } else if (selectedGroups.size === 1) {
+        label.textContent = `🏷️ ${Array.from(selectedGroups)[0]}`;
+        btn?.classList.add('active-filtered');
+    } else {
+        label.textContent = `🏷️ Guruh (${selectedGroups.size} ta)`;
+        btn?.classList.add('active-filtered');
+    }
+    checkFilterClearBtn();
+}
+
+function updateStatusLabel() {
+    const label = document.getElementById('statusSelectLabel');
+    const btn = document.getElementById('statusMultiselectBtn');
+    if (!label) return;
+
+    if (selectedStatuses.size === 0) {
+        label.textContent = '📌 Status: Barchasi';
+        btn?.classList.remove('active-filtered');
+    } else if (selectedStatuses.size === 1) {
+        label.textContent = `📌 ${Array.from(selectedStatuses)[0]}`;
+        btn?.classList.add('active-filtered');
+    } else {
+        label.textContent = `📌 Status (${selectedStatuses.size} ta)`;
+        btn?.classList.add('active-filtered');
+    }
+    checkFilterClearBtn();
+}
+
+function checkFilterClearBtn() {
+    const clearBtn = document.getElementById('clearAllFiltersBtn');
+    const searchVal = document.getElementById('searchInput')?.value?.trim();
+    if (!clearBtn) return;
+    if (selectedGroups.size > 0 || selectedStatuses.size > 0 || searchVal) {
+        clearBtn.style.display = 'inline-flex';
+    } else {
+        clearBtn.style.display = 'none';
+    }
+}
+
 // ===== SARALASH =====
 function sortBy(field) {
     if (currentSortField === field) {
         currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
     } else {
         currentSortField = field;
-        currentSortDir = field === 'balance' ? 'desc' : 'asc';
+        currentSortDir = (field === 'balance') ? 'desc' : 'asc';
     }
     currentOffset = 0;
     loadCustomers();
@@ -139,7 +352,7 @@ let currentMeta = {};
 
 // ===== RO'YXATNI YUKLASH =====
 async function loadCustomers(forceRefresh = false) {
-    const search = document.getElementById('searchInput').value;
+    const search = document.getElementById('searchInput')?.value;
 
     try {
         const params = new URLSearchParams({
@@ -150,6 +363,12 @@ async function loadCustomers(forceRefresh = false) {
             debt_filter: currentDebtFilter,
         });
         if (search) params.append('search', search);
+        if (selectedGroups.size > 0) {
+            params.append('groups', Array.from(selectedGroups).join(','));
+        }
+        if (selectedStatuses.size > 0) {
+            params.append('statuses', Array.from(selectedStatuses).join(','));
+        }
         if (forceRefresh) params.append('refresh', 'true');
 
         const response = await apiFetch(`/customers?${params.toString()}`);
@@ -162,6 +381,15 @@ async function loadCustomers(forceRefresh = false) {
             updateStats(response.meta);
             renderPagination();
             updateSortIndicators();
+
+            // Guruh va status opsiyalarini yuklash/yangilash
+            if (response.meta.available_groups) {
+                renderGroupOptions(response.meta.available_groups);
+            }
+            if (response.meta.available_statuses) {
+                renderStatusOptions(response.meta.available_statuses);
+            }
+            checkFilterClearBtn();
         }
     } catch (error) {
         console.error('Xato:', error);
@@ -185,8 +413,8 @@ function renderCustomers(customers) {
                 <a href="javascript:void(0)" onclick="showCustomerDetail('${c.id}')" style="color:var(--primary);text-decoration:none;font-weight:700;">${c.name}</a>
             </td>
             <td>${c.phone ? `<a href="tel:${c.phone}" class="phone-link">📞 ${c.phone}</a>` : '—'}</td>
-            <td>${c.group || '—'}</td>
-            <td>${c.status || '—'}</td>
+            <td><span style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:11.5px; font-weight:600; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0;">🏷️ ${c.group || '—'}</span></td>
+            <td><span style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:11.5px; font-weight:600; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">📌 ${c.status || '—'}</span></td>
             <td class="balance-cell ${c.balance > 0.01 ? 'debt' : (c.balance < -0.01 ? 'paid' : 'paid')}">
                 ${formatCustomerBalance(c.balance)}
             </td>

@@ -369,9 +369,9 @@ async function loadDashboard() {
 
         // 5. Jami Xarajatlar
         const expensesEl = document.getElementById('totalExpenses');
-        if (expensesEl) expensesEl.textContent = formatMoney(data.total_expenses || 22560000);
+        if (expensesEl) expensesEl.textContent = formatMoney(data.total_expenses || 0);
         const expensesUsdEl = document.getElementById('totalExpensesUsd');
-        if (expensesUsdEl) expensesUsdEl.textContent = `~ ${formatUSD(data.total_expenses || 22560000)} USD`;
+        if (expensesUsdEl) expensesUsdEl.textContent = `~ ${formatUSD(data.total_expenses || 0)} USD`;
 
         // 6. Omborga Kirim (Eski Ombor zaxirasi o'rniga)
         const supplySumEl = document.getElementById('supplyInflowSum');

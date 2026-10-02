@@ -843,6 +843,9 @@
                 <button class="btn-fintech-action btn-new-expense" onclick="openQuickPayDrawer('expense')" title="Kassa yoki hisobdan chiqim/xarajat" style="font-size:12.5px; padding:7px 16px; font-weight:700;">
                     💸 Yangi Xarajat
                 </button>
+                <button class="btn-fintech-action" onclick="openTransferModal()" title="Hisoblar va kassalar o'rtasida pul ko'chirish" style="font-size:12.5px; padding:7px 16px; font-weight:700; background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:#fff; border:none; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);">
+                    🔄 Pul Ko'chirish
+                </button>
                 <button class="btn-fintech-action btn-accounts-overview" onclick="openAccountsModal()" title="Hisoblar va kassalar qoldiqlari" style="font-size:12px; padding:7px 14px; font-weight:700;">
                     🏦 Hisoblar & Kassalar
                 </button>
@@ -1254,6 +1257,82 @@
                         <button type="button" class="btn-print" onclick="closeAdjustmentModal()">Bekor qilish</button>
                         <button type="submit" id="saveAdjBtn" class="btn-primary-action">
                             💾 Korrektirovkani Saqlash
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5.1. Hisoblar o'rtasida Pul Ko'chirish Modali (Перемещение) -->
+    <div id="transferMoneyModal" class="modal">
+        <div class="modal-content" style="max-width: 520px; border-radius: 12px; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: #ffffff; border-radius: 11px 11px 0 0; padding: 14px 18px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:20px;">🔄</span>
+                    <h2 style="font-size:16px; font-weight:700; margin:0; color:#fff;">Hisoblar o'rtasida pul ko'chirish</h2>
+                </div>
+                <button class="close-btn" onclick="closeTransferModal()" style="color:#fff; opacity:0.85;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 18px 20px;">
+                <form id="transferMoneyForm" onsubmit="handleTransferSubmit(event)">
+                    
+                    <!-- Chiqim va Kirim hisoblari -->
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+                        <div class="form-group" style="margin:0;">
+                            <label for="transferFromAccount" style="font-size:12px; font-weight:700; color:#dc2626;">Chiqim hisobi (Qayerdan) *</label>
+                            <select id="transferFromAccount" class="form-control" required style="font-size:13px; font-weight:600; padding:8px 10px; border:1.5px solid #f87171; border-radius:8px;" onchange="onTransferAccountChange()">
+                            </select>
+                            <small id="transferFromBalanceHint" style="display:block; margin-top:3px; font-size:11.5px; color:var(--text-light); font-weight:600;">Qoldiq: —</small>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label for="transferToAccount" style="font-size:12px; font-weight:700; color:#16a34a;">Kirim hisobi (Qayerga) *</label>
+                            <select id="transferToAccount" class="form-control" required style="font-size:13px; font-weight:600; padding:8px 10px; border:1.5px solid #4ade80; border-radius:8px;" onchange="onTransferAccountChange()">
+                            </select>
+                            <small id="transferToBalanceHint" style="display:block; margin-top:3px; font-size:11.5px; color:var(--text-light); font-weight:600;">Qoldiq: —</small>
+                        </div>
+                    </div>
+
+                    <!-- Summa -->
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label for="transferAmount" style="font-size:12.5px; font-weight:700;">Ko'chirish summasi *</label>
+                        <div style="position:relative;">
+                            <input type="text" inputmode="numeric" id="transferAmount" class="form-control format-number" placeholder="0" required style="font-size:18px; font-weight:800; padding:8px 12px; border-radius:8px;" oninput="onTransferAmountInput()">
+                            <span id="transferCurrencyBadge" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-size:12px; font-weight:700; color:var(--text-light); background:#f1f5f9; padding:3px 8px; border-radius:6px;">UZS</span>
+                        </div>
+                    </div>
+
+                    <!-- Dollar va Kurs maydoni (agar Dollar hisob ishtirok etsa avtomatik chiqadi) -->
+                    <div id="transferRateBox" style="display:none; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:10px 14px; margin-bottom:14px;">
+                        <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:10px; align-items:center;">
+                            <div class="form-group" style="margin:0;">
+                                <label for="transferRateInput" style="font-size:11.5px; font-weight:700; color:#15803d;">📊 Dollar kursi (so'm):</label>
+                                <input type="text" inputmode="numeric" id="transferRateInput" class="form-control format-number" value="12 800" style="font-size:13px; font-weight:700; padding:6px 8px;" oninput="onTransferAmountInput()">
+                            </div>
+                            <div>
+                                <label style="font-size:11.5px; font-weight:700; color:#15803d;">🧮 Kirimdagi qiymat:</label>
+                                <div id="transferConvertedPreview" style="font-size:13.5px; font-weight:800; color:#16a34a; margin-top:3px;">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sana va Vaqt -->
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label for="transferMoment" style="font-size:12px; font-weight:600;">📅 Sana va vaqt</label>
+                        <input type="datetime-local" id="transferMoment" class="form-control" style="font-size:13px; padding:7px 10px; border-radius:8px;">
+                    </div>
+
+                    <!-- Izoh -->
+                    <div class="form-group" style="margin-bottom:16px;">
+                        <label for="transferDescription" style="font-size:12px; font-weight:600;">📝 Izoh / Tafsilot</label>
+                        <input type="text" id="transferDescription" class="form-control" placeholder="Masalan: Inkassatsiya, kassalararo o'tkazma..." style="font-size:13px; padding:7px 10px; border-radius:8px;">
+                    </div>
+
+                    <!-- Tugmalar -->
+                    <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:12px; border-top:1px solid #e2e8f0;">
+                        <button type="button" class="btn-print" onclick="closeTransferModal()" style="padding:8px 16px;">Bekor qilish</button>
+                        <button type="submit" id="saveTransferBtn" class="btn-primary-action" style="background:linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); font-size:13px; font-weight:700; padding:8px 20px; border-radius:8px; box-shadow:0 2px 6px rgba(79, 70, 229, 0.35);">
+                            💾 Ko'chirishni Saqlash
                         </button>
                     </div>
                 </form>

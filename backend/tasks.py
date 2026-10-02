@@ -58,13 +58,15 @@ async def sync_all_data():
             payments_task = ms_client.get_all_payments_cached()
             counterparties_task = ms_client.get_all_counterparties_cached()
             metadata_task = ms_client.get_demand_metadata()
+            cp_metadata_task = ms_client.get_counterparty_metadata()
+            groups_task = ms_client._request("GET", "/entity/group")
             balances_task = ms_client.get_all_balances()
             
             # Yangi: Barcha tovarlar keshi
             assortments_task = ms_client.get_all_assortments()
 
-            demands_resp, all_payments, counterparties, meta_resp, balances, assortments_resp = await asyncio.gather(
-                demands_task, payments_task, counterparties_task, metadata_task, balances_task, assortments_task, return_exceptions=True
+            demands_resp, all_payments, counterparties, meta_resp, cp_meta_resp, groups_resp, balances, assortments_resp = await asyncio.gather(
+                demands_task, payments_task, counterparties_task, metadata_task, cp_metadata_task, groups_task, balances_task, assortments_task, return_exceptions=True
             )
 
             if isinstance(demands_resp, Exception):
@@ -77,6 +79,10 @@ async def sync_all_data():
                 counterparties = []
             if isinstance(meta_resp, Exception):
                 meta_resp = {}
+            if isinstance(cp_meta_resp, Exception):
+                cp_meta_resp = {}
+            if isinstance(groups_resp, Exception) or not isinstance(groups_resp, dict):
+                groups_resp = {}
 
             raw_demands = demands_resp.get("rows", [])
             cashins = all_payments.get("cashins", [])
@@ -88,7 +94,7 @@ async def sync_all_data():
             else:
                 raw_assortments = []
 
-            # Kengaytirilgan xaritalar (Agent va State nomlarini tezkor topish)
+            # Kengaytirilgan xaritalar (Agent, State va Guruh nomlarini tezkor topish)
             cp_map = {c.get("id"): c.get("name", "Noma'lum") for c in counterparties if isinstance(c, dict) and c.get("id")}
             state_map = {}
             for s in meta_resp.get("states", []):
@@ -99,6 +105,18 @@ async def sync_all_data():
                         "color": s.get("color", 0),
                         "href": s.get("meta", {}).get("href", ""),
                     }
+
+            cp_state_map = {}
+            for s in cp_meta_resp.get("states", []):
+                sid = s.get("id") or extract_id_from_href(s.get("meta", {}).get("href", ""))
+                if sid:
+                    cp_state_map[sid] = s.get("name", "")
+
+            group_map = {}
+            for g in groups_resp.get("rows", []):
+                gid = g.get("id") or extract_id_from_href(g.get("meta", {}).get("href", ""))
+                if gid and g.get("name"):
+                    group_map[gid] = g["name"]
 
             # To'lovlarni hisoblash (MoySklad'ning o'zini native 'payedSum' ishlatiladi)
             # Endi bu yerda to'lovlarni qo'lda qidirib mapping qilish shart emas.
@@ -192,9 +210,22 @@ async def sync_all_data():
                         continue
                     existing_cp = existing_cps.get(cpid)
                     balance = balances.get(cpid, 0.0) if isinstance(balances, dict) else 0.0
+
+                    tags = cp.get("tags", [])
+                    g_obj = cp.get("group", {})
+                    gid = g_obj.get("id") or (extract_id_from_href(g_obj.get("meta", {}).get("href", "")) if isinstance(g_obj, dict) and g_obj.get("meta") else "")
+                    g_name = group_map.get(gid, "")
+                    group_val = ", ".join(tags) if tags else (g_name or "Основной")
+
+                    state_obj = cp.get("state", {})
+                    sid = state_obj.get("id") or (extract_id_from_href(state_obj.get("meta", {}).get("href", "")) if isinstance(state_obj, dict) and state_obj.get("meta") else "")
+                    status_val = state_obj.get("name") or cp_state_map.get(sid, "") or "Новый"
+
                     if existing_cp:
                         existing_cp.name = cp.get("name", "")
                         existing_cp.phone = cp.get("phone", "") or ""
+                        existing_cp.group = group_val
+                        existing_cp.status = status_val
                         # Agar balances API dan kelgan bo'lsa (bo'sh bo'lmasa), shuni ishlatamiz
                         if balances and len(balances) > 0:
                             existing_cp.balance = balances.get(cpid, 0.0)
@@ -204,6 +235,8 @@ async def sync_all_data():
                             name=cp.get("name", ""),
                             phone=cp.get("phone", "") or "",
                             balance=balances.get(cpid, 0.0) if balances and len(balances) > 0 else 0.0,
+                            group=group_val,
+                            status=status_val,
                         ))
 
                 # LocalPayment larni yangilash
