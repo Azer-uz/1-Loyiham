@@ -186,9 +186,32 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise
     except Exception as e:
         print(f"[MoySklad auth] Ulanish xatosi: {e}")
+        # Oflayn zaxira: Agar MoySklad texnik ishlarda bo'lsa, lokal SQLite bazadagi foydalanuvchini tekshirish
+        try:
+            res = await db.execute(select(User).where(User.username == username))
+            local_u = res.scalars().first()
+            if local_u and verify_password(password, local_u.hashed_password):
+                token = create_access_token(data={"sub": local_u.username, "role": local_u.role})
+                return {
+                    "success": True,
+                    "access_token": token,
+                    "token_type": "bearer",
+                    "role": local_u.role,
+                    "full_name": local_u.full_name or local_u.username,
+                    "user": {
+                        "id": local_u.id,
+                        "username": local_u.username,
+                        "role": local_u.role,
+                        "full_name": local_u.full_name or local_u.username,
+                        "avatar_url": local_u.avatar_url or "",
+                    }
+                }
+        except Exception as dbe:
+            print(f"[Offline auth fallback error] {dbe}")
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="MoySklad serveri bilan bog'lanishda xatolik. Iltimos, qayta urinib ko'ring.",
+            detail="MoySklad serverida texnik ishlar olib borilmoqda. Iltimos, bir ozdan so'ng qayta urinib ko'ring.",
         )
 
     if not ms_auth_success:
