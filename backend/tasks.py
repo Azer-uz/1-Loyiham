@@ -52,26 +52,53 @@ async def sync_all_data():
         try:
             # 1. So'nggi 60 kunlik sotuvlar (demands) va to'lovlar
             sixty_days_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d 00:00:00")
-            now_str = datetime.now().strftime("%Y-%m-%d 23:59:59")
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            demands_task = ms_client.get_demands(limit=1000, offset=0, moment_from=sixty_days_ago, moment_to=now_str)
+            # Demands: Paginatsiya bilan BARCHA sotuvlarni olish (eng yangilaridan boshlab - moment,desc)
+            async def fetch_demands_paginated():
+                all_demands = []
+                demand_offset = 0
+                demand_page_limit = 1000
+                while True:
+                    try:
+                        page_resp = await ms_client.get_demands(
+                            limit=demand_page_limit,
+                            offset=demand_offset,
+                            moment_from=sixty_days_ago,
+                            moment_to=now_str,
+                            order="moment,desc",
+                        )
+                        if isinstance(page_resp, Exception):
+                            print(f"❌ [Sync Error Demands page {demand_offset}] {page_resp}")
+                            break
+                        page_rows = page_resp.get("rows", [])
+                        all_demands.extend(page_rows)
+                        meta_size = page_resp.get("meta", {}).get("size", 0)
+                        print(f"📦 [Sync] Demands sahifa: offset={demand_offset}, olindi={len(page_rows)}, jami API da={meta_size}")
+                        if len(page_rows) < demand_page_limit or len(all_demands) >= meta_size:
+                            break
+                        demand_offset += demand_page_limit
+                    except Exception as e:
+                        print(f"❌ [Sync Error Demands page {demand_offset}] {e}")
+                        break
+                return all_demands
+
+            demands_task = fetch_demands_paginated()
             payments_task = ms_client.get_all_payments_cached()
             counterparties_task = ms_client.get_all_counterparties_cached()
             metadata_task = ms_client.get_demand_metadata()
             cp_metadata_task = ms_client.get_counterparty_metadata()
             groups_task = ms_client._request("GET", "/entity/group")
             balances_task = ms_client.get_all_balances()
-            
-            # Yangi: Barcha tovarlar keshi
             assortments_task = ms_client.get_all_assortments()
 
-            demands_resp, all_payments, counterparties, meta_resp, cp_meta_resp, groups_resp, balances, assortments_resp = await asyncio.gather(
+            raw_demands, all_payments, counterparties, meta_resp, cp_meta_resp, groups_resp, balances, assortments_resp = await asyncio.gather(
                 demands_task, payments_task, counterparties_task, metadata_task, cp_metadata_task, groups_task, balances_task, assortments_task, return_exceptions=True
             )
 
-            if isinstance(demands_resp, Exception):
-                print(f"❌ [Sync Error Demands] {demands_resp}")
-                return {"status": "error", "message": str(demands_resp)}
+            if isinstance(raw_demands, Exception) or not isinstance(raw_demands, list):
+                print(f"❌ [Sync Error Demands] {raw_demands}")
+                raw_demands = []
             if isinstance(all_payments, Exception):
                 print(f"❌ [Sync Error Payments] {all_payments}")
                 return {"status": "error", "message": str(all_payments)}
@@ -83,8 +110,6 @@ async def sync_all_data():
                 cp_meta_resp = {}
             if isinstance(groups_resp, Exception) or not isinstance(groups_resp, dict):
                 groups_resp = {}
-
-            raw_demands = demands_resp.get("rows", [])
             cashins = all_payments.get("cashins", [])
             paymentins = all_payments.get("paymentins", [])
             if isinstance(assortments_resp, list):

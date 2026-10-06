@@ -264,6 +264,7 @@ async def list_demands(
             offset=fetch_offset,
             moment_from=moment_from,
             moment_to=moment_to,
+            order="moment,desc",
         )
         payments_task = ms_client.get_all_payments_cached()
 
@@ -597,6 +598,113 @@ async def search_assortment(query: str = Query(..., min_length=1), db: AsyncSess
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ================= SINX DIAGNOSTIKA =================
+@router.get("/sync-debug")
+async def sync_debug(
+    search_name: Optional[str] = Query(None, description="Sotuv nomi bo'yicha qidirish (masalan: 01273)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Sinxronizatsiya diagnostikasi: MoySklad API va lokal DB ni solishtirish.
+    01273 sotuv kelmagan? - Shu endpoint orqali tekshirish mumkin.
+    """
+    from datetime import datetime, timedelta
+    import time as t_mod
+
+    result = {
+        "server_time": datetime.now().isoformat(),
+        "server_timezone": t_mod.strftime("%z"),
+    }
+
+    # 1. Lokal DB da bu sotuv bormi?
+    if search_name:
+        s_term = f"%{search_name.strip()}%"
+        local_query = select(LocalDemand).where(
+            or_(LocalDemand.name.ilike(s_term), LocalDemand.description.ilike(s_term))
+        )
+        local_results = (await db.execute(local_query)).scalars().all()
+        result["local_db_found"] = [
+            {
+                "id": d.id,
+                "name": d.name,
+                "moment": d.moment,
+                "sum": d.sum,
+                "agent_name": d.agent_name,
+                "state_name": d.state_name,
+            }
+            for d in local_results
+        ]
+        result["local_db_count"] = len(local_results)
+
+        # 2. MoySklad API'dan to'g'ridan-to'g'ri qidirish
+        try:
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            api_resp = await ms_client.get_demands(
+                limit=100,
+                offset=0,
+                moment_from=f"{today_str} 00:00:00",
+                moment_to=f"{today_str} 23:59:59",
+                order="moment,desc"
+            )
+            api_rows = api_resp.get("rows", [])
+            api_meta = api_resp.get("meta", {})
+            
+            matched_api = []
+            for d in api_rows:
+                name = d.get("name", "")
+                if search_name.lower() in name.lower():
+                    agent = d.get("agent", {})
+                    matched_api.append({
+                        "id": d.get("id"),
+                        "name": name,
+                        "moment": d.get("moment"),
+                        "sum": d.get("sum", 0) / 100.0,
+                        "agent_name": agent.get("name", "?") if isinstance(agent, dict) else "?",
+                        "created": d.get("created"),
+                        "updated": d.get("updated"),
+                    })
+            
+            result["moysklad_api_today_total"] = api_meta.get("size", 0)
+            result["moysklad_api_matched"] = matched_api
+            result["moysklad_api_matched_count"] = len(matched_api)
+        except Exception as e:
+            result["moysklad_api_error"] = str(e)
+
+    # 3. Umumiy statistika
+    total_local = await db.scalar(select(func.count(LocalDemand.id)))
+    result["total_local_demands"] = total_local or 0
+
+    # 4. Eng oxirgi 5 ta lokal sotuv (moment bo'yicha)
+    latest_local = (await db.execute(
+        select(LocalDemand).order_by(desc(LocalDemand.moment)).limit(5)
+    )).scalars().all()
+    result["latest_local_demands"] = [
+        {"name": d.name, "moment": d.moment, "agent_name": d.agent_name}
+        for d in latest_local
+    ]
+
+    # 5. Sync log
+    try:
+        from models_db import SyncLog
+        latest_sync = (await db.execute(
+            select(SyncLog).order_by(desc(SyncLog.synced_at)).limit(3)
+        )).scalars().all()
+        result["latest_sync_logs"] = [
+            {
+                "entity_type": s.entity_type,
+                "records_synced": s.records_synced,
+                "status": s.status,
+                "message": s.message,
+                "synced_at": s.synced_at.isoformat() if s.synced_at else None,
+            }
+            for s in latest_sync
+        ]
+    except Exception as e:
+        result["sync_log_error"] = str(e)
+
+    return {"success": True, "data": result}
 
 
 # ================= STATUSLAR =================

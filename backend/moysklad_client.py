@@ -95,7 +95,7 @@ class MoySkladClient:
 
         if self._client is None or self._client.is_closed or self._client_loop is not cur_loop:
             self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(15.0, connect=5.0),
+                timeout=httpx.Timeout(45.0, connect=10.0, read=45.0, write=15.0),
                 limits=httpx.Limits(
                     max_connections=20,
                     max_keepalive_connections=10,
@@ -266,13 +266,17 @@ class MoySkladClient:
         moment_from: Optional[str] = None,
         moment_to: Optional[str] = None,
         counterparty_id: Optional[str] = None,
+        order: str = "moment,desc",
+        expand: str = "agent,state",
     ) -> Dict:
-        """Otgruzkalar ro'yxati"""
+        """Otgruzkalar ro'yxati (yangi sotuvlar birinchi bo'lib keladi)"""
         params: Dict[str, Any] = {
             "limit": limit,
             "offset": offset,
-            "expand": "agent,organization,state"
+            "order": order,
         }
+        if expand:
+            params["expand"] = expand
         filters = []
         if moment_from:
             filters.append(f"moment>={moment_from}")
@@ -832,7 +836,7 @@ class MoySkladClient:
                 safe_print("Sotuvlar keshi yangilanmoqda...")
                 resp = await self._request(
                     "GET", "/entity/demand",
-                    params={"limit": 1000, "expand": "agent"}
+                    params={"limit": 1000, "order": "moment,desc", "expand": "agent"}
                 )
                 self._demands_cache["data"] = resp.get("rows", [])
                 self._demands_cache["timestamp"] = now
