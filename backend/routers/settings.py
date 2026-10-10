@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -7,6 +7,10 @@ import json
 import uuid
 import asyncio
 import time
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from database import get_db
+from models_db import AppSetting
 from moysklad_client import ms_client
 
 router = APIRouter()
@@ -453,35 +457,65 @@ async def adjust_account_balance(req: BalanceAdjustmentRequest):
 
 
 # ===== CHEK SOZLAMALARI API (Serverda saqlash — barcha qurilmalarda bir xil) =====
+DEFAULT_RECEIPT_CONFIG = {
+    "storeName": "SAID BARAKA",
+    "slogan": "Halollik foydadan ustun!",
+    "phones": "+998 97 677 22 22",
+    "address": "Abu Saxiy, Titanik (-1) podval C34 & D33",
+    "footerNote": "Xaridingiz uchun rahmat! Sotilgan tovarlar 3 kun ichida chek bilan almashtiriladi.",
+    "fontSize": "large"
+}
+
+
 @router.get("/receipt")
-async def get_receipt_settings():
-    """Chek shablon sozlamalarini olish (serverda saqlanadi)"""
+async def get_receipt_settings(db: AsyncSession = Depends(get_db)):
+    """Chek shablon sozlamalarini olish (SQLite DB dan doimiy o'qish)"""
+    try:
+        db_setting = await db.scalar(select(AppSetting).where(AppSetting.key == "receipt_settings"))
+        if db_setting and db_setting.value:
+            data = json.loads(db_setting.value)
+            if isinstance(data, dict) and data.get("storeName"):
+                return {"success": True, "data": data}
+    except Exception as e:
+        print(f"⚠️ Receipt settings DB o'qishda xato: {e}")
+
     settings = load_settings()
-    receipt = settings.get("receipt_settings", {
-        "storeName": "MODERN MEN'S WEAR",
-        "slogan": "Erkaklar kiyimlarining ulgurji savdosi",
-        "phones": "+998 90 123-45-67",
-        "address": "Toshkent sh., Abu Saxiy bozori",
-        "footerNote": "Xaridingiz uchun rahmat! Sotilgan tovarlar 3 kun ichida chek bilan almashtiriladi.",
-        "fontSize": "large"
-    })
+    receipt = settings.get("receipt_settings", DEFAULT_RECEIPT_CONFIG)
     return {"success": True, "data": receipt}
 
 
 @router.post("/receipt")
-async def save_receipt_settings(req: Dict[str, Any]):
-    """Chek shablon sozlamalarini saqlash (serverda doimiy)"""
-    settings = load_settings()
-    settings["receipt_settings"] = {
-        "storeName": (req.get("storeName") or "").strip() or "MODERN MEN'S WEAR",
-        "slogan": (req.get("slogan") or "").strip(),
-        "phones": (req.get("phones") or "").strip(),
-        "address": (req.get("address") or "").strip(),
-        "footerNote": (req.get("footerNote") or "").strip(),
+async def save_receipt_settings(req: Dict[str, Any], db: AsyncSession = Depends(get_db)):
+    """Chek shablon sozlamalarini saqlash (SQLite DB ga doimiy yozish — kesh tozalansa ham o'chmaydi)"""
+    receipt_data = {
+        "storeName": (req.get("storeName") or "").strip() or DEFAULT_RECEIPT_CONFIG["storeName"],
+        "slogan": (req.get("slogan") or "").strip() or DEFAULT_RECEIPT_CONFIG["slogan"],
+        "phones": (req.get("phones") or "").strip() or DEFAULT_RECEIPT_CONFIG["phones"],
+        "address": (req.get("address") or "").strip() or DEFAULT_RECEIPT_CONFIG["address"],
+        "footerNote": (req.get("footerNote") or "").strip() or DEFAULT_RECEIPT_CONFIG["footerNote"],
         "fontSize": req.get("fontSize") or "large",
     }
-    save_settings(settings)
-    return {"success": True, "message": "Chek sozlamalari muvaffaqiyatli saqlandi!"}
+
+    # 1. SQLite bazaga doimiy yozish (Git yoki kesh hech qachon o'chirolmaydi)
+    try:
+        db_setting = await db.scalar(select(AppSetting).where(AppSetting.key == "receipt_settings"))
+        if db_setting:
+            db_setting.value = json.dumps(receipt_data, ensure_ascii=False)
+        else:
+            db.add(AppSetting(key="receipt_settings", value=json.dumps(receipt_data, ensure_ascii=False)))
+        await db.commit()
+    except Exception as e:
+        print(f"⚠️ Receipt settings DB ga yozishda xato: {e}")
+
+    # 2. JSON faylga ham backup sifatida yozish
+    try:
+        settings = load_settings()
+        settings["receipt_settings"] = receipt_data
+        save_settings(settings)
+    except Exception as e:
+        print(f"⚠️ Receipt settings JSON ga yozishda xato: {e}")
+
+    return {"success": True, "data": receipt_data, "message": "Chek sozlamalari bazada doimiy saqlandi!"}
 
 
 @router.get("/reference-rate")

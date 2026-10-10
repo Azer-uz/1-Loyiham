@@ -22,11 +22,12 @@ let demandSortDir = 'asc';
 
 async function loadPaymentSettings() {
     try {
-        const [methodsResp, accsResp, rateResp, custResp] = await Promise.all([
+        const [methodsResp, accsResp, rateResp, custResp, rcptResp] = await Promise.all([
             apiFetch('/settings/payment-methods').catch(() => null),
             apiFetch('/settings/accounts').catch(() => null),
             apiFetch('/settings/reference-rate').catch(() => null),
-            apiFetch('/customers?limit=2000').catch(() => null)
+            apiFetch('/customers?limit=2000').catch(() => null),
+            apiFetch('/settings/receipt').catch(() => null)
         ]);
         if (custResp && custResp.success && custResp.data) {
             window.allLoadedCustomers = Array.isArray(custResp.data) ? custResp.data : (custResp.data.customers || []);
@@ -44,6 +45,10 @@ async function loadPaymentSettings() {
         }
         if (rateResp && rateResp.success && rateResp.data && rateResp.data.rate && !appPaymentMethods.some(m => (m.id === 'usd' || m.currency === 'USD') && m.default_rate)) {
             appReferenceRate = rateResp.data.rate;
+        }
+        if (rcptResp && rcptResp.success && rcptResp.data) {
+            cachedReceiptSettings = rcptResp.data;
+            try { localStorage.setItem('moysklad_receipt_settings', JSON.stringify(rcptResp.data)); } catch(e){}
         }
         window.appReferenceRate = appReferenceRate;
     } catch (e) {
@@ -1717,10 +1722,10 @@ async function printDemandsList(format = 'a4') {
 
 // ===== 80MM XPRINTER CHEK CHOP ETISH & SOZLAMALARI =====
 const DEFAULT_RECEIPT_SETTINGS = {
-    storeName: "MODERN MEN'S WEAR",
-    slogan: "Erkaklar kiyimlarining ulgurji savdosi",
-    phones: "+998 90 123-45-67",
-    address: "Toshkent sh., Abu Saxiy bozori",
+    storeName: "SAID BARAKA",
+    slogan: "Halollik foydadan ustun!",
+    phones: "+998 97 677 22 22",
+    address: "Abu Saxiy, Titanik (-1) podval C34 & D33",
     footerNote: "Xaridingiz uchun rahmat! Sotilgan tovarlar 3 kun ichida chek bilan almashtiriladi.",
     fontSize: "large"
 };
@@ -1734,7 +1739,7 @@ async function loadReceiptSettingsFromServer() {
         const resp = await apiFetch('/settings/receipt');
         if (resp && resp.success && resp.data) {
             cachedReceiptSettings = resp.data;
-            localStorage.setItem('moysklad_receipt_settings', JSON.stringify(resp.data));
+            try { localStorage.setItem('moysklad_receipt_settings', JSON.stringify(resp.data)); } catch(e){}
             return cachedReceiptSettings;
         }
     } catch (e) {
@@ -1755,8 +1760,14 @@ function getReceiptSettings() {
     return { ...DEFAULT_RECEIPT_SETTINGS };
 }
 
-function openReceiptSettingsModal() {
-    const s = getReceiptSettings();
+async function openReceiptSettingsModal() {
+    let s = cachedReceiptSettings;
+    if (!s) {
+        s = await loadReceiptSettingsFromServer();
+    }
+    if (!s) {
+        s = getReceiptSettings();
+    }
     document.getElementById('rcpt_store_name').value = s.storeName || '';
     document.getElementById('rcpt_slogan').value = s.slogan || '';
     document.getElementById('rcpt_phones').value = s.phones || '';
@@ -1781,7 +1792,7 @@ async function saveReceiptSettings() {
     };
 
     cachedReceiptSettings = s;
-    localStorage.setItem('moysklad_receipt_settings', JSON.stringify(s));
+    try { localStorage.setItem('moysklad_receipt_settings', JSON.stringify(s)); } catch(e){}
 
     try {
         await apiFetch('/settings/receipt', {
@@ -1792,7 +1803,7 @@ async function saveReceiptSettings() {
         console.warn("Serverga chek sozlamalarini saqlashda xatolik:", e);
     }
 
-    alert('✅ Chek sozlamalari muvaffaqiyatli saqlandi!');
+    alert('✅ Chek sozlamalari server bazasida doimiy saqlandi!');
     closeReceiptSettingsModal();
 }
 
