@@ -2,6 +2,7 @@
 *.xlsx
 powershell.txt
 *.bat
+.server_ip
 
 # Python keshi va vaqtinchalik fayllari
 __pycache__/
