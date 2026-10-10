@@ -2,7 +2,7 @@
 import asyncio
 import time
 from datetime import datetime, timedelta
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from database import AsyncSessionLocal
