@@ -265,6 +265,7 @@ class MoySkladClient:
         offset: int = 0,
         moment_from: Optional[str] = None,
         moment_to: Optional[str] = None,
+        updated_from: Optional[str] = None,
         counterparty_id: Optional[str] = None,
         order: str = "moment,desc",
         expand: str = "agent,state",
@@ -282,6 +283,8 @@ class MoySkladClient:
             filters.append(f"moment>={moment_from}")
         if moment_to:
             filters.append(f"moment<={moment_to}")
+        if updated_from:
+            filters.append(f"updated>={updated_from}")
         if counterparty_id:
             filters.append(f"agent.id={counterparty_id}")
         if filters:

@@ -294,6 +294,10 @@ async function loadDemands() {
         if (currentStateFilter && currentStateFilter !== 'all') {
             params.append('state_filter', currentStateFilter);
         }
+        if (demandSortField) {
+            params.append('sort_by', demandSortField);
+            params.append('sort_dir', demandSortDir || 'desc');
+        }
 
         const response = await apiFetch(`/demands?${params.toString()}`);
         if (response && response.success) {
@@ -302,6 +306,7 @@ async function loadDemands() {
             totalSize = (response.meta && response.meta.size !== undefined) ? response.meta.size : (response.data ? response.data.length : 0);
             updateResultsCount();
             renderPagination();
+            updateDemandSortIndicators();
         } else {
             if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:red;">Xatolik: Sotuvlarni olib bo'lmadi</td></tr>`;
         }
@@ -387,7 +392,7 @@ function renderPagination() {
 
 function goToPage(page) { currentOffset = (page - 1) * pageSize; loadDemands(); }
 
-// ===== USTUNLAR BO'YICHA SARALASH (CLIENT-SIDE) =====
+// ===== USTUNLAR BO'YICHA SARALASH (SERVER-SIDE / BUTUN BAZA BO'YICHA) =====
 function sortDemandsBy(field) {
     if (demandSortField === field) {
         demandSortDir = demandSortDir === 'asc' ? 'desc' : 'asc';
@@ -396,26 +401,48 @@ function sortDemandsBy(field) {
         demandSortDir = (field === 'sum' || field === 'remaining') ? 'desc' : 'asc';
     }
 
-    const comparators = {
-        'name': (a, b) => (a.name || '').localeCompare(b.name || '', 'uz'),
-        'moment': (a, b) => (a.moment || '').localeCompare(b.moment || ''),
-        'agent_name': (a, b) => (a.agent_name || '').localeCompare(b.agent_name || '', 'uz'),
-        'sum': (a, b) => (a.sum || 0) - (b.sum || 0),
-        'remaining': (a, b) => (a.remaining || 0) - (b.remaining || 0),
-        'state_name': (a, b) => (a.state_name || '').localeCompare(b.state_name || '', 'uz'),
-        'payment_status': (a, b) => (a.payment_status || '').localeCompare(b.payment_status || ''),
-    };
-
-    const cmp = comparators[field];
-    if (!cmp) return;
-
-    currentLoadedDemands.sort((a, b) => {
-        const result = cmp(a, b);
-        return demandSortDir === 'asc' ? result : -result;
-    });
-
-    renderDemands(currentLoadedDemands);
+    // Server-side saralash: 1-sahifaga qaytib, butun baza bo'yicha saralab yuklaymiz
+    currentOffset = 0;
     updateDemandSortIndicators();
+    loadDemands();
+}
+
+// ===== BUTUN ARXIVNI QAYTA TO'LIQ SINXRONLASH =====
+async function triggerFullSync() {
+    if (!confirm("Barcha 1000+ ta sotuvlar MoySklad dan to'liq yuklansinmi? Bu orqa fonda amalga oshiriladi.")) return;
+    try {
+        const btn = document.getElementById('btnFullSync');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Yuklanmoqda...';
+        }
+        
+        const resp = await apiFetch('/demands/sync-full', { method: 'POST' });
+        if (resp && resp.success) {
+            alert("✅ To'liq arxiv sinxronizatsiyasi orqa fonda boshlandi. 5-10 soniya ichida barcha sotuvlar yuklanadi.");
+            setTimeout(() => {
+                currentOffset = 0;
+                loadDemands();
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '🔄 Arxivni yangilash';
+                }
+            }, 6000);
+        } else {
+            alert("Xatolik: Sinxronizatsiyani ishga tushirib bo'lmadi");
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🔄 Arxivni yangilash';
+            }
+        }
+    } catch (e) {
+        alert("Xato: " + e.message);
+        const btn = document.getElementById('btnFullSync');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔄 Arxivni yangilash';
+        }
+    }
 }
 
 function updateDemandSortIndicators() {

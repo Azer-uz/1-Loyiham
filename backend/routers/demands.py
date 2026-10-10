@@ -8,7 +8,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, desc, delete
+from sqlalchemy import select, func, or_, desc, asc, delete
 from database import get_db
 from models_db import LocalDemand, LocalAssortment, SyncQueue, LocalDemandPosition, LocalPayment
 import json
@@ -186,6 +186,8 @@ async def list_demands(
     date_to: Optional[str] = None,
     search: Optional[str] = None,
     state_filter: Optional[str] = None,
+    sort_by: Optional[str] = Query(None, description="name, moment, agent_name, sum, remaining, state_name, payment_status"),
+    sort_dir: Optional[str] = Query("desc", description="asc yoki desc"),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -217,9 +219,22 @@ async def list_demands(
                 query = query.where(*conditions)
                 count_query = count_query.where(*conditions)
 
+            # Ustun bo'yicha server-side saralash (butun baza bo'yicha)
+            sort_map = {
+                "name": LocalDemand.name,
+                "moment": LocalDemand.moment,
+                "agent_name": LocalDemand.agent_name,
+                "sum": LocalDemand.sum,
+                "remaining": LocalDemand.remaining,
+                "state_name": LocalDemand.state_name,
+                "payment_status": LocalDemand.payment_status,
+            }
+            order_col = sort_map.get(sort_by, LocalDemand.moment)
+            order_expr = asc(order_col) if sort_dir and sort_dir.lower() == "asc" else desc(order_col)
+
             total_filtered = (await db.scalar(count_query)) or 0
             results = (await db.execute(
-                query.order_by(desc(LocalDemand.moment)).offset(clean_offset).limit(clean_limit)
+                query.order_by(order_expr).offset(clean_offset).limit(clean_limit)
             )).scalars().all()
 
             formatted_results = [
@@ -779,6 +794,19 @@ async def sync_debug(
         result["sync_log_error"] = str(e)
 
     return {"success": True, "data": result}
+
+
+# ================= TO'LIQ ARXIV SINXRONIZATSIYASI =================
+@router.post("/sync-full")
+async def trigger_full_sync(background_tasks: BackgroundTasks):
+    """
+    Butun MoySklad bazasidagi barcha sotuvlarni (sana cheklovisiz) to'liq yuklab olish.
+    """
+    background_tasks.add_task(sync_all_data, force_full=True)
+    return {
+        "success": True,
+        "message": "To'liq arxiv sinxronizatsiyasi orqa fonda boshlandi. Barcha 1000+ ta sotuv yuklanmoqda."
+    }
 
 
 # ================= STATUSLAR =================

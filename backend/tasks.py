@@ -6,7 +6,7 @@ from sqlalchemy import select, delete
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from database import AsyncSessionLocal
-from models_db import LocalDemand, LocalPayment, LocalCounterparty, LocalAssortment, SyncLog, SyncQueue
+from models_db import LocalDemand, LocalPayment, LocalCounterparty, LocalAssortment, SyncLog, SyncQueue, AppSetting
 from moysklad_client import ms_client
 import json
 
@@ -39,22 +39,52 @@ def color_int_to_hex(color_int, state_name: str = "") -> str:
     return "#64748b"
 
 
-async def sync_all_data():
-    """MoySklad'dan eng so'nggi ma'lumotlarni tortib, lokal SQLite DB ga yozish"""
+async def sync_all_data(force_full: bool = False):
+    """
+    MoySklad ma'lumotlarini lokal SQLite DB ga sinxronlash:
+    - Boshida (yoki force_full=True bo'lsa) butun arxivdagi barcha sotuvlar sana cheklovisiz to'liq yuklanadi.
+    - Keyingi davriy sinxronizatsiyalarda esa faqat oxirgi o'zgargan (updated>=...) sotuvlar tezkor yangilanadi.
+    """
     if _sync_lock.locked():
         print("⏳ Sinxronizatsiya allaqachon bajarilmoqda, keyingi navbat kutiladi...")
         return {"status": "busy", "message": "Sinxronizatsiya allaqachon ketmoqda"}
 
     async with _sync_lock:
         start_time = time.time()
-        print("🔄 [Sync] MoySklad ma'lumotlarini lokal bazaga sinxronlash boshlandi...")
+        
+        # Baza holatini tekshirish: to'liq arxiv olinganmi va oxirgi sync qachon bo'lgan?
+        is_full_done = False
+        last_sync_time_str = None
+        try:
+            async with AsyncSessionLocal() as db_check:
+                full_done_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_full_sync_completed"))
+                last_sync_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_last_sync_time"))
+                is_full_done = (full_done_setting and full_done_setting.value == "true")
+                if last_sync_setting and last_sync_setting.value:
+                    last_sync_time_str = last_sync_setting.value
+        except Exception as e:
+            print(f"⚠️ AppSetting tekshirishda xato: {e}")
+
+        # Agar majburiy to'liq sync so'ralgan bo'lsa yoki baza hali to'liq yuklanmagan bo'lsa
+        do_full_archive_sync = force_full or (not is_full_done)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if do_full_archive_sync:
+            print("🔄 [Sync: TO'LIQ ARXIV] Barcha sotuvlar sana cheklovisiz MoySklad dan to'liq yuklanmoqda...")
+        else:
+            # Incremental sync: oxirgi sinxronizatsiya vaqtidan boshlab (15 daqiqa bufer bilan)
+            if last_sync_time_str:
+                try:
+                    last_dt = datetime.strptime(last_sync_time_str[:19], "%Y-%m-%d %H:%M:%S")
+                    updated_from_str = (last_dt - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    updated_from_str = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                updated_from_str = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"🔄 [Sync: INCREMENTAL] Faqat o'zgargan sotuvlar yangilanmoqda (updated>={updated_from_str})...")
 
         try:
-            # 1. So'nggi 60 kunlik sotuvlar (demands) va to'lovlar
-            sixty_days_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d 00:00:00")
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # Demands: Paginatsiya bilan BARCHA sotuvlarni olish (eng yangilaridan boshlab - moment,desc)
+            # Demands: Paginatsiya bilan sotuvlarni olish
             async def fetch_demands_paginated():
                 all_demands = []
                 demand_offset = 0
@@ -62,13 +92,22 @@ async def sync_all_data():
                 is_fully_fetched = False
                 while True:
                     try:
-                        page_resp = await ms_client.get_demands(
-                            limit=demand_page_limit,
-                            offset=demand_offset,
-                            moment_from=sixty_days_ago,
-                            moment_to=now_str,
-                            order="moment,desc",
-                        )
+                        if do_full_archive_sync:
+                            # TO'LIQ: sana filtrisiz, barcha sotuvlar
+                            page_resp = await ms_client.get_demands(
+                                limit=demand_page_limit,
+                                offset=demand_offset,
+                                order="moment,desc",
+                            )
+                        else:
+                            # INCREMENTAL: faqat o'zgarganlar (updated)
+                            page_resp = await ms_client.get_demands(
+                                limit=demand_page_limit,
+                                offset=demand_offset,
+                                updated_from=updated_from_str,
+                                order="updated,desc",
+                            )
+
                         if isinstance(page_resp, Exception):
                             print(f"❌ [Sync Error Demands page {demand_offset}] {page_resp}")
                             break
@@ -229,12 +268,11 @@ async def sync_all_data():
                         )
                         db.add(new_d)
 
-                # Fetch period windowing to delete orphaned demands (FAQAT 100% to'liq sinxronlangan holdagina!)
-                if is_fully_synced and len(raw_demands) > 0:
+                # Orphan deletion: FAQAT to'liq arxiv sync bo'lib, butun baza 100% olingandagina
+                if do_full_archive_sync and is_fully_synced and len(raw_demands) > 500:
                     for did, d_obj in existing_demands.items():
-                        if d_obj.moment and d_obj.moment >= sixty_days_ago and d_obj.moment <= now_str:
-                            if did not in processed_demand_ids:
-                                await db.delete(d_obj)
+                        if did not in processed_demand_ids:
+                            await db.delete(d_obj)
 
                 # LocalCounterparty ni yangilash
                 for cp in counterparties:
@@ -395,12 +433,24 @@ async def sync_all_data():
                         if aid not in processed_assortment_ids:
                             await db.delete(a_obj)
 
+                # AppSetting: Full sync va Oxirgi sync vaqtini saqlash
+                async def update_app_setting(k: str, v: str):
+                    s = await db.scalar(select(AppSetting).where(AppSetting.key == k))
+                    if s:
+                        s.value = v
+                    else:
+                        db.add(AppSetting(key=k, value=v))
+
+                if do_full_archive_sync and is_fully_synced:
+                    await update_app_setting("demands_full_sync_completed", "true")
+                await update_app_setting("demands_last_sync_time", now_str)
+
                 # SyncLog
                 db.add(SyncLog(
                     entity_type="demands_payments",
                     records_synced=len(raw_demands),
                     status="success",
-                    message=f"{len(raw_demands)} sotuv, {len(cashins)+len(paymentins)} to'lov sinxronlandi"
+                    message=f"{'To\'liq arxiv' if do_full_archive_sync else 'Incremental'}: {len(raw_demands)} sotuv, {len(cashins)+len(paymentins)} to'lov sinxronlandi"
                 ))
                 await db.commit()
 
