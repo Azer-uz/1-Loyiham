@@ -180,7 +180,7 @@ class DemandUpdateRequest(BaseModel):
 @router.get("")
 @router.get("/")
 async def list_demands(
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -191,7 +191,7 @@ async def list_demands(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        clean_limit = int(limit) if isinstance(limit, (int, float, str)) and str(limit).isdigit() else 50
+        clean_limit = int(limit) if isinstance(limit, (int, float, str)) and str(limit).isdigit() else 100
         clean_offset = int(offset) if isinstance(offset, (int, float, str)) and str(offset).isdigit() else 0
 
         # 1. Avval tezkor lokal DB dan tekshiramiz (Local-first architecture)

@@ -1,6 +1,6 @@
 // ===== GLOBAL O'ZGARUVCHILAR =====
 let currentOffset = 0;
-const pageSize = 50;
+const pageSize = 100;
 let totalSize = 0;
 let currentPeriod = 'today';
 let currentStateFilter = 'all';
