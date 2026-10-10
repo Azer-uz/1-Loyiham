@@ -46,8 +46,11 @@ async def sync_all_data(force_full: bool = False):
     - Keyingi davriy sinxronizatsiyalarda esa faqat oxirgi o'zgargan (updated>=...) sotuvlar tezkor yangilanadi.
     """
     if _sync_lock.locked():
-        print("⏳ Sinxronizatsiya allaqachon bajarilmoqda, keyingi navbat kutiladi...")
-        return {"status": "busy", "message": "Sinxronizatsiya allaqachon ketmoqda"}
+        if force_full:
+            print("⏳ Boshqa sync ketmoqda, lekin to'liq arxiv so'ralgani uchun lock kutilmoqda...")
+        else:
+            print("⏳ Sinxronizatsiya allaqachon bajarilmoqda, keyingi navbat kutiladi...")
+            return {"status": "busy", "message": "Sinxronizatsiya allaqachon ketmoqda"}
 
     async with _sync_lock:
         start_time = time.time()
@@ -55,22 +58,24 @@ async def sync_all_data(force_full: bool = False):
         # Baza holatini tekshirish: to'liq arxiv olinganmi va oxirgi sync qachon bo'lgan?
         is_full_done = False
         last_sync_time_str = None
+        local_demands_count = 0
         try:
             async with AsyncSessionLocal() as db_check:
                 full_done_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_full_sync_completed"))
                 last_sync_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_last_sync_time"))
+                local_demands_count = (await db_check.scalar(select(func.count(LocalDemand.id)))) or 0
                 is_full_done = (full_done_setting and full_done_setting.value == "true")
                 if last_sync_setting and last_sync_setting.value:
                     last_sync_time_str = last_sync_setting.value
         except Exception as e:
             print(f"⚠️ AppSetting tekshirishda xato: {e}")
 
-        # Agar majburiy to'liq sync so'ralgan bo'lsa yoki baza hali to'liq yuklanmagan bo'lsa
-        do_full_archive_sync = force_full or (not is_full_done)
+        # Agar majburiy to'liq sync so'ralgan bo'lsa yoki baza hali to'liq yuklanmagan bo'lsa (yoki 1300 tadan kam bo'lsa)
+        do_full_archive_sync = force_full or (not is_full_done) or (local_demands_count < 1300)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if do_full_archive_sync:
-            print("🔄 [Sync: TO'LIQ ARXIV] Barcha sotuvlar sana cheklovisiz MoySklad dan to'liq yuklanmoqda...")
+            print(f"🔄 [Sync: TO'LIQ ARXIV] Barcha sotuvlar sana cheklovisiz MoySklad dan to'liq yuklanmoqda (Hozir DB da: {local_demands_count})...")
         else:
             # Incremental sync: oxirgi sinxronizatsiya vaqtidan boshlab (15 daqiqa bufer bilan)
             if last_sync_time_str:
@@ -112,11 +117,14 @@ async def sync_all_data(force_full: bool = False):
                             print(f"❌ [Sync Error Demands page {demand_offset}] {page_resp}")
                             break
                         page_rows = page_resp.get("rows", [])
+                        if not page_rows:
+                            is_fully_fetched = True
+                            break
                         all_demands.extend(page_rows)
                         meta_size = page_resp.get("meta", {}).get("size", 0)
                         print(f"📦 [Sync] Demands sahifa: offset={demand_offset}, olindi={len(page_rows)}, jami API da={meta_size}")
-                        if len(page_rows) < demand_page_limit or len(all_demands) >= meta_size:
-                            is_fully_fetched = (len(all_demands) >= meta_size)
+                        if len(page_rows) < demand_page_limit or (meta_size > 0 and len(all_demands) >= meta_size):
+                            is_fully_fetched = (meta_size == 0 or len(all_demands) >= meta_size)
                             break
                         demand_offset += demand_page_limit
                     except Exception as e:
@@ -205,6 +213,11 @@ async def sync_all_data(force_full: bool = False):
                         continue
                     processed_demand_ids.add(did)
                     existing = existing_demands.get(did)
+
+                    agent = d.get("agent", {}) if isinstance(d.get("agent"), dict) else {}
+                    agent_href = agent.get("meta", {}).get("href", "") if isinstance(agent, dict) else ""
+                    agent_id = extract_id_from_href(agent_href)
+
                     raw_agent_name = (agent.get("name") if isinstance(agent, dict) else None) or cp_map.get(agent_id)
                     if not raw_agent_name or raw_agent_name == "Noma'lum":
                         agent_name = existing.agent_name if (existing and existing.agent_name and existing.agent_name != "Noma'lum") else "Noma'lum"

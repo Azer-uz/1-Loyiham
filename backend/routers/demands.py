@@ -798,14 +798,16 @@ async def sync_debug(
 
 # ================= TO'LIQ ARXIV SINXRONIZATSIYASI =================
 @router.post("/sync-full")
-async def trigger_full_sync(background_tasks: BackgroundTasks):
+async def trigger_full_sync():
     """
     Butun MoySklad bazasidagi barcha sotuvlarni (sana cheklovisiz) to'liq yuklab olish.
     """
-    background_tasks.add_task(sync_all_data, force_full=True)
+    res = await sync_all_data(force_full=True)
+    count = res.get("count", 0) if isinstance(res, dict) else 0
     return {
         "success": True,
-        "message": "To'liq arxiv sinxronizatsiyasi orqa fonda boshlandi. Barcha 1000+ ta sotuv yuklanmoqda."
+        "count": count,
+        "message": f"To'liq arxiv sinxronlandi. Jami {count} ta sotuv bazaga yuklandi."
     }
 
 

@@ -33,10 +33,10 @@ async def main():
         print(f"\nCounterparties count: {c_count}")
 
         # SyncLog
-        logs = (await s.execute(select(SyncLog).order_by(SyncLog.timestamp.desc()).limit(5))).scalars().all()
+        logs = (await s.execute(select(SyncLog).order_by(SyncLog.created_at.desc()).limit(5))).scalars().all()
         print(f"\nRecent Sync Logs: {len(logs)}")
         for l in logs:
-            print(f"  SyncLog: type={l.entity_type}, status={l.status}, count={l.records_count}, time={l.timestamp}, detail={l.details}")
+            print(f"  SyncLog: type={l.entity_type}, status={l.status}, synced={l.records_synced}, time={l.created_at}, msg={l.message}")
 
 if __name__ == "__main__":
     asyncio.run(main())

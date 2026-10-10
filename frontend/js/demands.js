@@ -409,9 +409,9 @@ function sortDemandsBy(field) {
 
 // ===== BUTUN ARXIVNI QAYTA TO'LIQ SINXRONLASH =====
 async function triggerFullSync() {
-    if (!confirm("Barcha 1000+ ta sotuvlar MoySklad dan to'liq yuklansinmi? Bu orqa fonda amalga oshiriladi.")) return;
+    if (!confirm("Barcha 1300+ ta sotuvlar MoySklad dan to'liq yuklansinmi? Bu jarayon 3-5 soniya davom etadi.")) return;
+    const btn = document.getElementById('btnFullSync');
     try {
-        const btn = document.getElementById('btnFullSync');
         if (btn) {
             btn.disabled = true;
             btn.innerHTML = '⏳ Yuklanmoqda...';
@@ -419,25 +419,15 @@ async function triggerFullSync() {
         
         const resp = await apiFetch('/demands/sync-full', { method: 'POST' });
         if (resp && resp.success) {
-            alert("✅ To'liq arxiv sinxronizatsiyasi orqa fonda boshlandi. 5-10 soniya ichida barcha sotuvlar yuklanadi.");
-            setTimeout(() => {
-                currentOffset = 0;
-                loadDemands();
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '🔄 Arxivni yangilash';
-                }
-            }, 6000);
+            alert(`✅ To'liq arxiv sinxronlandi! Jami: ${resp.count || 'barcha'} ta sotuv bazaga yuklandi.`);
+            currentOffset = 0;
+            await loadDemands();
         } else {
-            alert("Xatolik: Sinxronizatsiyani ishga tushirib bo'lmadi");
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '🔄 Arxivni yangilash';
-            }
+            alert("Xatolik: Sinxronizatsiyani ishga tushirib bo'lmadi (" + (resp ? resp.message : '') + ")");
         }
     } catch (e) {
         alert("Xato: " + e.message);
-        const btn = document.getElementById('btnFullSync');
+    } finally {
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = '🔄 Arxivni yangilash';
