@@ -222,28 +222,102 @@ async def list_demands(
                 query.order_by(desc(LocalDemand.moment)).offset(clean_offset).limit(clean_limit)
             )).scalars().all()
 
+            formatted_results = [
+                {
+                    "id": d.id,
+                    "name": d.name,
+                    "moment": d.moment,
+                    "sum": d.sum,
+                    "payed_sum": d.payed_sum,
+                    "remaining": d.remaining,
+                    "payment_status": d.payment_status,
+                    "payment_status_name": d.payment_status_name,
+                    "state_name": d.state_name,
+                    "state_color": d.state_color,
+                    "state_id": d.state_id,
+                    "state_href": d.state_href,
+                    "agent_name": d.agent_name,
+                    "agent_id": d.agent_id,
+                    "description": d.description,
+                }
+                for d in results
+            ]
+
+            # Agar qidiruv (search) berilgan bo'lsa va 1-sahifada bo'lsa,
+            # MoySklad API dan ham parallel qidirib, lokal DB da bo'lmagan sotuvlarni qo'shamiz
+            if search and clean_offset == 0:
+                try:
+                    s_clean = search.strip()
+                    api_search_resp = await ms_client._request(
+                        "GET",
+                        "/entity/demand",
+                        params={"search": s_clean, "limit": 20, "order": "moment,desc", "expand": "agent,state"}
+                    )
+                    api_search_rows = api_search_resp.get("rows", [])
+                    existing_result_ids = {item["id"] for item in formatted_results}
+                    newly_found = []
+                    new_api_demands = []
+
+                    for ad in api_search_rows:
+                        adid = ad.get("id")
+                        if not adid or adid in existing_result_ids:
+                            continue
+
+                        agent_obj = ad.get("agent", {}) if isinstance(ad.get("agent"), dict) else {}
+                        agent_href = agent_obj.get("meta", {}).get("href", "")
+                        agent_id = agent_href.rstrip("/").split("/")[-1] if agent_href else ""
+                        agent_name = agent_obj.get("name") or "Noma'lum"
+
+                        state_obj = ad.get("state", {}) if isinstance(ad.get("state"), dict) else {}
+                        state_name = state_obj.get("name", "—")
+                        state_href = state_obj.get("meta", {}).get("href", "")
+                        state_id = state_href.rstrip("/").split("/")[-1] if state_href else ""
+
+                        d_sum = ad.get("sum", 0) / 100.0
+                        d_payed = ad.get("payedSum", 0) / 100.0
+                        d_rem = max(0.0, d_sum - d_payed)
+                        if d_rem <= 0.01:
+                            p_status = "paid"
+                            p_status_name = "To'langan"
+                        elif d_payed > 0:
+                            p_status = "partial"
+                            p_status_name = "Qisman"
+                        else:
+                            p_status = "unpaid"
+                            p_status_name = "To'lanmagan"
+
+                        new_item = {
+                            "id": adid,
+                            "name": ad.get("name", ""),
+                            "moment": ad.get("moment", ""),
+                            "sum": d_sum,
+                            "payed_sum": d_payed,
+                            "remaining": d_rem,
+                            "payment_status": p_status,
+                            "payment_status_name": p_status_name,
+                            "state_name": state_name,
+                            "state_color": "#009fe3",
+                            "state_id": state_id,
+                            "state_href": state_href,
+                            "agent_name": agent_name,
+                            "agent_id": agent_id,
+                            "description": ad.get("description", "") or "",
+                        }
+                        newly_found.append(new_item)
+                        new_api_demands.append(ad)
+
+                    if newly_found:
+                        formatted_results.extend(newly_found)
+                        formatted_results.sort(key=lambda x: x.get("moment", ""), reverse=True)
+                        total_filtered += len(newly_found)
+                        from routers.customers import persist_missing_demands_to_db
+                        asyncio.create_task(persist_missing_demands_to_db(new_api_demands, "", ""))
+                except Exception as ex:
+                    pass
+
             return {
                 "success": True,
-                "data": [
-                    {
-                        "id": d.id,
-                        "name": d.name,
-                        "moment": d.moment,
-                        "sum": d.sum,
-                        "payed_sum": d.payed_sum,
-                        "remaining": d.remaining,
-                        "payment_status": d.payment_status,
-                        "payment_status_name": d.payment_status_name,
-                        "state_name": d.state_name,
-                        "state_color": d.state_color,
-                        "state_id": d.state_id,
-                        "state_href": d.state_href,
-                        "agent_name": d.agent_name,
-                        "agent_id": d.agent_id,
-                        "description": d.description,
-                    }
-                    for d in results
-                ],
+                "data": formatted_results,
                 "meta": {
                     "size": total_filtered,
                     "limit": clean_limit,

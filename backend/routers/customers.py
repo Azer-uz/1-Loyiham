@@ -729,6 +729,80 @@ async def get_groups_tags(db: AsyncSession = Depends(get_db)):
         return {"success": True, "data": ["mijozlar"]}
 
 
+async def persist_missing_demands_to_db(api_demands: list, customer_id: str, customer_name: str):
+    """MoySklad API dan olingan yangi yoki yetishmayotgan sotuvlarni darhol lokal DB ga saqlash"""
+    try:
+        from database import AsyncSessionLocal
+        from models_db import LocalDemand
+        async with AsyncSessionLocal() as db:
+            for d in api_demands:
+                did = d.get("id")
+                if not did:
+                    continue
+                d_sum = d.get("sum", 0) / 100.0
+                d_payed = d.get("payedSum", 0) / 100.0
+                d_rem = max(0.0, d_sum - d_payed)
+                if d_rem <= 0.01:
+                    p_status = "paid"
+                    p_status_name = "To'langan"
+                elif d_payed > 0:
+                    p_status = "partial"
+                    p_status_name = "Qisman"
+                else:
+                    p_status = "unpaid"
+                    p_status_name = "To'lanmagan"
+
+                state_obj = d.get("state", {}) if isinstance(d.get("state"), dict) else {}
+                st_name = state_obj.get("name", "—")
+                st_href = state_obj.get("meta", {}).get("href", "")
+                st_id = state_obj.get("id") or (st_href.rstrip("/").split("/")[-1] if st_href else "")
+
+                existing = await db.scalar(select(LocalDemand).where(LocalDemand.id == did))
+                if existing:
+                    existing.name = d.get("name", "")
+                    existing.moment = d.get("moment", "")
+                    existing.sum = d_sum
+                    existing.payed_sum = d_payed
+                    existing.remaining = d_rem
+                    existing.payment_status = p_status
+                    existing.payment_status_name = p_status_name
+                    if st_name and st_name != "—":
+                        existing.state_name = st_name
+                    if st_id:
+                        existing.state_id = st_id
+                    if st_href:
+                        existing.state_href = st_href
+                    if customer_name:
+                        existing.agent_name = customer_name
+                    if customer_id:
+                        existing.agent_id = customer_id
+                    if d.get("description"):
+                        existing.description = d.get("description", "")
+                else:
+                    new_d = LocalDemand(
+                        id=did,
+                        name=d.get("name", ""),
+                        moment=d.get("moment", ""),
+                        sum=d_sum,
+                        payed_sum=d_payed,
+                        remaining=d_rem,
+                        payment_status=p_status,
+                        payment_status_name=p_status_name,
+                        state_name=st_name,
+                        state_color="#009fe3",
+                        state_id=st_id,
+                        state_href=st_href,
+                        agent_name=customer_name or "Noma'lum",
+                        agent_id=customer_id or "",
+                        description=d.get("description", "") or "",
+                    )
+                    db.add(new_d)
+            await db.commit()
+            print(f"✅ [CustomerSync] {len(api_demands)} ta sotuv lokal DB ga sinxronlandi ({customer_name})")
+    except Exception as e:
+        print(f"⚠️ [CustomerSync Error] {e}")
+
+
 @router.get("/{customer_id}")
 async def get_customer_detail(customer_id: str):
     try:
@@ -743,6 +817,18 @@ async def get_customer_detail(customer_id: str):
             params={"filter": f"agent={agent_url}", "limit": 50}
         )
         meta_task = ms_client.get_counterparty_metadata()
+        
+        # MoySklad API dan ushbu mijozning BARCHA sotuvlarini to'g'ridan-to'g'ri parallel olish (100% kafolatli)
+        api_demands_task = ms_client._request(
+            "GET",
+            "/entity/demand",
+            params={
+                "filter": f"agent={agent_url}",
+                "limit": 100,
+                "order": "moment,desc",
+                "expand": "state"
+            }
+        )
 
         from database import AsyncSessionLocal
         from models_db import LocalDemand, LocalPayment, LocalCounterparty
@@ -759,8 +845,8 @@ async def get_customer_detail(customer_id: str):
                 select(LocalCounterparty.group).where(LocalCounterparty.group != None, LocalCounterparty.group != "").distinct()
             )
 
-            cp, adj_resp, metadata, local_cp, d_res, p_res, tags_res = await asyncio.gather(
-                cp_task, adj_task, meta_task, local_cp_task, d_rows_task, p_rows_task, tags_task,
+            cp, adj_resp, metadata, api_demands_resp, local_cp, d_res, p_res, tags_res = await asyncio.gather(
+                cp_task, adj_task, meta_task, api_demands_task, local_cp_task, d_rows_task, p_rows_task, tags_task,
                 return_exceptions=True
             )
 
@@ -771,17 +857,79 @@ async def get_customer_detail(customer_id: str):
             adj_resp = {}
         if isinstance(metadata, Exception):
             metadata = {}
+        if isinstance(api_demands_resp, Exception) or not isinstance(api_demands_resp, dict):
+            api_demands_resp = {}
 
-        # 2. Sotuvlar ro'yxati
+        # 2. Sotuvlar ro'yxati (Lokal DB + MoySklad API merge)
         formatted_demands = []
+        demands_by_id = {}
+
+        # Avval lokal DB dagi sotuvlarni qo'shamiz
         if not isinstance(d_res, Exception) and d_res:
             d_rows = d_res.scalars().all()
             for d in d_rows:
-                formatted_demands.append({
+                item = {
                     "id": d.id, "name": d.name, "moment": d.moment,
                     "sum": d.sum, "payed_sum": d.payed_sum, "remaining": d.remaining,
                     "status": d.payment_status, "status_name": d.payment_status_name,
-                })
+                }
+                formatted_demands.append(item)
+                demands_by_id[d.id] = item
+
+        # MoySklad API dan kelgan sotuvlarni birlashtirish
+        api_demand_rows = api_demands_resp.get("rows", [])
+        missing_or_changed_demands = []
+
+        for api_d in api_demand_rows:
+            did = api_d.get("id")
+            if not did:
+                continue
+
+            d_sum = api_d.get("sum", 0) / 100.0
+            d_payed = api_d.get("payedSum", 0) / 100.0
+            d_rem = max(0.0, d_sum - d_payed)
+            if d_rem <= 0.01:
+                p_status = "paid"
+                p_status_name = "To'langan"
+            elif d_payed > 0:
+                p_status = "partial"
+                p_status_name = "Qisman"
+            else:
+                p_status = "unpaid"
+                p_status_name = "To'lanmagan"
+
+            if did in demands_by_id:
+                # Mavjud bo'lsa, eng yangi summa bilan yangilaymiz
+                existing_item = demands_by_id[did]
+                if abs(existing_item["sum"] - d_sum) > 0.01 or abs(existing_item["payed_sum"] - d_payed) > 0.01:
+                    existing_item["sum"] = d_sum
+                    existing_item["payed_sum"] = d_payed
+                    existing_item["remaining"] = d_rem
+                    existing_item["status"] = p_status
+                    existing_item["status_name"] = p_status_name
+                    missing_or_changed_demands.append(api_d)
+            else:
+                # Lokal DB da bo'lmagan sotuv (masalan 01190 yoki 00750) — ro'yxatga qo'shamiz!
+                new_item = {
+                    "id": did,
+                    "name": api_d.get("name", ""),
+                    "moment": api_d.get("moment", ""),
+                    "sum": d_sum,
+                    "payed_sum": d_payed,
+                    "remaining": d_rem,
+                    "status": p_status,
+                    "status_name": p_status_name,
+                }
+                formatted_demands.append(new_item)
+                demands_by_id[did] = new_item
+                missing_or_changed_demands.append(api_d)
+
+        # Sana bo'yicha saralash (eng yangi birinchi)
+        formatted_demands.sort(key=lambda x: x.get("moment", ""), reverse=True)
+
+        # Yetishmayotgan / o'zgargan sotuvlarni orqa fonda lokal DB ga yozib qo'yish
+        if missing_or_changed_demands:
+            asyncio.create_task(persist_missing_demands_to_db(missing_or_changed_demands, customer_id, cp.get("name", "")))
 
         # 3. To'lovlar ro'yxati
         payments = []

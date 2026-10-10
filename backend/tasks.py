@@ -58,7 +58,8 @@ async def sync_all_data():
             async def fetch_demands_paginated():
                 all_demands = []
                 demand_offset = 0
-                demand_page_limit = 1000
+                demand_page_limit = 100
+                is_fully_fetched = False
                 while True:
                     try:
                         page_resp = await ms_client.get_demands(
@@ -76,12 +77,13 @@ async def sync_all_data():
                         meta_size = page_resp.get("meta", {}).get("size", 0)
                         print(f"📦 [Sync] Demands sahifa: offset={demand_offset}, olindi={len(page_rows)}, jami API da={meta_size}")
                         if len(page_rows) < demand_page_limit or len(all_demands) >= meta_size:
+                            is_fully_fetched = (len(all_demands) >= meta_size)
                             break
                         demand_offset += demand_page_limit
                     except Exception as e:
                         print(f"❌ [Sync Error Demands page {demand_offset}] {e}")
                         break
-                return all_demands
+                return all_demands, is_fully_fetched
 
             demands_task = fetch_demands_paginated()
             payments_task = ms_client.get_all_payments_cached()
@@ -92,13 +94,17 @@ async def sync_all_data():
             balances_task = ms_client.get_all_balances()
             assortments_task = ms_client.get_all_assortments()
 
-            raw_demands, all_payments, counterparties, meta_resp, cp_meta_resp, groups_resp, balances, assortments_resp = await asyncio.gather(
+            demands_res, all_payments, counterparties, meta_resp, cp_meta_resp, groups_resp, balances, assortments_resp = await asyncio.gather(
                 demands_task, payments_task, counterparties_task, metadata_task, cp_metadata_task, groups_task, balances_task, assortments_task, return_exceptions=True
             )
 
-            if isinstance(raw_demands, Exception) or not isinstance(raw_demands, list):
-                print(f"❌ [Sync Error Demands] {raw_demands}")
-                raw_demands = []
+            if isinstance(demands_res, tuple):
+                raw_demands, is_fully_synced = demands_res
+            elif isinstance(demands_res, list):
+                raw_demands, is_fully_synced = demands_res, False
+            else:
+                print(f"❌ [Sync Error Demands] {demands_res}")
+                raw_demands, is_fully_synced = [], False
             if isinstance(all_payments, Exception):
                 print(f"❌ [Sync Error Payments] {all_payments}")
                 return {"status": "error", "message": str(all_payments)}
@@ -159,10 +165,12 @@ async def sync_all_data():
                     if not did:
                         continue
                     processed_demand_ids.add(did)
-                    agent = d.get("agent", {})
-                    agent_href = agent.get("meta", {}).get("href", "") if isinstance(agent, dict) else ""
-                    agent_id = extract_id_from_href(agent_href)
-                    agent_name = (agent.get("name") if isinstance(agent, dict) else None) or cp_map.get(agent_id) or "Noma'lum"
+                    existing = existing_demands.get(did)
+                    raw_agent_name = (agent.get("name") if isinstance(agent, dict) else None) or cp_map.get(agent_id)
+                    if not raw_agent_name or raw_agent_name == "Noma'lum":
+                        agent_name = existing.agent_name if (existing and existing.agent_name and existing.agent_name != "Noma'lum") else "Noma'lum"
+                    else:
+                        agent_name = raw_agent_name
 
                     state = d.get("state", {}) if isinstance(d.get("state"), dict) else {}
                     state_href = state.get("meta", {}).get("href", "")
@@ -221,8 +229,8 @@ async def sync_all_data():
                         )
                         db.add(new_d)
 
-                # Fetch period windowing to delete orphaned demands
-                if len(raw_demands) > 0:
+                # Fetch period windowing to delete orphaned demands (FAQAT 100% to'liq sinxronlangan holdagina!)
+                if is_fully_synced and len(raw_demands) > 0:
                     for did, d_obj in existing_demands.items():
                         if d_obj.moment and d_obj.moment >= sixty_days_ago and d_obj.moment <= now_str:
                             if did not in processed_demand_ids:
