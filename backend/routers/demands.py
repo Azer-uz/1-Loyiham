@@ -886,20 +886,43 @@ async def get_demand_detail(demand_id: str):
 
             # Har bir tovar uchun alohida skidka foizi
             position_discount = float(pos.get("discount", 0) or 0)
-            
-            # Original narx (skidkasiz bazaviy narx)
-            original_price = (pos.get("price", 0) or 0) / 100.0
-            
-            if pos.get("discountedPrice"):
-                discounted_price = (pos.get("discountedPrice", 0) or 0) / 100.0
-            elif position_discount > 0:
-                discounted_price = original_price * (1.0 - position_discount / 100.0)
-            else:
-                discounted_price = original_price
+            pos_price = (pos.get("price", 0) or 0) / 100.0
 
-            final_sum = (sum_raw or 0) / 100.0
+            # Bazadagi haqiqiy katalog sotuv narxini aniqlash (qo'lda narx pasaytirilgan bo'lsa ham asl narxni bilish uchun)
+            catalog_price = None
+            sale_prices = assortment.get("salePrices") or []
+            for sp in sale_prices:
+                val = sp.get("value")
+                if val is not None and val > 0:
+                    catalog_price = float(val) / 100.0
+                    break
+            if not catalog_price and "product" in assortment and isinstance(assortment["product"], dict):
+                for sp in assortment["product"].get("salePrices", []):
+                    val = sp.get("value")
+                    if val is not None and val > 0:
+                        catalog_price = float(val) / 100.0
+                        break
+
+            # Haqiqiy sotilgan birlik narxi (har doim butun so'mda, tiyinlarsiz)
+            if pos.get("discountedPrice"):
+                discounted_price = round(float(pos.get("discountedPrice", 0) or 0) / 100.0)
+            elif position_discount > 0:
+                discounted_price = round(pos_price * (1.0 - position_discount / 100.0))
+            else:
+                discounted_price = round(pos_price)
+
+            # Agar kassir narxni tushirgan bo'lsa (masalan 195,000 lik tovarni 180,000 qilib yozgan bo'lsa):
+            if catalog_price and catalog_price > discounted_price + 0.5:
+                original_price = round(catalog_price)
+                diff = original_price - discounted_price
+                position_discount = round((diff / original_price) * 100.0, 1)
+            else:
+                original_price = discounted_price
+                position_discount = 0.0
+
+            final_sum = round(discounted_price * quantity)
             total_before_discount = original_price * quantity
-            discount_amount = max(0.0, total_before_discount - final_sum) if position_discount > 0 else 0.0
+            discount_amount = max(0.0, float(total_before_discount - final_sum)) if original_price > discounted_price else 0.0
 
             item_color = ""
             attributes = assortment.get("attributes", [])
@@ -917,21 +940,27 @@ async def get_demand_detail(demand_id: str):
                 "code": code or "—",
                 "name": assortment.get("name", "Noma'lum tovar"),
                 "quantity": quantity,
-                "price": original_price,  # Asl katalog narxi (tahrirlash va saqlash to'g'ri ishlashi uchun)
-                "discounted_price": discounted_price,  # Chegirmali narx
+                "price": discounted_price,  # Haqiqiy sotilgan butun narx (masalan, 180 000)
+                "discounted_price": discounted_price,
+                "original_price": original_price,  # Asl katalog bazaviy narxi (masalan, 195 000)
+                "catalog_price": original_price,
                 "sum": final_sum,
                 "discount": position_discount,
                 "discount_amount": discount_amount,
-                "original_price": original_price,
                 "color": item_color,
             })
 
         demand_discount = demand.get("discount", 0)
         avg_discount = demand_discount
         if not avg_discount and formatted_positions:
-            discounts = [p["discount"] for p in formatted_positions if p.get("discount") and p["discount"] > 0]
-            if discounts:
-                avg_discount = sum(discounts) / len(discounts)
+            total_cat_sum = sum(p.get("original_price", 0) * p.get("quantity", 0) for p in formatted_positions)
+            total_disc_amt = sum(p.get("discount_amount", 0) for p in formatted_positions)
+            if total_cat_sum > 0 and total_disc_amt > 0:
+                avg_discount = round((total_disc_amt / total_cat_sum) * 100.0, 2)
+            else:
+                discounts = [p["discount"] for p in formatted_positions if p.get("discount") and p["discount"] > 0]
+                if discounts:
+                    avg_discount = round(sum(discounts) / len(discounts), 2)
 
         # Bog'langan to'lovlarni xotiradagi to'lovlardan darhol bog'lash (0ms ekstra so'rov)
         demand_payment_hrefs = set()
@@ -1341,14 +1370,16 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
             pos_batch = []
             for p in update.positions:
                 if p.position_id:
-                    pos_batch.append({
+                    pos_dict = {
                         "id": p.position_id,
                         "quantity": p.quantity,
-                        "price": int(p.price * 100),
-                    })
+                        "price": int(round(p.price) * 100),
+                        "discount": 0.0,  # Foydalanuvchi talabi: MoySkladda foizli skidka emas, aniq butun narx saqlanadi
+                    }
+                    pos_batch.append(pos_dict)
             if pos_batch:
                 await ms_client.update_demand_positions_batch(demand_id, pos_batch)
-                print(f"   📦 {len(pos_batch)} ta pozitsiya batch yangilandi")
+                print(f"   📦 {len(pos_batch)} ta pozitsiya batch yangilandi (toza butun narx, skidka: 0%)")
 
         # 4. Mijoz (Agent) va Status o'zgartirish
         doc_update = {}
@@ -1382,45 +1413,9 @@ async def update_demand(demand_id: str, update: DemandUpdateRequest, db: AsyncSe
         if doc_update:
             await ms_client.update_demand(demand_id, doc_update)
 
-        # 5. Skidka (BATCH UPDATE — barcha tovarlarni bir so'rovda)
-        if (update.discount_type in ["sum", "percent"] and update.discount_value is not None) or update.discount is not None:
-            # Barcha pozitsiyalarni olish (yangilangan holatda)
-            positions_resp = await ms_client.get_demand_positions(demand_id)
-            positions = positions_resp.get("rows", [])
-
-            if positions:
-                # Umumiy summa
-                total_sum = sum(p.get("price", 0) * p.get("quantity", 0) for p in positions) / 100.0
-
-                # Skidka % ni hisoblash (MATEMATIK ANIQLIK BILAN)
-                if update.discount_type == "sum" and update.discount_value is not None:
-                    if total_sum > 0:
-                        discount_percent = (update.discount_value / total_sum) * 100
-                        discount_percent = min(discount_percent, 99.99)
-                        discount_percent = math.floor(discount_percent * 1_000_000) / 1_000_000
-                    else:
-                        discount_percent = 0
-                    print(f"   💰 Summa skidka: {update.discount_value} so'm = {discount_percent}%")
-                elif update.discount_type == "percent" and update.discount_value is not None:
-                    discount_percent = math.floor(update.discount_value * 1_000_000) / 1_000_000
-                    print(f"   💰 Foiz skidka: {discount_percent}%")
-                elif update.discount is not None:
-                    discount_percent = math.floor(update.discount * 1_000_000) / 1_000_000
-                else:
-                    discount_percent = 0
-
-                batch_data = []
-                for pos in positions:
-                    position_id = pos.get("id")
-                    if position_id:
-                        batch_data.append({
-                            "id": position_id,
-                            "discount": discount_percent,
-                        })
-
-                if batch_data:
-                    await ms_client.update_demand_positions_batch(demand_id, batch_data)
-                    print(f"   ✅ {len(batch_data)} ta tovarga {discount_percent}% skidka qo'llandi (1 so'rovda!)")
+        # 5. Skidka logikasi: MoySkladda foizli skidka qo'yilmaydi (bu tiyinlar va buzilishlarga olib kelmasligi uchun).
+        # Sotilgan aniq butun narx yuqoridagi 3-qadamda saqlangan.
+        # Skidka xulosasi esa ilovada va cheklarda katalog narxi bilan solishtirib avtomatik ko'rsatiladi.
 
         # 6. To'lov (Naqd / Karta / Dollar)
         payment_result = None

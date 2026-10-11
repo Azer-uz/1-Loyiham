@@ -657,21 +657,15 @@ function renderEditForm(demand, paymentsData, currentBalance) {
         return acc + (pos.price || 0) * (pos.quantity || 0);
     }, 0);
 
-    let existingDiscountPercent = demand.discount || 0;
-    let originalSumWithoutDiscount, existingDiscountAmount;
+    const catalogTotalFromPositions = (demand.positions || []).reduce((acc, pos) => {
+        return acc + (parseFloat(pos.original_price) || parseFloat(pos.price) || 0) * (pos.quantity || 0);
+    }, 0);
 
-    if (rawTotalFromPositions > demandSum) {
-        originalSumWithoutDiscount = Math.round(rawTotalFromPositions);
-        existingDiscountAmount = Math.round(rawTotalFromPositions - demandSum);
-        if (existingDiscountPercent === 0 && originalSumWithoutDiscount > 0) {
-            existingDiscountPercent = (existingDiscountAmount / originalSumWithoutDiscount) * 100.0;
-        }
-    } else if (existingDiscountPercent > 0 && existingDiscountPercent < 100) {
-        originalSumWithoutDiscount = Math.round(demandSum / (1 - existingDiscountPercent / 100.0));
-        existingDiscountAmount = Math.round(originalSumWithoutDiscount - demandSum);
-    } else {
-        originalSumWithoutDiscount = Math.round(demandSum);
-        existingDiscountAmount = 0;
+    let originalSumWithoutDiscount = catalogTotalFromPositions > demandSum ? catalogTotalFromPositions : (rawTotalFromPositions > demandSum ? rawTotalFromPositions : demandSum);
+    let existingDiscountAmount = Math.max(0, originalSumWithoutDiscount - demandSum);
+    let existingDiscountPercent = demand.discount || 0;
+    if (existingDiscountPercent === 0 && originalSumWithoutDiscount > 0 && existingDiscountAmount > 0) {
+        existingDiscountPercent = (existingDiscountAmount / originalSumWithoutDiscount) * 100.0;
     }
 
     window.deletedPositionIds = [];
@@ -691,6 +685,7 @@ function renderEditForm(demand, paymentsData, currentBalance) {
         position_id: p.position_id,
         quantity: p.quantity,
         price: p.price,
+        discount: p.discount || 0,
     }));
 
     const stateOptions = demandStates.map(s =>
@@ -1065,11 +1060,13 @@ function renderPositionsTable() {
         return;
     }
 
-    const discountDisplay = (window.currentDiscountPercent && window.currentDiscountPercent > 0)
-        ? `${Number(window.currentDiscountPercent.toFixed(6))}%`
-        : '—';
+    tbody.innerHTML = currentEditDemand.positions.map((p, i) => {
+        const origPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
+        const currentPrice = parseFloat(p.price) || 0;
+        const hasDiscount = (origPrice - currentPrice) > 0.5;
+        const rowDiscountPct = hasDiscount ? ((origPrice - currentPrice) / origPrice) * 100.0 : (parseFloat(p.discount) || 0);
 
-    tbody.innerHTML = currentEditDemand.positions.map((p, i) => `
+        return `
         <tr id="posRow_${i}" class="${p.is_new ? 'new-pos-row' : ''}">
             <td>
                 <strong style="color: var(--accent);">${p.code || '—'}</strong>
@@ -1083,12 +1080,17 @@ function renderPositionsTable() {
                     <button type="button" onclick="adjustPositionQty(${i}, 1)" style="border:1px solid #cbd5e1; background:#f8fafc; border-radius:0 4px 4px 0; padding:3px 7px; font-weight:700; cursor:pointer; font-size:12px; color:#475569;" title="1 taga oshirish">+</button>
                 </div>
             </td>
-            <td>
-                <input type="number" class="pos-price" data-index="${i}" value="${p.price}" min="0" step="100" oninput="recalculatePosition(${i})" style="font-weight:600;">
+            <td style="text-align:right;">
+                <div id="pos_orig_price_${i}" style="${hasDiscount ? 'display:block;' : 'display:none;'} font-size:11px; color:#94a3b8; text-decoration:line-through; font-weight:600; line-height:1.2; margin-bottom:2px;" title="Katalogdagi asl narxi">
+                    ${formatMoney(origPrice)}
+                </div>
+                <input type="number" class="pos-price" data-index="${i}" data-original-price="${origPrice}" value="${currentPrice}" min="0" step="100" oninput="recalculatePosition(${i})" style="font-weight:700; width:100%; text-align:right; ${hasDiscount ? 'border-color:#f59e0b; color:#b45309;' : ''}">
             </td>
-            <td class="pos-sum" id="pos_sum_${i}" style="font-weight:700; white-space:nowrap;">${formatMoney(p.quantity * p.price)}</td>
+            <td class="pos-sum" id="pos_sum_${i}" style="font-weight:700; white-space:nowrap;">${formatMoney(p.quantity * currentPrice)}</td>
             <td style="text-align:center;">
-                <span class="pos-discount-display" id="pos_discount_${i}">${p.discount ? Number(p.discount.toFixed(6)) + '%' : discountDisplay}</span>
+                <span class="pos-discount-display" id="pos_discount_${i}" style="display:inline-block; font-weight:700; font-size:11px; padding:2px 6px; border-radius:4px; ${rowDiscountPct > 0 ? 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;' : 'color:#94a3b8;'}">
+                    ${rowDiscountPct > 0 ? `-${rowDiscountPct.toFixed(1)}%` : '—'}
+                </span>
             </td>
             <td style="text-align:center; white-space:nowrap;">
                 ${(!p.is_new && currentEditDemand.id !== 'new') ? `
@@ -1099,7 +1101,8 @@ function renderPositionsTable() {
                 <button type="button" class="delete-pos-btn" onclick="deletePosition(${i})" title="O'chirish">🗑️</button>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 }
 
 window.adjustPositionQty = function(i, delta) {
@@ -1139,9 +1142,52 @@ function recalculatePosition(i) {
     const qty = qtyInputs[i] ? parseAmount(qtyInputs[i].value) : 0;
     const price = priceInputs[i] ? parseAmount(priceInputs[i].value) : 0;
 
-    currentEditDemand.positions[i].quantity = qty;
-    currentEditDemand.positions[i].price = price;
-    currentEditDemand.positions[i].sum = qty * price;
+    const pos = currentEditDemand.positions[i];
+    pos.quantity = qty;
+    pos.price = price;
+    pos.sum = qty * price;
+
+    const origPrice = parseFloat(pos.original_price) || parseFloat(priceInputs[i]?.getAttribute('data-original-price')) || price;
+    pos.original_price = origPrice;
+
+    // Har bir qator uchun alohida skidkani tekshirish va ko'rsatish
+    const origPriceEl = document.getElementById(`pos_orig_price_${i}`);
+    const discEl = document.getElementById(`pos_discount_${i}`);
+    const priceInputEl = priceInputs[i];
+
+    if (origPrice > price + 0.5) {
+        const rowPct = ((origPrice - price) / origPrice) * 100.0;
+        pos.discount = rowPct;
+        pos.discount_amount = (origPrice - price) * qty;
+        if (origPriceEl) {
+            origPriceEl.textContent = formatMoney(origPrice);
+            origPriceEl.style.display = 'block';
+        }
+        if (discEl) {
+            discEl.textContent = `-${rowPct.toFixed(1)}%`;
+            discEl.style.background = '#fef3c7';
+            discEl.style.color = '#b45309';
+            discEl.style.border = '1px solid #fde68a';
+        }
+        if (priceInputEl) {
+            priceInputEl.style.borderColor = '#f59e0b';
+            priceInputEl.style.color = '#b45309';
+        }
+    } else {
+        pos.discount = 0;
+        pos.discount_amount = 0;
+        if (origPriceEl) origPriceEl.style.display = 'none';
+        if (discEl) {
+            discEl.textContent = '—';
+            discEl.style.background = 'transparent';
+            discEl.style.color = '#94a3b8';
+            discEl.style.border = 'none';
+        }
+        if (priceInputEl) {
+            priceInputEl.style.borderColor = '';
+            priceInputEl.style.color = '';
+        }
+    }
 
     const sumEl = document.getElementById(`pos_sum_${i}`);
     if (sumEl) sumEl.textContent = formatMoney(qty * price);
@@ -1155,51 +1201,70 @@ function recalculateTotals(isInitial = false) {
     const qtyInputs = document.querySelectorAll('.pos-qty');
     const priceInputs = document.querySelectorAll('.pos-price');
 
-    let rawTotal = 0;
+    let currentTotal = 0;
+    let catalogTotal = 0;
+
     for (let i = 0; i < currentEditDemand.positions.length; i++) {
-        const qty = qtyInputs[i] ? parseAmount(qtyInputs[i].value) : (currentEditDemand.positions[i].quantity || 0);
-        const price = priceInputs[i] ? parseAmount(priceInputs[i].value) : (currentEditDemand.positions[i].price || 0);
-        rawTotal += qty * price;
+        const pos = currentEditDemand.positions[i];
+        const qty = qtyInputs[i] ? parseAmount(qtyInputs[i].value) : (pos.quantity || 0);
+        const price = priceInputs[i] ? parseAmount(priceInputs[i].value) : (pos.price || 0);
+        const origPrice = parseFloat(pos.original_price) || parseFloat(priceInputs[i]?.getAttribute('data-original-price')) || price;
+        currentTotal += qty * price;
+        catalogTotal += qty * origPrice;
     }
 
     const discountVal = parseAmount(document.getElementById('editDiscount')?.value);
     const discountType = window.currentDiscountType || 'sum';
 
-    let discountAmount = 0;
-    let discountPercent = 0;
+    let totalDiscountAmount = 0;
+    let totalDiscountPercent = 0;
 
-    if (isInitial && window.initialDiscountAmount !== undefined) {
-        discountAmount = window.initialDiscountAmount;
-        discountPercent = rawTotal > 0 ? (discountAmount / rawTotal) * 100.0 : 0;
-    } else if (discountType === 'percent') {
-        discountPercent = Math.min(Math.max(discountVal, 0), 99.99);
-        discountAmount = (rawTotal * discountPercent) / 100.0;
+    const baseForDiscount = catalogTotal > currentTotal ? catalogTotal : currentTotal;
+    const itemDiscountsSum = Math.max(0, catalogTotal - currentTotal);
+
+    if (window.isDiscountManuallyEdited) {
+        if (discountType === 'percent') {
+            totalDiscountPercent = Math.min(Math.max(discountVal, 0), 99.99);
+            totalDiscountAmount = (baseForDiscount * totalDiscountPercent) / 100.0;
+        } else {
+            totalDiscountAmount = Math.min(Math.max(discountVal, 0), baseForDiscount);
+            totalDiscountPercent = baseForDiscount > 0 ? (totalDiscountAmount / baseForDiscount) * 100.0 : 0;
+        }
+    } else if (isInitial && window.initialDiscountAmount !== undefined && window.initialDiscountAmount > 0) {
+        totalDiscountAmount = window.initialDiscountAmount;
+        totalDiscountPercent = baseForDiscount > 0 ? (totalDiscountAmount / baseForDiscount) * 100.0 : (window.existingDiscountPercent || 0);
     } else {
-        discountAmount = Math.min(Math.max(discountVal, 0), rawTotal);
-        discountPercent = rawTotal > 0 ? (discountAmount / rawTotal) * 100.0 : 0;
+        totalDiscountAmount = itemDiscountsSum;
+        totalDiscountPercent = baseForDiscount > 0 ? (totalDiscountAmount / baseForDiscount) * 100.0 : 0;
+        const discountInput = document.getElementById('editDiscount');
+        if (discountInput) {
+            if (discountType === 'percent') {
+                discountInput.value = Number(totalDiscountPercent.toFixed(2));
+            } else {
+                discountInput.value = formatNumber(Math.round(totalDiscountAmount));
+            }
+        }
     }
 
-    const finalSum = (isInitial && window.initialDemandSum !== undefined)
-        ? window.initialDemandSum
-        : Math.max(0, Math.round(rawTotal - discountAmount));
+    const finalSum = Math.max(0, Math.round(baseForDiscount - totalDiscountAmount));
     const paid = window.demandPaid || 0;
     const remaining = Math.max(0, finalSum - paid);
 
-    window.currentDiscountPercent = discountPercent;
-    window.currentDiscountAmount = discountAmount;
+    window.currentDiscountPercent = totalDiscountPercent;
+    window.currentDiscountAmount = totalDiscountAmount;
     window.currentDemandSum = finalSum;
     window.demandRemaining = remaining;
 
     // Sotuv summasi ko'rinishi
     const saleEl = document.getElementById('saleSumDisplay');
     if (saleEl) {
-        if (discountAmount > 0) {
+        if (totalDiscountAmount > 0) {
             saleEl.innerHTML = `
-                <div style="text-decoration:line-through; color:#94a3b8; font-size:12px; font-weight:600; line-height:1.2;">${formatMoney(rawTotal)}</div>
+                <div style="text-decoration:line-through; color:#94a3b8; font-size:12px; font-weight:600; line-height:1.2;">${formatMoney(baseForDiscount)}</div>
                 <div style="font-size:17px; font-weight:800; color:var(--text); line-height:1.2;">${formatMoney(finalSum)}</div>
             `;
         } else {
-            saleEl.textContent = formatMoney(rawTotal);
+            saleEl.textContent = formatMoney(baseForDiscount);
         }
     }
 
@@ -1207,11 +1272,11 @@ function recalculateTotals(isInitial = false) {
     const percentEl = document.getElementById('discountSummaryPercent');
     const amountEl = document.getElementById('discountSummaryAmount');
     const textEl = document.getElementById('discountSummaryText');
-    if (percentEl) percentEl.textContent = discountPercent.toFixed(2) + '%';
-    if (amountEl) amountEl.textContent = formatMoney(Math.round(discountAmount)) + ' so\'m';
+    if (percentEl) percentEl.textContent = totalDiscountPercent.toFixed(2) + '%';
+    if (amountEl) amountEl.textContent = formatMoney(Math.round(totalDiscountAmount)) + ' so\'m';
     if (textEl) {
-        if (discountAmount > 0) {
-            textEl.textContent = `${discountPercent.toFixed(1)}% (${formatMoney(Math.round(discountAmount))})`;
+        if (totalDiscountAmount > 0) {
+            textEl.textContent = `${totalDiscountPercent.toFixed(1)}% (${formatMoney(Math.round(totalDiscountAmount))})`;
         } else {
             textEl.textContent = '0 so\'m';
         }
@@ -1228,11 +1293,6 @@ function recalculateTotals(isInitial = false) {
             finalEl.className = 'sum-col-value debt-color';
         }
     }
-
-    // Jadvaldagi har bir pozitsiya skidkasini yangilash
-    document.querySelectorAll('[id^="pos_discount_"]').forEach(el => {
-        el.textContent = discountPercent > 0 ? `${discountPercent.toFixed(2)}%` : '—';
-    });
 
     updateEditPayment();
 }
@@ -1447,11 +1507,12 @@ async function saveEdit() {
             } else {
                 const orig = (window.initialPositions || []).find(op => op.position_id === pos.position_id);
                 // Faqatgina haqiqatda o'zgargan pozitsiyalarni yuboramiz (ortiqcha sekinlashtirmaslik va mavjud skidkani buzmaslik uchun)
-                if (!orig || Number(orig.quantity) !== Number(q) || Number(orig.price) !== Number(p)) {
+                if (!orig || Number(orig.quantity) !== Number(q) || Number(orig.price) !== Number(p) || Number(orig.discount || 0) !== Number(pos.discount || 0)) {
                     positionsToUpdate.push({
                         position_id: pos.position_id,
                         quantity: q,
                         price: p,
+                        discount: pos.discount || 0,
                     });
                 }
             }
@@ -1925,17 +1986,25 @@ function copyReceiptForTelegram() {
     
     let sumWithoutDiscount = totalSum;
     let discountAmount = 0;
-    if (discountPercent > 0 && discountPercent < 100) {
-        sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
-        discountAmount = sumWithoutDiscount - totalSum;
+    let displayDiscountPercent = discountPercent;
+
+    if (totalOriginalSum > totalSum + 0.5) {
+        sumWithoutDiscount = Math.round(totalOriginalSum);
+        discountAmount = Math.round(totalOriginalSum - totalSum);
+        displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
     } else if (totalPositionsDiscountSum > 0) {
-        discountAmount = totalPositionsDiscountSum;
-        sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
+        discountAmount = Math.round(totalPositionsDiscountSum);
+        sumWithoutDiscount = Math.round(totalSum + totalPositionsDiscountSum);
+        displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
+    } else if (discountPercent > 0 && discountPercent < 100) {
+        sumWithoutDiscount = Math.round(totalSum / (1 - discountPercent / 100.0));
+        discountAmount = Math.round(sumWithoutDiscount - totalSum);
+        displayDiscountPercent = discountPercent;
     }
 
-    if (discountAmount > 0 || discountPercent > 0) {
+    if (discountAmount > 0 || displayDiscountPercent > 0) {
         text += `💰 Jami summasi: ${formatMoney(sumWithoutDiscount)}\n`;
-        text += `📉 Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}): - ${formatMoney(discountAmount)}\n`;
+        text += `📉 Chegirma (${displayDiscountPercent > 0 ? (displayDiscountPercent % 1 === 0 ? displayDiscountPercent : displayDiscountPercent.toFixed(1)) + '%' : 'tovarlar bo\'yicha'}): - ${formatMoney(discountAmount)}\n`;
     }
     
     text += `💰 *TO'LOV: ${formatMoney(totalSum)}*\n`;
@@ -2119,12 +2188,20 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
 
         let sumWithoutDiscount = totalSum;
         let discountAmount = 0;
-        if (discountPercent > 0 && discountPercent < 100) {
-            sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
-            discountAmount = sumWithoutDiscount - totalSum;
+        let displayDiscountPercent = discountPercent;
+
+        if (totalOriginalSum > totalSum + 0.5) {
+            sumWithoutDiscount = Math.round(totalOriginalSum);
+            discountAmount = Math.round(totalOriginalSum - totalSum);
+            displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
         } else if (totalPositionsDiscountSum > 0) {
-            discountAmount = totalPositionsDiscountSum;
-            sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
+            discountAmount = Math.round(totalPositionsDiscountSum);
+            sumWithoutDiscount = Math.round(totalSum + totalPositionsDiscountSum);
+            displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
+        } else if (discountPercent > 0 && discountPercent < 100) {
+            sumWithoutDiscount = Math.round(totalSum / (1 - discountPercent / 100.0));
+            discountAmount = Math.round(sumWithoutDiscount - totalSum);
+            displayDiscountPercent = discountPercent;
         }
 
         printArea.innerHTML = `
@@ -2162,13 +2239,13 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
                     <div>Jami tovar: <strong style="color:#0f172a;font-size:1.08em;">${formatNumber(totalQuantity)} ta</strong>, &nbsp;Pozitsiya: <strong style="color:#0f172a;font-size:1.08em;">${positionsCount} xil</strong></div>
                 </div>
                 <div style="width:${isA5 ? '250px' : '310px'};background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:6px;padding:${isA5 ? '6px 10px' : '8px 12px'};font-size:${isA5 ? '11px' : '12.5px'};line-height:1.35;">
-                    ${(discountAmount > 0 || discountPercent > 0) ? `
+                    ${(discountAmount > 0 || displayDiscountPercent > 0) ? `
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#475569;">
                             <span>Jami summasi:</span>
                             <span>${formatMoney(sumWithoutDiscount)}</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#b91c1c; font-weight:600;">
-                            <span>Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}):</span>
+                            <span>Chegirma (${displayDiscountPercent > 0 ? (displayDiscountPercent % 1 === 0 ? displayDiscountPercent : displayDiscountPercent.toFixed(1)) + '%' : 'tovarlar bo\'yicha'}):</span>
                             <span>- ${formatMoney(discountAmount)}</span>
                         </div>
                     ` : ''}
@@ -2331,12 +2408,20 @@ function buildReceiptHtml(demand, currentCustomerDebt, settings) {
     // Asl tovarlar summasi (skidkasiz)
     let sumWithoutDiscount = totalSum;
     let discountAmount = 0;
-    if (discountPercent > 0 && discountPercent < 100) {
-        sumWithoutDiscount = totalSum / (1 - discountPercent / 100.0);
-        discountAmount = sumWithoutDiscount - totalSum;
+    let displayDiscountPercent = discountPercent;
+
+    if (totalOriginalSum > totalSum + 0.5) {
+        sumWithoutDiscount = Math.round(totalOriginalSum);
+        discountAmount = Math.round(totalOriginalSum - totalSum);
+        displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
     } else if (totalPositionsDiscountSum > 0) {
-        discountAmount = totalPositionsDiscountSum;
-        sumWithoutDiscount = totalSum + totalPositionsDiscountSum;
+        discountAmount = Math.round(totalPositionsDiscountSum);
+        sumWithoutDiscount = Math.round(totalSum + totalPositionsDiscountSum);
+        displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
+    } else if (discountPercent > 0 && discountPercent < 100) {
+        sumWithoutDiscount = Math.round(totalSum / (1 - discountPercent / 100.0));
+        discountAmount = Math.round(sumWithoutDiscount - totalSum);
+        displayDiscountPercent = discountPercent;
     }
 
     // Oldingi qarzni hisoblash:
@@ -2402,13 +2487,13 @@ function buildReceiptHtml(demand, currentCustomerDebt, settings) {
             <div class="receipt-divider"></div>
 
             <div class="receipt-totals">
-                ${(discountAmount > 0 || discountPercent > 0) ? `
+                ${(discountAmount > 0 || displayDiscountPercent > 0) ? `
                 <div class="receipt-total-row">
                     <span>Jami summasi:</span>
                     <span>${formatMoney(sumWithoutDiscount)}</span>
                 </div>
                 <div class="receipt-total-row discount-row">
-                    <span>Chegirma (${discountPercent > 0 ? discountPercent.toFixed(1) + '%' : 'tovarlar bo\'yicha'}):</span>
+                    <span>Chegirma (${displayDiscountPercent > 0 ? (displayDiscountPercent % 1 === 0 ? displayDiscountPercent : displayDiscountPercent.toFixed(1)) + '%' : 'tovarlar bo\'yicha'}):</span>
                     <span>- ${formatMoney(discountAmount)}</span>
                 </div>` : ''}
 

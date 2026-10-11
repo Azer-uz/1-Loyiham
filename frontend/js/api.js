@@ -793,11 +793,8 @@ window.parseAmount = function(val) {
 
 function formatMoney(amount) {
     if (amount === undefined || amount === null || isNaN(amount)) return "0 so'm";
-    const n = Number(amount);
-    if (Math.abs(n % 1) > 0.001) {
-        return formatNumber(n.toFixed(2), true) + " so'm";
-    }
-    return formatNumber(amount) + " so'm";
+    const n = Math.round(Number(amount));
+    return formatNumber(n) + " so'm";
 }
 
 function formatUSD(amountUzs, customRate) {
