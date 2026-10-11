@@ -134,12 +134,22 @@ async def sync_all_data(force_full: bool = False):
 
             demands_task = fetch_demands_paginated()
             payments_task = ms_client.get_all_payments_cached()
-            counterparties_task = ms_client.get_all_counterparties_cached()
             metadata_task = ms_client.get_demand_metadata()
-            cp_metadata_task = ms_client.get_counterparty_metadata()
-            groups_task = ms_client._request("GET", "/entity/group")
-            balances_task = ms_client.get_all_balances()
-            assortments_task = ms_client.get_all_assortments()
+
+            if do_full_archive_sync:
+                counterparties_task = ms_client.get_all_counterparties_cached()
+                cp_metadata_task = ms_client.get_counterparty_metadata()
+                groups_task = ms_client._request("GET", "/entity/group")
+                balances_task = ms_client.get_all_balances()
+                assortments_task = ms_client.get_all_assortments()
+            else:
+                async def _empty_obj(val):
+                    return val
+                counterparties_task = _empty_obj([])
+                cp_metadata_task = _empty_obj({})
+                groups_task = _empty_obj({})
+                balances_task = _empty_obj({})
+                assortments_task = _empty_obj([])
 
             demands_res, all_payments, counterparties, meta_resp, cp_meta_resp, groups_resp, balances, assortments_resp = await asyncio.gather(
                 demands_task, payments_task, counterparties_task, metadata_task, cp_metadata_task, groups_task, balances_task, assortments_task, return_exceptions=True
@@ -218,7 +228,8 @@ async def sync_all_data(force_full: bool = False):
                     agent_href = agent.get("meta", {}).get("href", "") if isinstance(agent, dict) else ""
                     agent_id = extract_id_from_href(agent_href)
 
-                    raw_agent_name = (agent.get("name") if isinstance(agent, dict) else None) or cp_map.get(agent_id)
+                    db_cp = existing_cps.get(agent_id)
+                    raw_agent_name = (agent.get("name") if isinstance(agent, dict) else None) or cp_map.get(agent_id) or (db_cp.name if db_cp else None)
                     if not raw_agent_name or raw_agent_name == "Noma'lum":
                         agent_name = existing.agent_name if (existing and existing.agent_name and existing.agent_name != "Noma'lum") else "Noma'lum"
                     else:

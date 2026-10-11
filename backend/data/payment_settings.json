@@ -54,8 +54,8 @@
         "type": "cash",
         "currency": "UZS",
         "is_dollar": false,
-        "current_balance": 1450644266.74,
-        "raw_balance": 1450644266.74,
+        "current_balance": 1713924266.74,
+        "raw_balance": 1713924266.74,
         "has_correction": false,
         "correction": null
       },
@@ -125,9 +125,9 @@
         "correction": null
       }
     ],
-    "total_uzs_balance": 2797960646.74,
+    "total_uzs_balance": 3061240646.74,
     "total_usd_balance": 1035.0,
     "reference_rate": 11800.0,
-    "consolidated_uzs_equivalent": 2810173646.74
+    "consolidated_uzs_equivalent": 3073453646.74
   }
 }

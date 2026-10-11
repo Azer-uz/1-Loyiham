@@ -288,7 +288,12 @@ async function loadDemands() {
     const search = searchEl ? searchEl.value.trim() : '';
 
     if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading"><span class="spinner-small" style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle;"></span>Yuklanmoqda...</td></tr>';
+        if (!currentLoadedDemands || currentLoadedDemands.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading"><span class="spinner-small" style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle;"></span>Yuklanmoqda...</td></tr>';
+        } else {
+            tbody.style.transition = 'opacity 0.15s ease';
+            tbody.style.opacity = '0.4';
+        }
     }
 
     try {
@@ -320,6 +325,8 @@ async function loadDemands() {
         if (tbody) {
             tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:red;">Xato: ${error.message}</td></tr>`;
         }
+    } finally {
+        if (tbody) tbody.style.opacity = '1';
     }
 }
 

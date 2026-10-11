@@ -37,13 +37,14 @@ async def moysklad_webhook(request: Request, background_tasks: BackgroundTasks):
 
 
 @router.post("/sync-now")
-async def trigger_manual_sync(background_tasks: BackgroundTasks):
-    """Qo'lda darhol sinxronizatsiyani ishga tushirish"""
+async def trigger_manual_sync():
+    """Qo'lda darhol sinxronizatsiyani ishga tushirish (yangi sotuvlarni bir lahzada olib keladi)"""
     ms_client.invalidate_demands_cache()
     ms_client.invalidate_payments_cache()
     ms_client.invalidate_counterparties_cache()
-    background_tasks.add_task(sync_all_data)
-    return {"success": True, "message": "Sinxronizatsiya orqa fonda boshlandi"}
+    res = await sync_all_data(force_full=False)
+    count = res.get("count", 0) if isinstance(res, dict) else 0
+    return {"success": True, "count": count, "message": "MoySklad bilan sinxronlandi"}
 
 
 @router.get("/status")

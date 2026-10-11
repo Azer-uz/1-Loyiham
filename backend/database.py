@@ -13,7 +13,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DB_PATH}")
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    connect_args={"check_same_thread": False, "timeout": 30} if "sqlite" in DATABASE_URL else {},
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -42,10 +42,17 @@ async def init_db():
         async with engine.begin() as conn:
             await conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             await conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
+            await conn.exec_driver_sql("PRAGMA busy_timeout=5000;")
             await conn.exec_driver_sql("PRAGMA cache_size=-64000;")
             await conn.exec_driver_sql("PRAGMA temp_store=MEMORY;")
             await conn.exec_driver_sql("PRAGMA mmap_size=268435456;")
             await conn.run_sync(Base.metadata.create_all)
+            try:
+                await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_demand_moment_desc ON local_demands (moment DESC);")
+                await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_demand_moment_state ON local_demands (moment DESC, state_name);")
+                await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_demand_moment_pay ON local_demands (moment DESC, payment_status);")
+            except Exception:
+                pass
             try:
                 await conn.exec_driver_sql("ALTER TABLE local_counterparties ADD COLUMN \"group\" VARCHAR(100) DEFAULT '';")
             except Exception:

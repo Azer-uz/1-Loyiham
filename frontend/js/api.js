@@ -723,23 +723,33 @@ if (typeof window !== 'undefined') {
 
 // ================= SINXRONIZATSIYA =================
 async function triggerSyncNow() {
+    const syncBtns = document.querySelectorAll('.nav-sync-pill');
+    syncBtns.forEach(b => {
+        b.disabled = true;
+        b.innerHTML = '⏳ Sinxronlanmoqda...';
+    });
     try {
-        showToast("Sinxronizatsiya orqa fonda boshlandi...", "info");
+        showToast("MoySklad bilan tezkor sinxronlash boshlandi...", "info");
         const resp = await apiFetch('/webhooks/sync-now', { method: 'POST' });
-        if (resp.success) {
-            showToast("MoySklad bilan sinxronizatsiya yakunlanmoqda...", "success");
-            // Agar sotuvlar yoki mijozlar sahifasida bo'lsa, ma'lumotlarni yangilash
+        if (resp && resp.success) {
+            showToast("✅ MoySklad yangilandi! Yangi sotuvlar yuklandi.", "success");
             if (typeof loadDemands === 'function') {
-                setTimeout(() => loadDemands(), 1500);
-                setTimeout(() => loadDemands(), 4000);
+                await loadDemands();
             }
             if (typeof loadCustomers === 'function') {
-                setTimeout(() => loadCustomers(true), 1500);
-                setTimeout(() => loadCustomers(), 4000);
+                await loadCustomers(true);
+            }
+            if (typeof loadPayments === 'function') {
+                await loadPayments();
             }
         }
     } catch (e) {
         showToast("Sinxronizatsiyada xatolik: " + e.message, "error");
+    } finally {
+        syncBtns.forEach(b => {
+            b.disabled = false;
+            b.innerHTML = '🔄 Sinxronlash';
+        });
     }
 }
 
