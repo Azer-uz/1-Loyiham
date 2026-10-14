@@ -1,7 +1,7 @@
 # backend/tasks.py
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, delete, func
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -43,7 +43,9 @@ async def sync_all_data(force_full: bool = False):
     """
     MoySklad ma'lumotlarini lokal SQLite DB ga sinxronlash:
     - Boshida (yoki force_full=True bo'lsa) butun arxivdagi barcha sotuvlar sana cheklovisiz to'liq yuklanadi.
-    - Keyingi davriy sinxronizatsiyalarda esa faqat oxirgi o'zgargan (updated>=...) sotuvlar tezkor yangilanadi.
+    - Davriy va tezkor sinxronizatsiyalarda:
+      1) Eng oxirgi yaratilgan 100 ta sotuv (moment, desc) sana cheklovisiz darhol olinadi (yangi sotuvlar 100% tushadi).
+      2) Moskva vaqti (UTC+3) bilan oxirgi o'zgargan sotuvlar (updated>=...) olinadi (tahrirlanganlar yangilanadi).
     """
     if _sync_lock.locked():
         if force_full:
@@ -55,84 +57,101 @@ async def sync_all_data(force_full: bool = False):
     async with _sync_lock:
         start_time = time.time()
         
-        # Baza holatini tekshirish: to'liq arxiv olinganmi va oxirgi sync qachon bo'lgan?
+        # MoySklad serverlari Moskva vaqti (UTC+3) bilan ishlaydi
+        moscow_now = datetime.now(timezone.utc) + timedelta(hours=3)
+        moscow_now_str = moscow_now.strftime("%Y-%m-%d %H:%M:%S")
+        tashkent_now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         is_full_done = False
-        last_sync_time_str = None
+        last_moscow_sync_str = None
         local_demands_count = 0
         try:
             async with AsyncSessionLocal() as db_check:
                 full_done_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_full_sync_completed"))
-                last_sync_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_last_sync_time"))
+                last_moscow_setting = await db_check.scalar(select(AppSetting).where(AppSetting.key == "demands_last_sync_moscow"))
                 local_demands_count = (await db_check.scalar(select(func.count(LocalDemand.id)))) or 0
                 is_full_done = (full_done_setting and full_done_setting.value == "true")
-                if last_sync_setting and last_sync_setting.value:
-                    last_sync_time_str = last_sync_setting.value
+                if last_moscow_setting and last_moscow_setting.value:
+                    last_moscow_sync_str = last_moscow_setting.value
         except Exception as e:
             print(f"⚠️ AppSetting tekshirishda xato: {e}")
 
         # Agar majburiy to'liq sync so'ralgan bo'lsa yoki baza hali to'liq yuklanmagan bo'lsa (yoki 1300 tadan kam bo'lsa)
         do_full_archive_sync = force_full or (not is_full_done) or (local_demands_count < 1300)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if do_full_archive_sync:
             print(f"🔄 [Sync: TO'LIQ ARXIV] Barcha sotuvlar sana cheklovisiz MoySklad dan to'liq yuklanmoqda (Hozir DB da: {local_demands_count})...")
         else:
-            # Incremental sync: oxirgi sinxronizatsiya vaqtidan boshlab (15 daqiqa bufer bilan)
-            if last_sync_time_str:
+            # Incremental sync: Moskva vaqti bilan oxirgi sinxronizatsiyadan boshlab (30 daqiqa bufer bilan)
+            if last_moscow_sync_str:
                 try:
-                    last_dt = datetime.strptime(last_sync_time_str[:19], "%Y-%m-%d %H:%M:%S")
-                    updated_from_str = (last_dt - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+                    last_dt = datetime.strptime(last_moscow_sync_str[:19], "%Y-%m-%d %H:%M:%S")
+                    updated_from_dt = last_dt - timedelta(minutes=30)
+                    # Agar 3 kundan ko'p vaqt o'tgan bo'lsa, oxirgi 3 kunni olamiz
+                    if updated_from_dt < moscow_now - timedelta(days=3):
+                        updated_from_dt = moscow_now - timedelta(days=3)
+                    updated_from_str = updated_from_dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
-                    updated_from_str = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+                    updated_from_str = (moscow_now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
             else:
-                updated_from_str = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
-            print(f"🔄 [Sync: INCREMENTAL] Faqat o'zgargan sotuvlar yangilanmoqda (updated>={updated_from_str})...")
+                updated_from_str = (moscow_now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"🔄 [Sync: INCREMENTAL] Oxirgi sotuvlar va o'zgarishlar olinmoqda (MSK updated>={updated_from_str})...")
 
         try:
-            # Demands: Paginatsiya bilan sotuvlarni olish
-            async def fetch_demands_paginated():
-                all_demands = []
-                demand_offset = 0
-                demand_page_limit = 100
-                is_fully_fetched = False
-                while True:
-                    try:
-                        if do_full_archive_sync:
-                            # TO'LIQ: sana filtrisiz, barcha sotuvlar
+            # Demands: sotuvlarni olish funksiyasi
+            async def fetch_demands():
+                if do_full_archive_sync:
+                    all_demands = []
+                    demand_offset = 0
+                    demand_page_limit = 100
+                    is_fully_fetched = False
+                    while True:
+                        try:
                             page_resp = await ms_client.get_demands(
                                 limit=demand_page_limit,
                                 offset=demand_offset,
                                 order="moment,desc",
                             )
-                        else:
-                            # INCREMENTAL: faqat o'zgarganlar (updated)
-                            page_resp = await ms_client.get_demands(
-                                limit=demand_page_limit,
-                                offset=demand_offset,
-                                updated_from=updated_from_str,
-                                order="updated,desc",
-                            )
+                            if isinstance(page_resp, Exception):
+                                print(f"❌ [Sync Error Demands page {demand_offset}] {page_resp}")
+                                break
+                            page_rows = page_resp.get("rows", [])
+                            if not page_rows:
+                                is_fully_fetched = True
+                                break
+                            all_demands.extend(page_rows)
+                            meta_size = page_resp.get("meta", {}).get("size", 0)
+                            print(f"📦 [Sync] Demands sahifa: offset={demand_offset}, olindi={len(page_rows)}, jami API da={meta_size}")
+                            if len(page_rows) < demand_page_limit or (meta_size > 0 and len(all_demands) >= meta_size):
+                                is_fully_fetched = (meta_size == 0 or len(all_demands) >= meta_size)
+                                break
+                            demand_offset += demand_page_limit
+                        except Exception as e:
+                            print(f"❌ [Sync Error Demands page {demand_offset}] {e}")
+                            break
+                    return all_demands, is_fully_fetched
+                else:
+                    # Incremental: 2 ta kuchli manba birlashtiriladi:
+                    # 1) Eng oxirgi yaratilgan 100 ta sotuv (moment, desc) - sana filtrisiz, yangi sotuvlar 100% keladi
+                    # 2) Oxirgi o'zgargan sotuvlar (updated>=..., updated, desc) - tahrirlanganlar yangilanadi
+                    task_latest = ms_client.get_demands(limit=100, order="moment,desc")
+                    task_updated = ms_client.get_demands(limit=100, updated_from=updated_from_str, order="updated,desc")
+                    res_latest, res_updated = await asyncio.gather(task_latest, task_updated, return_exceptions=True)
 
-                        if isinstance(page_resp, Exception):
-                            print(f"❌ [Sync Error Demands page {demand_offset}] {page_resp}")
-                            break
-                        page_rows = page_resp.get("rows", [])
-                        if not page_rows:
-                            is_fully_fetched = True
-                            break
-                        all_demands.extend(page_rows)
-                        meta_size = page_resp.get("meta", {}).get("size", 0)
-                        print(f"📦 [Sync] Demands sahifa: offset={demand_offset}, olindi={len(page_rows)}, jami API da={meta_size}")
-                        if len(page_rows) < demand_page_limit or (meta_size > 0 and len(all_demands) >= meta_size):
-                            is_fully_fetched = (meta_size == 0 or len(all_demands) >= meta_size)
-                            break
-                        demand_offset += demand_page_limit
-                    except Exception as e:
-                        print(f"❌ [Sync Error Demands page {demand_offset}] {e}")
-                        break
-                return all_demands, is_fully_fetched
+                    combined_dict = {}
+                    if isinstance(res_latest, dict):
+                        for row in res_latest.get("rows", []):
+                            if row.get("id"):
+                                combined_dict[row["id"]] = row
+                    if isinstance(res_updated, dict):
+                        for row in res_updated.get("rows", []):
+                            if row.get("id"):
+                                combined_dict[row["id"]] = row
 
-            demands_task = fetch_demands_paginated()
+                    print(f"📦 [Sync: INCREMENTAL] Olindi: {len(combined_dict)} ta sotuv (oxirgi yangi + o'zgarganlar)")
+                    return list(combined_dict.values()), False
+
+            demands_task = fetch_demands()
             payments_task = ms_client.get_all_payments_cached()
             metadata_task = ms_client.get_demand_metadata()
 
@@ -467,7 +486,8 @@ async def sync_all_data(force_full: bool = False):
 
                 if do_full_archive_sync and is_fully_synced:
                     await update_app_setting("demands_full_sync_completed", "true")
-                await update_app_setting("demands_last_sync_time", now_str)
+                await update_app_setting("demands_last_sync_moscow", moscow_now_str)
+                await update_app_setting("demands_last_sync_time", tashkent_now_str)
 
                 # SyncLog
                 db.add(SyncLog(

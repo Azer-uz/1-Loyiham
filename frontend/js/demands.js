@@ -277,7 +277,7 @@ function selectStateFilter(status) {
 }
 
 // ===== SOTUVLAR RO'YXATI =====
-async function loadDemands() {
+async function loadDemands(isSilent = false) {
     const fromEl = document.getElementById('dateFrom');
     const toEl = document.getElementById('dateTo');
     const searchEl = document.getElementById('searchInput');
@@ -287,7 +287,7 @@ async function loadDemands() {
     const dateTo = toEl ? toEl.value : '';
     const search = searchEl ? searchEl.value.trim() : '';
 
-    if (tbody) {
+    if (tbody && !isSilent) {
         if (!currentLoadedDemands || currentLoadedDemands.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="loading"><span class="spinner-small" style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle;"></span>Yuklanmoqda...</td></tr>';
         } else {
@@ -318,17 +318,32 @@ async function loadDemands() {
             renderPagination();
             updateDemandSortIndicators();
         } else {
-            if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:red;">Xatolik: Sotuvlarni olib bo'lmadi</td></tr>`;
+            if (tbody && !isSilent) tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:red;">Xatolik: Sotuvlarni olib bo'lmadi</td></tr>`;
         }
     } catch (error) {
         console.error('loadDemands xatosi:', error);
-        if (tbody) {
+        if (tbody && !isSilent) {
             tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:red;">Xato: ${error.message}</td></tr>`;
         }
     } finally {
         if (tbody) tbody.style.opacity = '1';
     }
 }
+
+// 🔄 Har 30 soniyada sotuvlar ro'yxatini avtomatik ravishda yangilab turish (fon rejimida)
+setInterval(async () => {
+    if (document.hidden) return;
+    const isModalOpen = document.querySelector('.modal.active') || document.querySelector('.custom-modal.active');
+    if (isModalOpen) return;
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput && document.activeElement === searchInput && searchInput.value) return;
+
+    try {
+        await loadDemands(true);
+    } catch (e) {
+        // Fon xatosi
+    }
+}, 30000);
 
 function renderDemands(demands) {
     const tbody = document.getElementById('demandsTable');

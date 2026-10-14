@@ -132,6 +132,13 @@ async def startup_event():
     # Darhol dastlabki ma'lumotlarni sinxronlash (orqa fonda, ilovani to'xtatmasdan)
     asyncio.create_task(sync_all_data())
 
+    # MoySklad Webhook larini tekshirish va faollashtirish
+    try:
+        from register_webhooks import ensure_webhooks
+        asyncio.create_task(ensure_webhooks())
+    except Exception as e:
+        print(f"⚠️ Webhooks tekshiruvida xato: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

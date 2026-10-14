@@ -12,6 +12,31 @@ from moysklad_client import ms_client
 router = APIRouter()
 
 
+async def _delete_local_demand(demand_id: str):
+    try:
+        from database import AsyncSessionLocal
+        from models_db import LocalDemand
+        from sqlalchemy import delete
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(LocalDemand).where(LocalDemand.id == demand_id))
+            await session.commit()
+            print(f"🗑️ [Webhook] O'chirilgan demand DB dan tozalandi: {demand_id}")
+    except Exception as e:
+        print(f"⚠️ [Webhook] Demand o'chirishda xato: {e}")
+
+async def _delete_local_payment(payment_id: str):
+    try:
+        from database import AsyncSessionLocal
+        from models_db import LocalPayment
+        from sqlalchemy import delete
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(LocalPayment).where(LocalPayment.id == payment_id))
+            await session.commit()
+            print(f"🗑️ [Webhook] O'chirilgan payment DB dan tozalandi: {payment_id}")
+    except Exception as e:
+        print(f"⚠️ [Webhook] Payment o'chirishda xato: {e}")
+
+
 @router.post("/moysklad")
 async def moysklad_webhook(request: Request, background_tasks: BackgroundTasks):
     """
@@ -20,14 +45,30 @@ async def moysklad_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     try:
         payload = await request.json()
-        print(f"🔔 [Webhook] MoySklad'dan xabar keldi: {payload.get('events', [])}")
+        events = payload.get("events", [])
+        print(f"🔔 [Webhook] MoySklad'dan xabar keldi ({len(events)} ta voqea)")
 
         # Keshni tozalash
         ms_client.invalidate_demands_cache()
         ms_client.invalidate_payments_cache()
         ms_client.invalidate_counterparties_cache()
 
-        # Orqa fonda ma'lumotlarni yangilash
+        has_delete = False
+        for ev in events:
+            action = ev.get("action", "")
+            meta = ev.get("meta", {})
+            href = meta.get("href", "")
+            entity_type = meta.get("type", "")
+            entity_id = href.rstrip("/").split("/")[-1] if href else None
+
+            if action == "DELETE" and entity_id:
+                has_delete = True
+                if entity_type == "demand":
+                    background_tasks.add_task(_delete_local_demand, entity_id)
+                elif entity_type in ["paymentin", "cashin"]:
+                    background_tasks.add_task(_delete_local_payment, entity_id)
+
+        # Orqa fonda barcha ma'lumotlarni tezkor yangilash
         background_tasks.add_task(sync_all_data)
 
         return {"status": "ok", "message": "Webhook qabul qilindi va fonda yangilanishga yuborildi"}
