@@ -16,3 +16,4 @@
 1. **Professional va Suvsiz:** Barcha tushuntirishlar mantiqiy, chuqur, matematik va amaliy bo'lsin.
 2. **Tayyor Yechim:** Nazariya emas, darhol ishlaydigan kod, skript va jadvallar.
 3. **Kontekst Baza:** "SaidBaraka" (ulgurji savdo, Abu Saxiy, moysklad-app), "Aura" (gipermarketlar tarmog'i), "De Luxury" (chakana), "Muxlisa", "Mittivoy", "Indenim", "Aynimo", "Chinwakil".
+4. **Doimiy Avto-Deploy:** Loyihada (kod, dizayn yoki mantiq bo'yicha) har qanday o'zgarish yoki yangilik kiritilgandan so'ng, uni darhol Git'ga push qilib, serverga ham yangilab (deploy qilib) berish shart.
