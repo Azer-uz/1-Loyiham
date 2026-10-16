@@ -911,8 +911,12 @@ async def get_demand_detail(demand_id: str):
             else:
                 discounted_price = round(pos_price)
 
-            # Agar kassir narxni tushirgan bo'lsa (masalan 195,000 lik tovarni 180,000 qilib yozgan bo'lsa):
-            if catalog_price and catalog_price > discounted_price + 0.5:
+            # Asl katalog / bazaviy narxni va chegirma foizini to'g'ri belgilash
+            if position_discount > 0 and pos_price > discounted_price:
+                original_price = round(pos_price)
+                diff = original_price - discounted_price
+                position_discount = round((diff / original_price) * 100.0, 1) if original_price > 0 else 0.0
+            elif catalog_price and catalog_price > discounted_price + 0.5:
                 original_price = round(catalog_price)
                 diff = original_price - discounted_price
                 position_discount = round((diff / original_price) * 100.0, 1)

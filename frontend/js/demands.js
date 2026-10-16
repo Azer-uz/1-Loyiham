@@ -926,7 +926,7 @@ function renderEditForm(demand, paymentsData, currentBalance) {
                                     <th style="width:75px; text-align:right;">Soni</th>
                                     <th style="width:105px; text-align:right;">Narx</th>
                                     <th style="width:110px; text-align:right;">Summa</th>
-                                    <th style="width:65px; text-align:center;">Skidka</th>
+                                    <th style="width:72px; text-align:center;">Skidka %</th>
                                     <th style="width:36px; text-align:center;"></th>
                                 </tr>
                             </thead>
@@ -1060,7 +1060,12 @@ function renderEditForm(demand, paymentsData, currentBalance) {
 
     document.getElementById('editDiscount').addEventListener('input', () => {
         window.isDiscountManuallyEdited = true;
-        recalculateTotals(false);
+        if (window.currentDiscountType === 'percent') {
+            const rawVal = parseAmount(document.getElementById('editDiscount')?.value) || 0;
+            applyGlobalDiscountPercent(rawVal);
+        } else {
+            recalculateTotals(false);
+        }
     });
     recalculateTotals(true);
 
@@ -1110,9 +1115,21 @@ function renderPositionsTable() {
             </td>
             <td class="pos-sum" id="pos_sum_${i}" style="font-weight:700; white-space:nowrap;">${formatMoney(p.quantity * currentPrice)}</td>
             <td style="text-align:center;">
-                <span class="pos-discount-display" id="pos_discount_${i}" style="display:inline-block; font-weight:700; font-size:11px; padding:2px 6px; border-radius:4px; ${rowDiscountPct > 0 ? 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;' : 'color:#94a3b8;'}">
-                    ${rowDiscountPct > 0 ? `-${rowDiscountPct.toFixed(1)}%` : '—'}
-                </span>
+                <div style="display:inline-flex; align-items:center; justify-content:center; position:relative; width:64px;">
+                    <input type="number" 
+                           class="pos-discount-pct" 
+                           id="pos_discount_input_${i}" 
+                           data-index="${i}" 
+                           value="${rowDiscountPct > 0 ? Number(rowDiscountPct.toFixed(2)) : ''}" 
+                           placeholder="0" 
+                           min="0" 
+                           max="99.9" 
+                           step="any"
+                           oninput="recalculatePositionFromDiscount(${i})" 
+                           style="width:100%; text-align:center; font-weight:700; font-size:11.5px; padding:3px 14px 3px 4px; border-radius:5px; border:1px solid ${rowDiscountPct > 0 ? '#f59e0b' : '#cbd5e1'}; background:${rowDiscountPct > 0 ? '#fef3c7' : '#ffffff'}; color:${rowDiscountPct > 0 ? '#b45309' : '#475569'}; transition:all 0.15s ease;"
+                           title="Alohida chegirma foizi">
+                    <span style="position:absolute; right:4px; font-size:10px; font-weight:700; color:${rowDiscountPct > 0 ? '#b45309' : '#94a3b8'}; pointer-events:none;">%</span>
+                </div>
             </td>
             <td style="text-align:center; white-space:nowrap;">
                 ${(!p.is_new && currentEditDemand.id !== 'new') ? `
@@ -1160,6 +1177,7 @@ function recalculatePosition(i) {
     if (!currentEditDemand || !currentEditDemand.positions[i]) return;
     const qtyInputs = document.querySelectorAll('.pos-qty');
     const priceInputs = document.querySelectorAll('.pos-price');
+    const discInputs = document.querySelectorAll('.pos-discount-pct');
 
     const qty = qtyInputs[i] ? parseAmount(qtyInputs[i].value) : 0;
     const price = priceInputs[i] ? parseAmount(priceInputs[i].value) : 0;
@@ -1174,7 +1192,7 @@ function recalculatePosition(i) {
 
     // Har bir qator uchun alohida skidkani tekshirish va ko'rsatish
     const origPriceEl = document.getElementById(`pos_orig_price_${i}`);
-    const discEl = document.getElementById(`pos_discount_${i}`);
+    const discInputEl = discInputs[i] || document.getElementById(`pos_discount_input_${i}`);
     const priceInputEl = priceInputs[i];
 
     if (origPrice > price + 0.5) {
@@ -1185,25 +1203,26 @@ function recalculatePosition(i) {
             origPriceEl.textContent = formatMoney(origPrice);
             origPriceEl.style.display = 'block';
         }
-        if (discEl) {
-            discEl.textContent = `-${rowPct.toFixed(1)}%`;
-            discEl.style.background = '#fef3c7';
-            discEl.style.color = '#b45309';
-            discEl.style.border = '1px solid #fde68a';
+        if (discInputEl) {
+            discInputEl.value = Number(rowPct.toFixed(2));
+            discInputEl.style.background = '#fef3c7';
+            discInputEl.style.color = '#b45309';
+            discInputEl.style.borderColor = '#f59e0b';
         }
         if (priceInputEl) {
             priceInputEl.style.borderColor = '#f59e0b';
             priceInputEl.style.color = '#b45309';
         }
     } else {
+        // Narx oshirilgan bo'lsa yoki skidkasiz bo'lsa
         pos.discount = 0;
         pos.discount_amount = 0;
         if (origPriceEl) origPriceEl.style.display = 'none';
-        if (discEl) {
-            discEl.textContent = '—';
-            discEl.style.background = 'transparent';
-            discEl.style.color = '#94a3b8';
-            discEl.style.border = 'none';
+        if (discInputEl) {
+            discInputEl.value = '';
+            discInputEl.style.background = '#ffffff';
+            discInputEl.style.color = '#475569';
+            discInputEl.style.borderColor = '#cbd5e1';
         }
         if (priceInputEl) {
             priceInputEl.style.borderColor = '';
@@ -1217,6 +1236,135 @@ function recalculatePosition(i) {
     recalculateTotals();
 }
 
+window.recalculatePositionFromDiscount = function(i) {
+    if (!currentEditDemand || !currentEditDemand.positions[i]) return;
+    const qtyInputs = document.querySelectorAll('.pos-qty');
+    const priceInputs = document.querySelectorAll('.pos-price');
+    const discInputs = document.querySelectorAll('.pos-discount-pct');
+
+    const pos = currentEditDemand.positions[i];
+    const qty = qtyInputs[i] ? parseAmount(qtyInputs[i].value) : (pos.quantity || 0);
+    const priceInputEl = priceInputs[i];
+    const discInputEl = discInputs[i] || document.getElementById(`pos_discount_input_${i}`);
+    const origPriceEl = document.getElementById(`pos_orig_price_${i}`);
+
+    let origPrice = parseFloat(pos.original_price) || parseFloat(priceInputEl?.getAttribute('data-original-price')) || parseFloat(pos.price) || 0;
+    pos.original_price = origPrice;
+
+    const discVal = discInputEl ? parseAmount(discInputEl.value) : 0;
+    const rowPct = Math.min(Math.max(discVal, 0), 99.9);
+
+    let newPrice = origPrice;
+    if (rowPct > 0) {
+        newPrice = Math.round(origPrice * (1.0 - rowPct / 100.0));
+        pos.discount = rowPct;
+        pos.discount_amount = (origPrice - newPrice) * qty;
+        if (origPriceEl) {
+            origPriceEl.textContent = formatMoney(origPrice);
+            origPriceEl.style.display = 'block';
+        }
+        if (discInputEl) {
+            discInputEl.style.background = '#fef3c7';
+            discInputEl.style.color = '#b45309';
+            discInputEl.style.borderColor = '#f59e0b';
+        }
+        if (priceInputEl) {
+            priceInputEl.value = newPrice;
+            priceInputEl.style.borderColor = '#f59e0b';
+            priceInputEl.style.color = '#b45309';
+        }
+    } else {
+        newPrice = origPrice;
+        pos.discount = 0;
+        pos.discount_amount = 0;
+        if (origPriceEl) origPriceEl.style.display = 'none';
+        if (discInputEl) {
+            discInputEl.value = '';
+            discInputEl.style.background = '#ffffff';
+            discInputEl.style.color = '#475569';
+            discInputEl.style.borderColor = '#cbd5e1';
+        }
+        if (priceInputEl) {
+            priceInputEl.value = newPrice;
+            priceInputEl.style.borderColor = '';
+            priceInputEl.style.color = '';
+        }
+    }
+
+    pos.price = newPrice;
+    pos.quantity = qty;
+    pos.sum = qty * newPrice;
+
+    const sumEl = document.getElementById(`pos_sum_${i}`);
+    if (sumEl) sumEl.textContent = formatMoney(qty * newPrice);
+
+    recalculateTotals();
+};
+
+window.applyGlobalDiscountPercent = function(pct) {
+    if (!currentEditDemand || !currentEditDemand.positions) return;
+    const targetPct = Math.min(Math.max(pct, 0), 99.9);
+    const qtyInputs = document.querySelectorAll('.pos-qty');
+    const priceInputs = document.querySelectorAll('.pos-price');
+    const discInputs = document.querySelectorAll('.pos-discount-pct');
+
+    currentEditDemand.positions.forEach((pos, i) => {
+        const qty = qtyInputs[i] ? parseAmount(qtyInputs[i].value) : (pos.quantity || 0);
+        const priceInputEl = priceInputs[i];
+        const discInputEl = discInputs[i] || document.getElementById(`pos_discount_input_${i}`);
+        const origPriceEl = document.getElementById(`pos_orig_price_${i}`);
+
+        let origPrice = parseFloat(pos.original_price) || parseFloat(priceInputEl?.getAttribute('data-original-price')) || parseFloat(pos.price) || 0;
+        pos.original_price = origPrice;
+
+        let newPrice = origPrice;
+        if (targetPct > 0) {
+            newPrice = Math.round(origPrice * (1.0 - targetPct / 100.0));
+            pos.discount = targetPct;
+            pos.discount_amount = (origPrice - newPrice) * qty;
+            if (origPriceEl) {
+                origPriceEl.textContent = formatMoney(origPrice);
+                origPriceEl.style.display = 'block';
+            }
+            if (discInputEl) {
+                discInputEl.value = Number(targetPct.toFixed(2));
+                discInputEl.style.background = '#fef3c7';
+                discInputEl.style.color = '#b45309';
+                discInputEl.style.borderColor = '#f59e0b';
+            }
+            if (priceInputEl) {
+                priceInputEl.value = newPrice;
+                priceInputEl.style.borderColor = '#f59e0b';
+                priceInputEl.style.color = '#b45309';
+            }
+        } else {
+            pos.discount = 0;
+            pos.discount_amount = 0;
+            if (origPriceEl) origPriceEl.style.display = 'none';
+            if (discInputEl) {
+                discInputEl.value = '';
+                discInputEl.style.background = '#ffffff';
+                discInputEl.style.color = '#475569';
+                discInputEl.style.borderColor = '#cbd5e1';
+            }
+            if (priceInputEl) {
+                priceInputEl.value = origPrice;
+                priceInputEl.style.borderColor = '';
+                priceInputEl.style.color = '';
+            }
+        }
+
+        pos.price = newPrice;
+        pos.quantity = qty;
+        pos.sum = qty * newPrice;
+
+        const sumEl = document.getElementById(`pos_sum_${i}`);
+        if (sumEl) sumEl.textContent = formatMoney(qty * newPrice);
+    });
+
+    recalculateTotals();
+};
+
 function recalculateTotals(isInitial = false) {
     if (!currentEditDemand) return;
 
@@ -1225,6 +1373,7 @@ function recalculateTotals(isInitial = false) {
 
     let currentTotal = 0;
     let catalogTotal = 0;
+    let totalItemsDiscount = 0;
 
     for (let i = 0; i < currentEditDemand.positions.length; i++) {
         const pos = currentEditDemand.positions[i];
@@ -1233,21 +1382,23 @@ function recalculateTotals(isInitial = false) {
         const origPrice = parseFloat(pos.original_price) || parseFloat(priceInputs[i]?.getAttribute('data-original-price')) || price;
         currentTotal += qty * price;
         catalogTotal += qty * origPrice;
+        if (origPrice > price) {
+            totalItemsDiscount += (origPrice - price) * qty;
+        }
     }
 
-    const discountVal = parseAmount(document.getElementById('editDiscount')?.value);
+    const discountVal = parseAmount(document.getElementById('editDiscount')?.value) || 0;
     const discountType = window.currentDiscountType || 'sum';
 
     let totalDiscountAmount = 0;
     let totalDiscountPercent = 0;
 
     const baseForDiscount = catalogTotal > currentTotal ? catalogTotal : currentTotal;
-    const itemDiscountsSum = Math.max(0, catalogTotal - currentTotal);
 
     if (window.isDiscountManuallyEdited) {
         if (discountType === 'percent') {
             totalDiscountPercent = Math.min(Math.max(discountVal, 0), 99.99);
-            totalDiscountAmount = (baseForDiscount * totalDiscountPercent) / 100.0;
+            totalDiscountAmount = totalItemsDiscount > 0 ? totalItemsDiscount : (baseForDiscount * totalDiscountPercent) / 100.0;
         } else {
             totalDiscountAmount = Math.min(Math.max(discountVal, 0), baseForDiscount);
             totalDiscountPercent = baseForDiscount > 0 ? (totalDiscountAmount / baseForDiscount) * 100.0 : 0;
@@ -1256,14 +1407,14 @@ function recalculateTotals(isInitial = false) {
         totalDiscountAmount = window.initialDiscountAmount;
         totalDiscountPercent = baseForDiscount > 0 ? (totalDiscountAmount / baseForDiscount) * 100.0 : (window.existingDiscountPercent || 0);
     } else {
-        totalDiscountAmount = itemDiscountsSum;
+        totalDiscountAmount = totalItemsDiscount;
         totalDiscountPercent = baseForDiscount > 0 ? (totalDiscountAmount / baseForDiscount) * 100.0 : 0;
         const discountInput = document.getElementById('editDiscount');
         if (discountInput) {
             if (discountType === 'percent') {
-                discountInput.value = Number(totalDiscountPercent.toFixed(2));
+                discountInput.value = totalDiscountPercent > 0 ? Number(totalDiscountPercent.toFixed(2)) : '';
             } else {
-                discountInput.value = formatNumber(Math.round(totalDiscountAmount));
+                discountInput.value = totalDiscountAmount > 0 ? formatNumber(Math.round(totalDiscountAmount)) : '';
             }
         }
     }
@@ -1433,16 +1584,21 @@ async function searchAssortment() {
 function onSelectProduct(assortmentId, name, code, price) {
     if (!currentEditDemand) return;
 
+    const basePrice = price || 0;
+    const currentGlobalPct = (window.currentDiscountType === 'percent' && window.currentDiscountPercent > 0) ? window.currentDiscountPercent : 0;
+    const initialPrice = currentGlobalPct > 0 ? Math.round(basePrice * (1.0 - currentGlobalPct / 100.0)) : basePrice;
+
     const newPosition = {
         position_id: null,
         assortment_id: assortmentId,
         code: code || '—',
         name: name,
         quantity: 1,
-        price: price || 0,
-        sum: price || 0,
-        discount: window.currentDiscountPercent || 0,
-        original_price: price || 0,
+        price: initialPrice,
+        sum: initialPrice,
+        discount: currentGlobalPct,
+        discount_amount: (basePrice - initialPrice),
+        original_price: basePrice,
         is_new: true,
     };
 
@@ -1965,38 +2121,36 @@ function copyReceiptForTelegram() {
         const qty = parseFloat(p.quantity) || 0;
         totalQuantity += qty;
         
-        let origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
-        const currentSum = parseFloat(p.sum) || (qty * origUnitPrice);
+        const finalUnitPrice = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
+        let origUnitPrice = parseFloat(p.original_price) || finalUnitPrice;
         let itemDiscountPct = parseFloat(p.discount) || 0;
         let itemDiscountAmt = parseFloat(p.discount_amount) || 0;
 
-        if (itemDiscountPct === 0 && discountPercent > 0) itemDiscountPct = discountPercent;
-
-        let finalUnitPrice = parseFloat(p.discounted_price) || 0;
-        if (finalUnitPrice <= 0 || finalUnitPrice === origUnitPrice) {
-            if (itemDiscountPct > 0 && itemDiscountPct < 100) finalUnitPrice = origUnitPrice * (1 - itemDiscountPct / 100.0);
-            else if (qty > 0 && currentSum < (origUnitPrice * qty)) finalUnitPrice = currentSum / qty;
-            else finalUnitPrice = origUnitPrice;
-        }
-
-        const origTotalSum = origUnitPrice * qty;
         const hasItemDiscount = (origUnitPrice - finalUnitPrice) > 0.5;
-        const finalItemSum = hasItemDiscount ? Math.round(finalUnitPrice * qty) : currentSum;
 
         if (hasItemDiscount) {
-            if (itemDiscountAmt <= 0) itemDiscountAmt = Math.max(0, origTotalSum - finalItemSum);
-            if (itemDiscountPct <= 0 && origTotalSum > 0) itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+            if (itemDiscountPct <= 0 && origUnitPrice > 0) {
+                itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+            }
+            if (itemDiscountAmt <= 0) {
+                itemDiscountAmt = (origUnitPrice - finalUnitPrice) * qty;
+            }
             totalPositionsDiscountSum += itemDiscountAmt;
-            totalOriginalSum += origTotalSum;
+            totalOriginalSum += (origUnitPrice * qty);
         } else {
-            totalOriginalSum += currentSum;
+            origUnitPrice = finalUnitPrice;
+            itemDiscountPct = 0;
+            totalOriginalSum += (finalUnitPrice * qty);
         }
+
+        const currentSum = parseFloat(p.sum) || Math.round(finalUnitPrice * qty);
+        const finalItemSum = currentSum;
 
         const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
         const code = p.code && p.code !== '—' ? `[${p.code}] ` : '';
         const color = p.color ? ` (${p.color})` : '';
         text += `${idx + 1}. ${code}${p.name}${color}\n`;
-        if (hasItemDiscount) {
+        if (hasItemDiscount && itemDiscountPct > 0) {
             text += `   ${formatNumber(qty)} dona × ~${formatMoney(origUnitPrice)}~ ➔ ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)} (-${pctFormatted})\n`;
         } else {
             text += `   ${formatNumber(qty)} dona × ${formatMoney(finalUnitPrice)} = ${formatMoney(finalItemSum)}\n`;
@@ -2008,16 +2162,16 @@ function copyReceiptForTelegram() {
     
     let sumWithoutDiscount = totalSum;
     let discountAmount = 0;
-    let displayDiscountPercent = discountPercent;
+    let displayDiscountPercent = 0;
 
-    if (totalOriginalSum > totalSum + 0.5) {
+    if (totalPositionsDiscountSum > 0.5) {
+        discountAmount = Math.round(totalPositionsDiscountSum);
+        sumWithoutDiscount = Math.round(totalSum + discountAmount);
+        displayDiscountPercent = sumWithoutDiscount > 0 ? (discountAmount / sumWithoutDiscount) * 100.0 : 0;
+    } else if (totalOriginalSum > totalSum + 0.5) {
         sumWithoutDiscount = Math.round(totalOriginalSum);
         discountAmount = Math.round(totalOriginalSum - totalSum);
-        displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
-    } else if (totalPositionsDiscountSum > 0) {
-        discountAmount = Math.round(totalPositionsDiscountSum);
-        sumWithoutDiscount = Math.round(totalSum + totalPositionsDiscountSum);
-        displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
+        displayDiscountPercent = sumWithoutDiscount > 0 ? (discountAmount / sumWithoutDiscount) * 100.0 : 0;
     } else if (discountPercent > 0 && discountPercent < 100) {
         sumWithoutDiscount = Math.round(totalSum / (1 - discountPercent / 100.0));
         discountAmount = Math.round(sumWithoutDiscount - totalSum);
@@ -2152,38 +2306,36 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
             const qty = parseFloat(p.quantity) || 0;
             totalQuantity += qty;
             
-            let origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
-            const currentSum = parseFloat(p.sum) || (qty * origUnitPrice);
+            const finalUnitPrice = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
+            let origUnitPrice = parseFloat(p.original_price) || finalUnitPrice;
             let itemDiscountPct = parseFloat(p.discount) || 0;
             let itemDiscountAmt = parseFloat(p.discount_amount) || 0;
 
-            if (itemDiscountPct === 0 && discountPercent > 0) itemDiscountPct = discountPercent;
-
-            let finalUnitPrice = parseFloat(p.discounted_price) || 0;
-            if (finalUnitPrice <= 0 || finalUnitPrice === origUnitPrice) {
-                if (itemDiscountPct > 0 && itemDiscountPct < 100) finalUnitPrice = origUnitPrice * (1 - itemDiscountPct / 100.0);
-                else if (qty > 0 && currentSum < (origUnitPrice * qty)) finalUnitPrice = currentSum / qty;
-                else finalUnitPrice = origUnitPrice;
-            }
-
-            const origTotalSum = origUnitPrice * qty;
             const hasItemDiscount = (origUnitPrice - finalUnitPrice) > 0.5;
-            const finalItemSum = hasItemDiscount ? Math.round(finalUnitPrice * qty) : currentSum;
 
             if (hasItemDiscount) {
-                if (itemDiscountAmt <= 0) itemDiscountAmt = Math.max(0, origTotalSum - finalItemSum);
-                if (itemDiscountPct <= 0 && origTotalSum > 0) itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+                if (itemDiscountPct <= 0 && origUnitPrice > 0) {
+                    itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+                }
+                if (itemDiscountAmt <= 0) {
+                    itemDiscountAmt = (origUnitPrice - finalUnitPrice) * qty;
+                }
                 totalPositionsDiscountSum += itemDiscountAmt;
-                totalOriginalSum += origTotalSum;
+                totalOriginalSum += (origUnitPrice * qty);
             } else {
-                totalOriginalSum += currentSum;
+                origUnitPrice = finalUnitPrice;
+                itemDiscountPct = 0;
+                totalOriginalSum += (finalUnitPrice * qty);
             }
+
+            const currentSum = parseFloat(p.sum) || Math.round(finalUnitPrice * qty);
+            const finalItemSum = currentSum;
 
             const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
             const colorHtml = p.color ? p.color : '—';
             
             let priceHtml = '';
-            if (hasItemDiscount) {
+            if (hasItemDiscount && itemDiscountPct > 0) {
                 priceHtml = `
                     <div style="line-height:1.2; text-align:right;">
                         <div style="white-space:nowrap;"><strike style="color:#64748b;font-size:0.88em;">${formatNumber(origUnitPrice)}</strike> <span style="color:#b91c1c;font-size:0.85em;font-weight:700;margin-left:2px;">(-${pctFormatted})</span></div>
@@ -2210,20 +2362,16 @@ async function printSingleDemandDoc(demandId, format = 'a4') {
 
         let sumWithoutDiscount = totalSum;
         let discountAmount = 0;
-        let displayDiscountPercent = discountPercent;
+        let displayDiscountPercent = 0;
 
-        if (totalOriginalSum > totalSum + 0.5) {
+        if (totalPositionsDiscountSum > 0.5) {
+            discountAmount = Math.round(totalPositionsDiscountSum);
+            sumWithoutDiscount = Math.round(totalSum + discountAmount);
+            displayDiscountPercent = sumWithoutDiscount > 0 ? (discountAmount / sumWithoutDiscount) * 100.0 : 0;
+        } else if (totalOriginalSum > totalSum + 0.5) {
             sumWithoutDiscount = Math.round(totalOriginalSum);
             discountAmount = Math.round(totalOriginalSum - totalSum);
-            displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
-        } else if (totalPositionsDiscountSum > 0) {
-            discountAmount = Math.round(totalPositionsDiscountSum);
-            sumWithoutDiscount = Math.round(totalSum + totalPositionsDiscountSum);
-            displayDiscountPercent = (discountAmount / sumWithoutDiscount) * 100.0;
-        } else if (discountPercent > 0 && discountPercent < 100) {
-            sumWithoutDiscount = Math.round(totalSum / (1 - discountPercent / 100.0));
-            discountAmount = Math.round(sumWithoutDiscount - totalSum);
-            displayDiscountPercent = discountPercent;
+            displayDiscountPercent = sumWithoutDiscount > 0 ? (discountAmount / sumWithoutDiscount) * 100.0 : 0;
         }
 
         printArea.innerHTML = `
@@ -2361,43 +2509,30 @@ function buildReceiptHtml(demand, currentCustomerDebt, settings) {
         const qty = parseFloat(p.quantity) || 0;
         totalQuantity += qty;
 
-        // Baza narx (original katalog narxi)
-        let origUnitPrice = parseFloat(p.original_price) || parseFloat(p.price) || 0;
-        const currentSum = parseFloat(p.sum) || (qty * origUnitPrice);
+        const finalUnitPrice = parseFloat(p.discounted_price) || parseFloat(p.price) || 0;
+        let origUnitPrice = parseFloat(p.original_price) || finalUnitPrice;
         let itemDiscountPct = parseFloat(p.discount) || 0;
         let itemDiscountAmt = parseFloat(p.discount_amount) || 0;
 
-        // Agar butun hujjatda umumiy chegirma bo'lsa va tovarda 0 bo'lsa
-        if (itemDiscountPct === 0 && discountPercent > 0) {
-            itemDiscountPct = discountPercent;
-        }
-
-        // Chegirmali birlik narxi
-        let finalUnitPrice = parseFloat(p.discounted_price) || 0;
-        if (finalUnitPrice <= 0 || finalUnitPrice === origUnitPrice) {
-            if (itemDiscountPct > 0 && itemDiscountPct < 100) {
-                finalUnitPrice = origUnitPrice * (1 - itemDiscountPct / 100.0);
-            } else if (qty > 0 && currentSum < (origUnitPrice * qty)) {
-                finalUnitPrice = currentSum / qty;
-            } else {
-                finalUnitPrice = origUnitPrice;
-            }
-        }
-
-        const origTotalSum = origUnitPrice * qty;
-        // Faqat haqiqatdan ham narx pasaytirilgan bo'lsa skidka hisoblanadi
         const hasItemDiscount = (origUnitPrice - finalUnitPrice) > 0.5;
 
-        const finalItemSum = hasItemDiscount ? Math.round(finalUnitPrice * qty) : currentSum;
-
         if (hasItemDiscount) {
-            if (itemDiscountAmt <= 0) itemDiscountAmt = Math.max(0, origTotalSum - finalItemSum);
-            if (itemDiscountPct <= 0 && origTotalSum > 0) itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+            if (itemDiscountPct <= 0 && origUnitPrice > 0) {
+                itemDiscountPct = ((origUnitPrice - finalUnitPrice) / origUnitPrice) * 100.0;
+            }
+            if (itemDiscountAmt <= 0) {
+                itemDiscountAmt = (origUnitPrice - finalUnitPrice) * qty;
+            }
             totalPositionsDiscountSum += itemDiscountAmt;
-            totalOriginalSum += origTotalSum;
+            totalOriginalSum += (origUnitPrice * qty);
         } else {
-            totalOriginalSum += currentSum;
+            origUnitPrice = finalUnitPrice;
+            itemDiscountPct = 0;
+            totalOriginalSum += (finalUnitPrice * qty);
         }
+
+        const currentSum = parseFloat(p.sum) || Math.round(finalUnitPrice * qty);
+        const finalItemSum = currentSum;
 
         const pctFormatted = (itemDiscountPct % 1 === 0 ? itemDiscountPct : itemDiscountPct.toFixed(1)) + '%';
         const colorHtml = p.color ? ` <span style="font-size:0.9em;color:#64748b;">(Rang: ${p.color})</span>` : '';
@@ -2410,10 +2545,10 @@ function buildReceiptHtml(demand, currentCustomerDebt, settings) {
                 </div>
                 <div class="receipt-item-calc-row">
                     <div class="receipt-item-math">
-                        ${hasItemDiscount ? `
+                        ${hasItemDiscount && itemDiscountPct > 0 ? `
                             <strong class="calc-qty">${formatNumber(qty)}</strong> * <strike class="calc-old-price">${formatNumber(origUnitPrice)}</strike> ➔ <strong class="calc-new-price">${formatNumber(finalUnitPrice)}</strong> <strong class="calc-disc-percent">(-${pctFormatted})</strong>
                         ` : `
-                            <strong class="calc-qty">${formatNumber(qty)}</strong> * <strong class="calc-new-price">${formatNumber(origUnitPrice)}</strong>
+                            <strong class="calc-qty">${formatNumber(qty)}</strong> * <strong class="calc-new-price">${formatNumber(finalUnitPrice)}</strong>
                         `}
                     </div>
                     <div class="receipt-item-total">
